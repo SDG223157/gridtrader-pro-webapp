@@ -477,6 +477,70 @@ async def settings_page(request: Request, db: Session = Depends(get_db)):
 async def health_check():
     return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
 
+# Debug endpoints for authentication issues
+@app.get("/debug/db-test")
+async def debug_database(db: Session = Depends(get_db)):
+    """Debug database connectivity"""
+    try:
+        result = db.execute(text("SELECT 1 as test")).fetchone()
+        user_count = db.query(User).count()
+        return {
+            "database": "✅ Connected", 
+            "test_query": result[0],
+            "user_count": user_count,
+            "tables_check": "OK"
+        }
+    except Exception as e:
+        return {"database": "❌ Error", "error": str(e)}
+
+@app.get("/debug/env-test")
+async def debug_environment():
+    """Debug environment variables"""
+    return {
+        "DB_HOST": os.getenv("DB_HOST", "Not set"),
+        "DB_USER": os.getenv("DB_USER", "Not set"), 
+        "DB_NAME": os.getenv("DB_NAME", "Not set"),
+        "GOOGLE_CLIENT_ID": "Set" if os.getenv("GOOGLE_CLIENT_ID") else "Not set",
+        "GOOGLE_CLIENT_SECRET": "Set" if os.getenv("GOOGLE_CLIENT_SECRET") else "Not set",
+        "SECRET_KEY": "Set" if os.getenv("SECRET_KEY") else "Not set",
+        "ENVIRONMENT": os.getenv("ENVIRONMENT", "Not set"),
+        "PORT": os.getenv("PORT", "Not set")
+    }
+
+@app.post("/debug/create-test-user")
+async def debug_create_user(db: Session = Depends(get_db)):
+    """Debug user creation"""
+    try:
+        test_email = "debug@test.com"
+        
+        # Remove existing test user if present
+        existing = db.query(User).filter(User.email == test_email).first()
+        if existing:
+            # Delete profile first due to foreign key constraint
+            profile = db.query(UserProfile).filter(UserProfile.user_id == existing.id).first()
+            if profile:
+                db.delete(profile)
+            db.delete(existing)
+            db.commit()
+        
+        # Try to create user using the same method as registration
+        user = create_user(db, test_email, "testpass123", profile_data={
+            "given_name": "Debug",
+            "family_name": "User", 
+            "name": "Debug User"
+        })
+        
+        return {
+            "user_creation": "✅ Success",
+            "user_id": user.id,
+            "email": user.email
+        }
+        
+    except HTTPException as he:
+        return {"user_creation": "❌ HTTP Error", "error": he.detail}
+    except Exception as e:
+        return {"user_creation": "❌ Error", "error": str(e)}
+
 # Startup event
 @app.on_event("startup")
 async def startup_event():
