@@ -191,9 +191,22 @@ async def register(request: Request, email: str = Form(...), password: str = For
         raise HTTPException(status_code=500, detail="Registration failed")
 
 @app.post("/logout")
-async def logout(request: Request):
+async def logout_post(request: Request):
+    """POST logout route"""
     request.session.clear()
     return RedirectResponse(url="/", status_code=302)
+
+@app.get("/logout")
+async def logout_get(request: Request):
+    """GET logout route for convenience"""
+    request.session.clear()
+    return RedirectResponse(url="/", status_code=302)
+
+@app.get("/api/auth/logout")
+async def logout_api(request: Request):
+    """API logout route"""
+    request.session.clear()
+    return JSONResponse({"success": True, "message": "Logged out successfully", "redirect_url": "/"})
 
 # Google OAuth routes
 @app.get("/api/auth/google")
@@ -506,6 +519,25 @@ async def debug_environment():
         "ENVIRONMENT": os.getenv("ENVIRONMENT", "Not set"),
         "PORT": os.getenv("PORT", "Not set")
     }
+
+@app.get("/debug/session-test")
+async def debug_session(request: Request, db: Session = Depends(get_db)):
+    """Debug session and authentication status"""
+    try:
+        user_id = request.session.get("user_id")
+        user = None
+        if user_id:
+            user = db.query(User).filter(User.id == user_id).first()
+        
+        return {
+            "session_user_id": user_id,
+            "user_found": user is not None,
+            "user_email": user.email if user else None,
+            "session_keys": list(request.session.keys()),
+            "is_authenticated": user is not None
+        }
+    except Exception as e:
+        return {"session_debug": "❌ Error", "error": str(e)}
 
 @app.get("/debug/create-test-user")
 async def debug_create_user(db: Session = Depends(get_db)):
