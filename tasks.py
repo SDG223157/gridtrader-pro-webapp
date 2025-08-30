@@ -188,7 +188,7 @@ def process_grid_orders(self):
                         alert_type="grid",
                         title=f"Grid {grid.name} - Price Above Range",
                         message=f"{grid.symbol} price ${current_price:.2f} is above grid upper bound ${grid.upper_price:.2f}",
-                        metadata={"grid_id": grid.id, "symbol": grid.symbol, "price": current_price}
+                        alert_metadata={"grid_id": grid.id, "symbol": grid.symbol, "price": current_price}
                     )
                     db.add(alert)
                     
@@ -199,7 +199,7 @@ def process_grid_orders(self):
                         alert_type="grid",
                         title=f"Grid {grid.name} - Price Below Range",
                         message=f"{grid.symbol} price ${current_price:.2f} is below grid lower bound ${grid.lower_price:.2f}",
-                        metadata={"grid_id": grid.id, "symbol": grid.symbol, "price": current_price}
+                        alert_metadata={"grid_id": grid.id, "symbol": grid.symbol, "price": current_price}
                     )
                     db.add(alert)
                 
@@ -256,7 +256,7 @@ def generate_alerts(self):
                                 alert_type="price",
                                 title=f"{holding.symbol} Price Alert",
                                 message=f"{holding.symbol} has {direction} by {abs(price_change)*100:.1f}% to ${current_price:.2f}",
-                                metadata={
+                                alert_metadata={
                                     "symbol": holding.symbol,
                                     "old_price": float(holding.current_price),
                                     "new_price": current_price,
