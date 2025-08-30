@@ -253,7 +253,7 @@ class Alert(Base):
     title = Column(String(200), nullable=False)
     message = Column(Text, nullable=False)
     is_read = Column(Boolean, default=False)
-    metadata = Column(JSON)
+    alert_metadata = Column(JSON)  # Renamed from 'metadata' to avoid SQLAlchemy conflict
     created_at = Column(DateTime, server_default=func.current_timestamp())
 
     user = relationship("User", back_populates="alerts")
