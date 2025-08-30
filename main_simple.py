@@ -11,13 +11,31 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy.orm import Session
-from database import get_db, User, UserProfile
+from database import get_db, User, UserProfile, Portfolio, Grid, Holding, Alert
 from auth_simple import (
     setup_oauth, create_access_token, get_current_user, require_auth, 
     create_user, authenticate_user, create_or_update_user_from_google
 )
 import httpx
 from datetime import datetime
+from typing import List
+from pydantic import BaseModel
+
+# Pydantic models for API requests
+class CreatePortfolioRequest(BaseModel):
+    name: str
+    description: str = ""
+    strategy_type: str = "balanced"
+    initial_capital: float
+
+class CreateGridRequest(BaseModel):
+    portfolio_id: str
+    symbol: str
+    name: str
+    upper_price: float
+    lower_price: float
+    grid_count: int = 10
+    investment_amount: float
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -216,6 +234,135 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
     })
     
     return templates.TemplateResponse("dashboard.html", {"request": request, **context})
+
+# Portfolio Management Routes
+@app.get("/portfolios", response_class=HTMLResponse)
+async def portfolios_page(request: Request, db: Session = Depends(get_db)):
+    context = get_user_context(request, db)
+    if not context["is_authenticated"]:
+        return RedirectResponse(url="/login", status_code=302)
+    
+    portfolios = db.query(Portfolio).filter(Portfolio.user_id == context["user"].id).all()
+    context["portfolios"] = portfolios
+    return templates.TemplateResponse("portfolios.html", {"request": request, **context})
+
+@app.get("/portfolios/create", response_class=HTMLResponse)
+async def create_portfolio_page(request: Request, db: Session = Depends(get_db)):
+    context = get_user_context(request, db)
+    if not context["is_authenticated"]:
+        return RedirectResponse(url="/login", status_code=302)
+    return templates.TemplateResponse("create_portfolio.html", {"request": request, **context})
+
+@app.post("/api/portfolios")
+async def create_portfolio(request: CreatePortfolioRequest, user: User = Depends(require_auth), db: Session = Depends(get_db)):
+    try:
+        portfolio = Portfolio(
+            user_id=user.id,
+            name=request.name,
+            description=request.description,
+            strategy_type=request.strategy_type,
+            initial_capital=request.initial_capital,
+            current_value=request.initial_capital,
+            cash_balance=request.initial_capital
+        )
+        
+        db.add(portfolio)
+        db.commit()
+        db.refresh(portfolio)
+        
+        logger.info(f"Portfolio created: {portfolio.name} for user {user.email}")
+        return {"success": True, "portfolio_id": portfolio.id, "message": "Portfolio created successfully"}
+    
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error creating portfolio: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create portfolio")
+
+# Grid Trading Routes
+@app.get("/grids", response_class=HTMLResponse)
+async def grids_page(request: Request, db: Session = Depends(get_db)):
+    context = get_user_context(request, db)
+    if not context["is_authenticated"]:
+        return RedirectResponse(url="/login", status_code=302)
+    
+    grids = db.query(Grid).join(Portfolio).filter(Portfolio.user_id == context["user"].id).all()
+    context["grids"] = grids
+    return templates.TemplateResponse("grids.html", {"request": request, **context})
+
+@app.get("/grids/create", response_class=HTMLResponse)
+async def create_grid_page(request: Request, db: Session = Depends(get_db)):
+    context = get_user_context(request, db)
+    if not context["is_authenticated"]:
+        return RedirectResponse(url="/login", status_code=302)
+    
+    portfolios = db.query(Portfolio).filter(Portfolio.user_id == context["user"].id).all()
+    context["portfolios"] = portfolios
+    return templates.TemplateResponse("create_grid.html", {"request": request, **context})
+
+@app.post("/api/grids")
+async def create_grid(request: CreateGridRequest, user: User = Depends(require_auth), db: Session = Depends(get_db)):
+    try:
+        # Verify portfolio ownership
+        portfolio = db.query(Portfolio).filter(
+            Portfolio.id == request.portfolio_id,
+            Portfolio.user_id == user.id
+        ).first()
+        
+        if not portfolio:
+            raise HTTPException(status_code=404, detail="Portfolio not found")
+        
+        # Create grid
+        grid = Grid(
+            portfolio_id=request.portfolio_id,
+            symbol=request.symbol,
+            name=request.name,
+            upper_price=request.upper_price,
+            lower_price=request.lower_price,
+            grid_spacing=(request.upper_price - request.lower_price) / request.grid_count,
+            investment_amount=request.investment_amount
+        )
+        
+        db.add(grid)
+        db.commit()
+        db.refresh(grid)
+        
+        logger.info(f"Grid created: {grid.name} for {request.symbol}")
+        return {"success": True, "grid_id": grid.id, "message": "Grid created successfully"}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error creating grid: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create grid")
+
+# Analytics Route
+@app.get("/analytics", response_class=HTMLResponse)
+async def analytics_page(request: Request, db: Session = Depends(get_db)):
+    context = get_user_context(request, db)
+    if not context["is_authenticated"]:
+        return RedirectResponse(url="/login", status_code=302)
+    return templates.TemplateResponse("analytics.html", {"request": request, **context})
+
+# Market Data API for charts
+@app.get("/api/market/{symbol}")
+async def get_market_data(symbol: str, period: str = "1d"):
+    """Simple market data endpoint"""
+    try:
+        # Mock data for now - can be enhanced with real yfinance integration
+        mock_data = {
+            "symbol": symbol,
+            "period": period,
+            "data": [
+                {"date": "2025-01-01", "open": 150.0, "high": 155.0, "low": 148.0, "close": 153.0, "volume": 1000000},
+                {"date": "2025-01-02", "open": 153.0, "high": 158.0, "low": 151.0, "close": 156.0, "volume": 1200000},
+                {"date": "2025-01-03", "open": 156.0, "high": 160.0, "low": 154.0, "close": 159.0, "volume": 900000}
+            ]
+        }
+        return mock_data
+    except Exception as e:
+        logger.error(f"Error fetching market data for {symbol}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch market data")
 
 # Health check
 @app.get("/health")
