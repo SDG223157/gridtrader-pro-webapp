@@ -35,12 +35,13 @@ RUN mkdir -p /app/logs /app/static /app/templates \
 COPY docker/start-simple.sh /start-simple.sh
 RUN chmod +x /start-simple.sh
 
-# Expose port
+# Expose port (flexible for Coolify)
 EXPOSE 3000
+EXPOSE 8000
 
-# Health check
+# Health check (try both common ports)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:3000/health || exit 1
+    CMD curl -f http://localhost:${PORT:-3000}/health || curl -f http://localhost:3000/health || exit 1
 
 # Switch to app user
 USER appuser
