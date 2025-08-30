@@ -169,17 +169,17 @@ async def logout_api(request: Request):
     return JSONResponse({"success": True, "message": "Logged out successfully"})
 
 # Google OAuth routes - following prombank pattern
-@app.get("/auth/google")
+@app.get("/api/auth/google")
 async def google_auth(request: Request):
     """Initiate Google OAuth"""
     google_client = setup_oauth()
     if not google_client:
         raise HTTPException(status_code=500, detail="Google OAuth not configured")
     
-    redirect_uri = f"{os.getenv('FRONTEND_URL', 'https://gridsai.app')}/auth/google/callback"
+    redirect_uri = f"{os.getenv('FRONTEND_URL', 'https://gridsai.app')}/api/auth/google/callback"
     return await google_client.authorize_redirect(request, redirect_uri)
 
-@app.get("/auth/google/callback")
+@app.get("/api/auth/google/callback")
 async def google_callback(request: Request, db: Session = Depends(get_db)):
     """Handle Google OAuth callback"""
     try:
