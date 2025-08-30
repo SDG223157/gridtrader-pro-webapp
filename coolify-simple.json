@@ -2,7 +2,7 @@
   "name": "GridTrader Pro Simple",
   "description": "Systematic Investment Management Platform - Simple Deployment (No Supervisord)",
   "type": "dockerfile",
-  "dockerfile": "Dockerfile.simple-production",
+  "dockerfile": "Dockerfile.simple-clean",
   "buildArgs": {},
   "environment": {
     "DB_HOST": "${DB_HOST}",
