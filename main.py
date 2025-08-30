@@ -523,23 +523,48 @@ async def debug_create_user(db: Session = Depends(get_db)):
             db.delete(existing)
             db.commit()
         
-        # Try to create user using the same method as registration
-        user = create_user(db, test_email, "testpass123", profile_data={
-            "given_name": "Debug",
-            "family_name": "User", 
-            "name": "Debug User"
-        })
+        # Try to create user manually to see the raw error
+        from passlib.context import CryptContext
+        pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+        
+        user_data = {
+            "email": test_email,
+            "password_hash": pwd_context.hash("testpass123"),
+            "auth_provider": "local",
+            "is_email_verified": False
+        }
+        
+        user = User(**user_data)
+        db.add(user)
+        db.flush()  # Get the user ID
+        
+        # Create user profile
+        profile = UserProfile(
+            user_id=user.id,
+            display_name="Debug User",
+            first_name="Debug",
+            last_name="User"
+        )
+        db.add(profile)
+        db.commit()
+        db.refresh(user)
         
         return {
             "user_creation": "✅ Success",
             "user_id": user.id,
-            "email": user.email
+            "email": user.email,
+            "method": "direct_database"
         }
         
-    except HTTPException as he:
-        return {"user_creation": "❌ HTTP Error", "error": he.detail}
     except Exception as e:
-        return {"user_creation": "❌ Error", "error": str(e)}
+        db.rollback()
+        import traceback
+        return {
+            "user_creation": "❌ Raw Error", 
+            "error": str(e),
+            "error_type": type(e).__name__,
+            "traceback": traceback.format_exc()
+        }
 
 # Startup event
 @app.on_event("startup")
