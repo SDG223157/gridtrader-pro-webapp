@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}Create Portfolio - GridTrader Pro{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <div class="max-w-2xl mx-auto">
+        <h1 class="text-3xl font-bold text-gray-900 mb-6">Create New Portfolio</h1>
+        
+        <form id="portfolioForm" class="space-y-6">
+            <div>
+                <label for="name" class="block text-sm font-medium text-gray-700">Portfolio Name</label>
+                <input type="text" id="name" name="name" required 
+                       class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+            </div>
+            
+            <div>
+                <label for="description" class="block text-sm font-medium text-gray-700">Description</label>
+                <textarea id="description" name="description" rows="3" 
+                          class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"></textarea>
+            </div>
+            
+            <div>
+                <label for="strategy_type" class="block text-sm font-medium text-gray-700">Strategy Type</label>
+                <select id="strategy_type" name="strategy_type" 
+                        class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                    <option value="balanced">Balanced</option>
+                    <option value="aggressive">Aggressive</option>
+                    <option value="conservative">Conservative</option>
+                    <option value="growth">Growth</option>
+                </select>
+            </div>
+            
+            <div>
+                <label for="initial_capital" class="block text-sm font-medium text-gray-700">Initial Capital ($)</label>
+                <input type="number" id="initial_capital" name="initial_capital" required min="0" step="0.01"
+                       class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+            </div>
+            
+            <div class="flex justify-end space-x-3">
+                <a href="/portfolios" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded">
+                    Cancel
+                </a>
+                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                    Create Portfolio
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+document.getElementById('portfolioForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const data = Object.fromEntries(formData);
+    data.initial_capital = parseFloat(data.initial_capital);
+    
+    try {
+        const response = await fetch('/api/portfolios', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            window.location.href = '/portfolios';
+        } else {
+            alert(result.detail || 'Failed to create portfolio');
+        }
+    } catch (error) {
+        alert('Failed to create portfolio. Please try again.');
+    }
+});
+</script>
+{% endblock %}

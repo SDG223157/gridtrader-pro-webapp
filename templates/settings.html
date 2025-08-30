@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - GridTrader Pro{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <h1 class="text-3xl font-bold text-gray-900 mb-6">Settings</h1>
+    
+    <div class="max-w-4xl mx-auto">
+        <div class="bg-white shadow rounded-lg divide-y divide-gray-200">
+            <!-- Profile Section -->
+            <div class="px-6 py-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">Profile Settings</h3>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Name</label>
+                        <p class="mt-1 text-sm text-gray-900">{{ user.profile.name if user.profile else 'Not set' }}</p>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Email</label>
+                        <p class="mt-1 text-sm text-gray-900">{{ user.email }}</p>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Account Type</label>
+                        <p class="mt-1 text-sm text-gray-900">{{ user.subscription_tier|title }}</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Trading Preferences -->
+            <div class="px-6 py-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">Trading Preferences</h3>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Risk Tolerance</label>
+                        <p class="mt-1 text-sm text-gray-900">{{ user.profile.risk_tolerance|title if user.profile else 'Not set' }}</p>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Investment Experience</label>
+                        <p class="mt-1 text-sm text-gray-900">{{ user.profile.investment_experience|title if user.profile else 'Not set' }}</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Notifications -->
+            <div class="px-6 py-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">Notifications</h3>
+                <div class="space-y-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h4 class="text-sm font-medium text-gray-900">Email Notifications</h4>
+                            <p class="text-sm text-gray-500">Receive email updates about your portfolios</p>
+                        </div>
+                        <input type="checkbox" class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded">
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h4 class="text-sm font-medium text-gray-900">Grid Alerts</h4>
+                            <p class="text-sm text-gray-500">Get notified when grid strategies trigger</p>
+                        </div>
+                        <input type="checkbox" class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded">
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Security -->
+            <div class="px-6 py-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">Security</h3>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Authentication Provider</label>
+                        <p class="mt-1 text-sm text-gray-900">{{ user.auth_provider|title }}</p>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Account Created</label>
+                        <p class="mt-1 text-sm text-gray-900">{{ user.created_at.strftime('%B %d, %Y') if user.created_at else 'Unknown' }}</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Actions -->
+            <div class="px-6 py-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">Account Actions</h3>
+                <div class="space-y-3">
+                    <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded">
+                        Export Data
+                    </button>
+                    <form action="/logout" method="post" class="inline">
+                        <button type="submit" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">
+                            Sign Out
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
