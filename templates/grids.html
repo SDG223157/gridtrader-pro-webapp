@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}Grid Trading - GridTrader Pro{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-3xl font-bold text-gray-900">Grid Trading</h1>
+        <a href="/grids/create" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+            Create Grid
+        </a>
+    </div>
+    
+    <div class="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        {% for grid in grids %}
+        <div class="bg-white overflow-hidden shadow rounded-lg">
+            <div class="p-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-2">{{ grid.name }}</h3>
+                <p class="text-sm text-gray-500 mb-4">{{ grid.symbol }}</p>
+                
+                <div class="space-y-2">
+                    <div class="flex justify-between">
+                        <span class="text-sm text-gray-600">Upper Price:</span>
+                        <span class="text-sm font-medium">${{ "%.2f"|format(grid.upper_price) }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-sm text-gray-600">Lower Price:</span>
+                        <span class="text-sm font-medium">${{ "%.2f"|format(grid.lower_price) }}</span>
+                    </div>
+                    {% if grid.current_price %}
+                    <div class="flex justify-between">
+                        <span class="text-sm text-gray-600">Current Price:</span>
+                        <span class="text-sm font-medium">${{ "%.2f"|format(grid.current_price) }}</span>
+                    </div>
+                    {% endif %}
+                    <div class="flex justify-between">
+                        <span class="text-sm text-gray-600">Investment:</span>
+                        <span class="text-sm font-medium">${{ "%.2f"|format(grid.investment_amount) }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-sm text-gray-600">Status:</span>
+                        <span class="text-sm font-medium {% if grid.status == 'active' %}text-green-600{% else %}text-gray-600{% endif %}">
+                            {{ grid.status|title }}
+                        </span>
+                    </div>
+                </div>
+                
+                <div class="mt-4 flex space-x-2">
+                    <a href="/grids/{{ grid.id }}" class="text-blue-600 hover:text-blue-900 text-sm">View</a>
+                    <a href="/grids/{{ grid.id }}/edit" class="text-gray-600 hover:text-gray-900 text-sm">Edit</a>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+        
+        {% if not grids %}
+        <div class="col-span-full text-center py-12">
+            <p class="text-gray-500 mb-4">You haven't created any grid trading strategies yet.</p>
+            <a href="/grids/create" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                Create Your First Grid
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
