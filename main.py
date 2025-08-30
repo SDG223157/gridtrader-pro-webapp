@@ -488,6 +488,9 @@ async def startup_event():
         logger.info("✅ Database connection and tables ready")
     except Exception as e:
         logger.error(f"❌ Startup failed: {e}")
+        # Don't crash the entire application, just log the error
+        # The database initialization is already done by init_database.py in the container
+        logger.warning("⚠️ Continuing without startup database initialization...")
 
 if __name__ == "__main__":
     import uvicorn
