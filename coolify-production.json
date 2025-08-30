@@ -35,7 +35,7 @@
   "ports": [
     {
       "internal": 3000,
-      "external": 3000,
+      "external": 80,
       "protocol": "http"
     }
   ],
