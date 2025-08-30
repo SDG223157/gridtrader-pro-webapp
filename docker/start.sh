@@ -1,14 +1,14 @@
 #!/bin/bash
 set -e
 
-echo "🚀 Starting GridTrader Pro..."
+echo "🚀 Starting GridTrader Pro Production..."
 
-# Wait for database
-if [ "$DB_HOST" ]; then
+# Wait for external database
+if [ "$DB_HOST" ] && [ "$DB_HOST" != "localhost" ]; then
     echo "⏳ Waiting for database at $DB_HOST:${DB_PORT:-3306}..."
-    timeout=30
+    timeout=60
     while ! nc -z "$DB_HOST" "${DB_PORT:-3306}" && [ $timeout -gt 0 ]; do
-        sleep 1
+        sleep 2
         timeout=$((timeout - 1))
     done
     
@@ -19,20 +19,20 @@ if [ "$DB_HOST" ]; then
     echo "✅ Database connection established"
 fi
 
-# Wait for Redis
-if [ "$REDIS_HOST" ]; then
+# Wait for external Redis
+if [ "$REDIS_HOST" ] && [ "$REDIS_HOST" != "localhost" ]; then
     echo "⏳ Waiting for Redis at $REDIS_HOST:${REDIS_PORT:-6379}..."
     timeout=30
     while ! nc -z "$REDIS_HOST" "${REDIS_PORT:-6379}" && [ $timeout -gt 0 ]; do
-        sleep 1
+        sleep 2
         timeout=$((timeout - 1))
     done
     
     if [ $timeout -eq 0 ]; then
-        echo "❌ Redis connection timeout"
-        exit 1
+        echo "❌ Redis connection timeout - continuing without background tasks"
+    else
+        echo "✅ Redis connection established"
     fi
-    echo "✅ Redis connection established"
 fi
 
 # Create database tables
