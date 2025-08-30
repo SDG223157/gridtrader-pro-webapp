@@ -390,8 +390,8 @@ async def startup_event():
 
 if __name__ == "__main__":
     import uvicorn
-    # Try multiple port sources - Coolify often sets PORT differently
-    port = int(os.getenv('PORT', os.getenv('APP_PORT', '3000')))
+    # Force port 3000 to match Coolify configuration
+    port = 3000  # Always use 3000 as configured in Coolify
     host = os.getenv('HOST', os.getenv('HOSTNAME', '0.0.0.0'))
     
     logger.info(f"🌐 Starting server on {host}:{port}")
