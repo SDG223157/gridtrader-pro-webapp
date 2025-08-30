@@ -369,6 +369,18 @@ async def get_market_data(symbol: str, period: str = "1d"):
 async def health_check():
     return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
 
+@app.get("/debug/port-info")
+async def port_info():
+    """Debug port configuration"""
+    return {
+        "PORT_env": os.getenv('PORT', 'Not set'),
+        "APP_PORT_env": os.getenv('APP_PORT', 'Not set'),
+        "HOST_env": os.getenv('HOST', 'Not set'),
+        "HOSTNAME_env": os.getenv('HOSTNAME', 'Not set'),
+        "actual_port_used": int(os.getenv('PORT', os.getenv('APP_PORT', '3000'))),
+        "message": "GridTrader Pro Simple is running!"
+    }
+
 # Simple startup
 @app.on_event("startup")
 async def startup_event():
@@ -378,9 +390,14 @@ async def startup_event():
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.getenv('PORT', 3000))
-    host = os.getenv('HOSTNAME', '0.0.0.0')
+    # Try multiple port sources - Coolify often sets PORT differently
+    port = int(os.getenv('PORT', os.getenv('APP_PORT', '3000')))
+    host = os.getenv('HOST', os.getenv('HOSTNAME', '0.0.0.0'))
+    
     logger.info(f"🌐 Starting server on {host}:{port}")
+    logger.info(f"🔧 Environment PORT: {os.getenv('PORT', 'Not set')}")
+    logger.info(f"🔧 Environment HOST: {os.getenv('HOST', 'Not set')}")
+    
     uvicorn.run(
         "main_simple:app",
         host=host,
