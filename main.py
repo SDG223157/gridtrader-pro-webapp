@@ -482,15 +482,9 @@ async def health_check():
 async def startup_event():
     """Initialize database connection and tables on startup"""
     logger.info("🚀 Starting GridTrader Pro...")
-    try:
-        await connect_with_retry()
-        create_tables()
-        logger.info("✅ Database connection and tables ready")
-    except Exception as e:
-        logger.error(f"❌ Startup failed: {e}")
-        # Don't crash the entire application, just log the error
-        # The database initialization is already done by init_database.py in the container
-        logger.warning("⚠️ Continuing without startup database initialization...")
+    # Skip database initialization since it's already done by init_database.py
+    # This prevents startup crashes due to database connection issues
+    logger.info("✅ GridTrader Pro startup completed")
 
 if __name__ == "__main__":
     import uvicorn
