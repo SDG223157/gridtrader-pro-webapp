@@ -162,30 +162,10 @@
                                     <i class="fas fa-cog mr-3 text-gray-400 group-hover:text-gray-500"></i>
                                     Settings
                                 </a>
-                                <form action="/logout" method="post" class="block" id="logout-form">
-                                    <button type="submit" class="group flex w-full items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" onclick="handleLogout(event)">
-                                        <i class="fas fa-sign-out-alt mr-3 text-gray-400 group-hover:text-gray-500"></i>
-                                        Sign out
-                                    </button>
-                                </form>
-                                <script>
-                                function handleLogout(event) {
-                                    console.log('Logout button clicked');
-                                    // Try multiple logout methods to ensure it works
-                                    event.preventDefault();
-                                    
-                                    // Method 1: Try form submission
-                                    const form = document.getElementById('logout-form');
-                                    if (form) {
-                                        form.submit();
-                                    }
-                                    
-                                    // Method 2: Fallback to direct navigation
-                                    setTimeout(() => {
-                                        window.location.href = '/logout';
-                                    }, 100);
-                                }
-                                </script>
+                                <a href="/logout" class="group flex w-full items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                    <i class="fas fa-sign-out-alt mr-3 text-gray-400 group-hover:text-gray-500"></i>
+                                    Sign out
+                                </a>
                             </div>
                         </div>
                         {% else %}

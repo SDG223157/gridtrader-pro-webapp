@@ -85,12 +85,10 @@
 <!-- Mobile-only logout -->
 <div class="md:hidden mt-4 pt-4 border-t border-gray-200">
     {% if is_authenticated %}
-    <form action="/logout" method="post" class="block">
-        <button type="submit" class="group flex w-full items-center px-3 py-2 text-sm font-medium text-gray-600 rounded-lg hover:bg-gray-100 hover:text-gray-900 transition-colors duration-200">
-            <i class="fas fa-sign-out-alt mr-3 text-gray-400 group-hover:text-gray-500"></i>
-            Sign Out
-        </button>
-    </form>
+    <a href="/logout" class="group flex w-full items-center px-3 py-2 text-sm font-medium text-gray-600 rounded-lg hover:bg-gray-100 hover:text-gray-900 transition-colors duration-200">
+        <i class="fas fa-sign-out-alt mr-3 text-gray-400 group-hover:text-gray-500"></i>
+        Sign Out
+    </a>
     {% else %}
     <div class="space-y-2">
         <a href="/login" class="flex items-center px-3 py-2 text-sm font-medium text-gray-600 rounded-lg hover:bg-gray-100 hover:text-gray-900 transition-colors duration-200">
