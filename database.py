@@ -9,6 +9,7 @@ import os
 import enum
 import asyncio
 import logging
+import uuid
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -86,7 +87,7 @@ class AlertType(enum.Enum):
 class User(Base):
     __tablename__ = "users"
 
-    id = Column(VARCHAR(36), primary_key=True, server_default=text("(UUID())"))
+    id = Column(VARCHAR(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     email = Column(String(255), unique=True, nullable=False, index=True)
     password_hash = Column(String(255), nullable=True)
     google_id = Column(String(255), unique=True, nullable=True, index=True)
@@ -122,7 +123,7 @@ class UserProfile(Base):
 class OAuthSession(Base):
     __tablename__ = "oauth_sessions"
 
-    id = Column(VARCHAR(36), primary_key=True, server_default=text("(UUID())"))
+    id = Column(VARCHAR(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = Column(VARCHAR(36), ForeignKey("users.id"), nullable=False)
     provider = Column(Enum(AuthProvider), nullable=False)
     access_token = Column(Text, nullable=False)
@@ -137,7 +138,7 @@ class OAuthSession(Base):
 class Portfolio(Base):
     __tablename__ = "portfolios"
 
-    id = Column(VARCHAR(36), primary_key=True, server_default=text("(UUID())"))
+    id = Column(VARCHAR(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = Column(VARCHAR(36), ForeignKey("users.id"), nullable=False)
     name = Column(String(100), nullable=False)
     description = Column(Text)
@@ -160,7 +161,7 @@ class Portfolio(Base):
 class Holding(Base):
     __tablename__ = "holdings"
 
-    id = Column(VARCHAR(36), primary_key=True, server_default=text("(UUID())"))
+    id = Column(VARCHAR(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     portfolio_id = Column(VARCHAR(36), ForeignKey("portfolios.id"), nullable=False)
     symbol = Column(String(20), nullable=False, index=True)
     quantity = Column(DECIMAL(15, 6), nullable=False)
@@ -178,7 +179,7 @@ class Holding(Base):
 class Transaction(Base):
     __tablename__ = "transactions"
 
-    id = Column(VARCHAR(36), primary_key=True, server_default=text("(UUID())"))
+    id = Column(VARCHAR(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     portfolio_id = Column(VARCHAR(36), ForeignKey("portfolios.id"), nullable=False)
     symbol = Column(String(20), nullable=False, index=True)
     transaction_type = Column(Enum(TransactionType), nullable=False)
@@ -194,7 +195,7 @@ class Transaction(Base):
 class Grid(Base):
     __tablename__ = "grids"
 
-    id = Column(VARCHAR(36), primary_key=True, server_default=text("(UUID())"))
+    id = Column(VARCHAR(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     portfolio_id = Column(VARCHAR(36), ForeignKey("portfolios.id"), nullable=False)
     symbol = Column(String(20), nullable=False, index=True)
     name = Column(String(100), nullable=False)
@@ -216,7 +217,7 @@ class Grid(Base):
 class GridOrder(Base):
     __tablename__ = "grid_orders"
 
-    id = Column(VARCHAR(36), primary_key=True, server_default=text("(UUID())"))
+    id = Column(VARCHAR(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     grid_id = Column(VARCHAR(36), ForeignKey("grids.id"), nullable=False)
     order_type = Column(Enum(TransactionType), nullable=False)
     target_price = Column(DECIMAL(10, 4), nullable=False)
@@ -247,7 +248,7 @@ class MarketData(Base):
 class Alert(Base):
     __tablename__ = "alerts"
 
-    id = Column(VARCHAR(36), primary_key=True, server_default=text("(UUID())"))
+    id = Column(VARCHAR(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = Column(VARCHAR(36), ForeignKey("users.id"), nullable=False)
     alert_type = Column(Enum(AlertType), nullable=False)
     title = Column(String(200), nullable=False)
