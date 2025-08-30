@@ -507,7 +507,7 @@ async def debug_environment():
         "PORT": os.getenv("PORT", "Not set")
     }
 
-@app.post("/debug/create-test-user")
+@app.get("/debug/create-test-user")
 async def debug_create_user(db: Session = Depends(get_db)):
     """Debug user creation"""
     try:
