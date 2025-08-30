@@ -1,0 +1,296 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - GridTrader Pro{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="px-6 py-8">
+    <!-- Welcome Section -->
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold text-gray-900">
+            Welcome back, {{ user.profile.display_name or user.email.split('@')[0] }}!
+        </h1>
+        <p class="text-gray-600 mt-2">Here's what's happening with your investments today.</p>
+    </div>
+    
+    <!-- Portfolio Summary Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <!-- Total Portfolio Value -->
+        <div class="trading-card rounded-xl p-6 transition-all duration-200">
+            <div class="flex items-center">
+                <div class="flex-shrink-0">
+                    <div class="w-12 h-12 bg-gradient-to-r from-green-500 to-emerald-600 rounded-lg flex items-center justify-center">
+                        <i class="fas fa-dollar-sign text-white text-xl"></i>
+                    </div>
+                </div>
+                <div class="ml-4 flex-1">
+                    <p class="text-sm font-medium text-gray-500">Total Value</p>
+                    <p class="text-2xl font-bold text-gray-900" data-field="total-value">
+                        {{ "${:,.2f}".format(portfolio_summary.total_value) }}
+                    </p>
+                    <p class="text-sm profit-positive">
+                        <i class="fas fa-arrow-up"></i>
+                        +{{ "{:.2f}".format(portfolio_summary.total_return) }}%
+                    </p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Active Portfolios -->
+        <div class="trading-card rounded-xl p-6 transition-all duration-200">
+            <div class="flex items-center">
+                <div class="flex-shrink-0">
+                    <div class="w-12 h-12 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
+                        <i class="fas fa-briefcase text-white text-xl"></i>
+                    </div>
+                </div>
+                <div class="ml-4 flex-1">
+                    <p class="text-sm font-medium text-gray-500">Portfolios</p>
+                    <p class="text-2xl font-bold text-gray-900">{{ portfolio_summary.total_portfolios }}</p>
+                    <p class="text-sm text-gray-600">Active portfolios</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Active Grids -->
+        <div class="trading-card rounded-xl p-6 transition-all duration-200">
+            <div class="flex items-center">
+                <div class="flex-shrink-0">
+                    <div class="w-12 h-12 bg-gradient-to-r from-purple-500 to-pink-600 rounded-lg flex items-center justify-center">
+                        <i class="fas fa-th text-white text-xl"></i>
+                    </div>
+                </div>
+                <div class="ml-4 flex-1">
+                    <p class="text-sm font-medium text-gray-500">Active Grids</p>
+                    <p class="text-2xl font-bold text-gray-900">{{ portfolio_summary.active_grids }}</p>
+                    <p class="text-sm text-gray-600">Trading strategies</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Total Invested -->
+        <div class="trading-card rounded-xl p-6 transition-all duration-200">
+            <div class="flex items-center">
+                <div class="flex-shrink-0">
+                    <div class="w-12 h-12 bg-gradient-to-r from-orange-500 to-red-600 rounded-lg flex items-center justify-center">
+                        <i class="fas fa-chart-line text-white text-xl"></i>
+                    </div>
+                </div>
+                <div class="ml-4 flex-1">
+                    <p class="text-sm font-medium text-gray-500">Total Invested</p>
+                    <p class="text-2xl font-bold text-gray-900">
+                        {{ "${:,.2f}".format(portfolio_summary.total_invested) }}
+                    </p>
+                    <p class="text-sm text-gray-600">Initial capital</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Main Content Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <!-- Market Overview -->
+        <div class="lg:col-span-2">
+            <div class="trading-card rounded-xl p-6">
+                <div class="flex items-center justify-between mb-6">
+                    <h2 class="text-xl font-bold text-gray-900">Market Overview</h2>
+                    <div class="flex items-center space-x-2">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                            <i class="fas fa-circle text-green-500 mr-1"></i>
+                            Live
+                        </span>
+                        <button onclick="refreshMarketData()" class="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {% for symbol, price in market_data.items() %}
+                    <div class="text-center p-4 bg-gray-50 rounded-lg">
+                        <p class="text-sm font-medium text-gray-500 mb-1">{{ symbol }}</p>
+                        <p class="text-lg font-bold text-gray-900" data-symbol="{{ symbol }}" data-field="price">
+                            {{ "${:.2f}".format(price) if price else "N/A" }}
+                        </p>
+                        <p class="text-xs text-gray-500">
+                            <i class="fas fa-clock mr-1"></i>
+                            Real-time
+                        </p>
+                    </div>
+                    {% endfor %}
+                </div>
+                
+                <!-- Market Chart Placeholder -->
+                <div class="mt-6 h-64 bg-gray-50 rounded-lg flex items-center justify-center">
+                    <div class="text-center">
+                        <i class="fas fa-chart-area text-4xl text-gray-300 mb-4"></i>
+                        <p class="text-gray-500">Market chart will be displayed here</p>
+                        <button onclick="loadMarketChart()" class="mt-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
+                            Load Chart
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Recent Activity & Alerts -->
+        <div class="space-y-6">
+            <!-- Recent Alerts -->
+            <div class="trading-card rounded-xl p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-semibold text-gray-900">Recent Alerts</h3>
+                    <a href="/alerts" class="text-sm text-indigo-600 hover:text-indigo-700">View all</a>
+                </div>
+                
+                {% if recent_alerts %}
+                <div class="space-y-3">
+                    {% for alert in recent_alerts %}
+                    <div class="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
+                        <div class="flex-shrink-0 mt-1">
+                            {% if alert.alert_type == 'price' %}
+                            <i class="fas fa-chart-line text-blue-500"></i>
+                            {% elif alert.alert_type == 'portfolio' %}
+                            <i class="fas fa-briefcase text-green-500"></i>
+                            {% elif alert.alert_type == 'grid' %}
+                            <i class="fas fa-th text-purple-500"></i>
+                            {% else %}
+                            <i class="fas fa-info-circle text-gray-500"></i>
+                            {% endif %}
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-medium text-gray-900">{{ alert.title }}</p>
+                            <p class="text-sm text-gray-600 truncate">{{ alert.message }}</p>
+                            <p class="text-xs text-gray-400 mt-1">
+                                {{ alert.created_at.strftime('%H:%M') }}
+                            </p>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="text-center py-8">
+                    <i class="fas fa-bell-slash text-4xl text-gray-300 mb-4"></i>
+                    <p class="text-gray-500">No recent alerts</p>
+                </div>
+                {% endif %}
+            </div>
+            
+            <!-- Quick Actions -->
+            <div class="trading-card rounded-xl p-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
+                <div class="space-y-3">
+                    <a href="/portfolios/create" class="flex items-center p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg hover:from-blue-100 hover:to-indigo-100 transition-colors group">
+                        <div class="flex-shrink-0">
+                            <div class="w-10 h-10 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform">
+                                <i class="fas fa-plus text-white"></i>
+                            </div>
+                        </div>
+                        <div class="ml-3">
+                            <p class="text-sm font-medium text-gray-900">New Portfolio</p>
+                            <p class="text-xs text-gray-600">Create investment portfolio</p>
+                        </div>
+                    </a>
+                    
+                    <a href="/grids/create" class="flex items-center p-3 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg hover:from-green-100 hover:to-emerald-100 transition-colors group">
+                        <div class="flex-shrink-0">
+                            <div class="w-10 h-10 bg-gradient-to-r from-green-500 to-emerald-600 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform">
+                                <i class="fas fa-th text-white"></i>
+                            </div>
+                        </div>
+                        <div class="ml-3">
+                            <p class="text-sm font-medium text-gray-900">New Grid</p>
+                            <p class="text-xs text-gray-600">Setup grid trading</p>
+                        </div>
+                    </a>
+                    
+                    <a href="/analytics" class="flex items-center p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg hover:from-purple-100 hover:to-pink-100 transition-colors group">
+                        <div class="flex-shrink-0">
+                            <div class="w-10 h-10 bg-gradient-to-r from-purple-500 to-pink-600 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform">
+                                <i class="fas fa-chart-bar text-white"></i>
+                            </div>
+                        </div>
+                        <div class="ml-3">
+                            <p class="text-sm font-medium text-gray-900">View Analytics</p>
+                            <p class="text-xs text-gray-600">Performance insights</p>
+                        </div>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- JavaScript for Dashboard -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Start real-time price updates for market symbols
+    const marketSymbols = [{% for symbol in market_data.keys() %}'{{ symbol }}'{% if not loop.last %}, {% endif %}{% endfor %}];
+    if (marketSymbols.length > 0) {
+        startPriceUpdates(marketSymbols);
+    }
+});
+
+async function refreshMarketData() {
+    const button = event.target.closest('button');
+    const icon = button.querySelector('i');
+    
+    // Add spinning animation
+    icon.classList.add('fa-spin');
+    
+    try {
+        const marketSymbols = [{% for symbol in market_data.keys() %}'{{ symbol }}'{% if not loop.last %}, {% endif %}{% endfor %}];
+        
+        for (const symbol of marketSymbols) {
+            const response = await apiCall(`/api/market/${symbol}?period=current`);
+            if (response.price) {
+                updatePriceDisplay(symbol, response.price);
+            }
+        }
+        
+        showFlash('Market data refreshed successfully', 'success');
+    } catch (error) {
+        showFlash('Failed to refresh market data', 'error');
+    } finally {
+        // Remove spinning animation
+        icon.classList.remove('fa-spin');
+    }
+}
+
+async function loadMarketChart() {
+    const chartContainer = event.target.closest('.h-64');
+    chartContainer.innerHTML = '<div class="flex items-center justify-center h-full"><i class="fas fa-spinner fa-spin text-2xl text-gray-400"></i><span class="ml-2 text-gray-500">Loading chart...</span></div>';
+    
+    try {
+        // This would load a real chart - for now, show placeholder
+        setTimeout(() => {
+            chartContainer.innerHTML = `
+                <div class="h-full bg-gradient-to-br from-blue-50 to-indigo-100 rounded-lg flex items-center justify-center">
+                    <div class="text-center">
+                        <i class="fas fa-chart-line text-4xl text-blue-500 mb-4"></i>
+                        <p class="text-blue-700 font-medium">Market Chart</p>
+                        <p class="text-blue-600 text-sm">Real-time market visualization</p>
+                    </div>
+                </div>
+            `;
+        }, 1000);
+    } catch (error) {
+        chartContainer.innerHTML = '<div class="flex items-center justify-center h-full text-red-500"><i class="fas fa-exclamation-triangle mr-2"></i>Failed to load chart</div>';
+    }
+}
+
+// Auto-refresh dashboard data every 5 minutes
+setInterval(async () => {
+    try {
+        // Refresh portfolio summary
+        const response = await fetch('/api/dashboard/summary');
+        if (response.ok) {
+            const data = await response.json();
+            // Update portfolio summary values
+            document.querySelector('[data-field="total-value"]').textContent = formatCurrency(data.total_value);
+        }
+    } catch (error) {
+        console.error('Failed to refresh dashboard data:', error);
+    }
+}, 300000); // 5 minutes
+</script>
+{% endblock %}

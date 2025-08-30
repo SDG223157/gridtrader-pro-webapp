@@ -1,0 +1,38 @@
+{
+  "name": "GridTrader Pro",
+  "description": "Systematic Investment Management Platform with Grid Trading",
+  "type": "docker-compose",
+  "dockerComposeFile": "docker-compose.yml",
+  "environment": {
+    "GOOGLE_CLIENT_ID": "your-google-client-id.apps.googleusercontent.com",
+    "GOOGLE_CLIENT_SECRET": "your-google-client-secret",
+    "SECRET_KEY": "your-super-secret-key-32-chars-minimum",
+    "ENVIRONMENT": "production",
+    "FRONTEND_URL": "https://yourdomain.com",
+    "GOOGLE_REDIRECT_URI": "https://yourdomain.com/api/auth/google/callback"
+  },
+  "ports": [
+    {
+      "internal": 3000,
+      "external": 3000,
+      "protocol": "http"
+    }
+  ],
+  "volumes": [
+    {
+      "source": "./logs",
+      "target": "/app/logs",
+      "type": "bind"
+    }
+  ],
+  "healthcheck": {
+    "url": "/health",
+    "interval": 30,
+    "timeout": 10,
+    "retries": 3
+  },
+  "resources": {
+    "memory": "1G",
+    "cpu": "0.5"
+  }
+}

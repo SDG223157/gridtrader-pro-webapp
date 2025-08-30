@@ -1,0 +1,247 @@
+{% extends "base.html" %}
+
+{% block title %}GridTrader Pro - Systematic Investment Management Platform{% endblock %}
+
+{% block content %}
+<!-- Hero Section -->
+<div class="relative overflow-hidden bg-white">
+    <!-- Background Pattern -->
+    <div class="absolute inset-0">
+        <div class="absolute inset-0 bg-gradient-to-br from-indigo-50 via-white to-purple-50"></div>
+        <div class="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg width=\"60\" height=\"60\" viewBox=\"0 0 60 60\" xmlns=\"http://www.w3.org/2000/svg\"%3E%3Cg fill=\"none\" fill-rule=\"evenodd\"%3E%3Cg fill=\"%239C92AC\" fill-opacity=\"0.03\"%3E%3Ccircle cx=\"30\" cy=\"30\" r=\"2\"/%3E%3C/g%3E%3C/g%3E%3C/svg%3E')] opacity-50"></div>
+    </div>
+    
+    <div class="relative px-4 py-16 sm:px-6 lg:px-8 lg:py-24">
+        <div class="mx-auto max-w-4xl text-center">
+            <!-- Main Heading -->
+            <div class="mb-8">
+                <div class="inline-flex items-center rounded-full bg-indigo-100 px-4 py-2 text-sm font-medium text-indigo-700 mb-6">
+                    <i class="fas fa-chart-line mr-2"></i>
+                    Systematic Investment Management
+                </div>
+                <h1 class="text-5xl font-bold tracking-tight text-gray-900 sm:text-6xl lg:text-7xl">
+                    Welcome to
+                    <span class="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
+                        GridTrader Pro
+                    </span>
+                </h1>
+                <p class="mx-auto mt-6 max-w-2xl text-xl leading-8 text-gray-600">
+                    Advanced grid trading algorithms, portfolio rebalancing, and real-time market data integration. 
+                    Transform your investment strategy with systematic automation.
+                </p>
+            </div>
+            
+            <!-- CTA Buttons -->
+            <div class="flex flex-col sm:flex-row gap-4 justify-center mb-12">
+                {% if is_authenticated %}
+                <a href="/dashboard" class="group inline-flex items-center justify-center rounded-xl bg-indigo-600 px-8 py-4 text-lg font-semibold text-white shadow-lg hover:bg-indigo-700 hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200">
+                    <i class="fas fa-tachometer-alt mr-3 group-hover:animate-pulse"></i>
+                    Go to Dashboard
+                </a>
+                <a href="/portfolios" class="group inline-flex items-center justify-center rounded-xl border-2 border-indigo-600 px-8 py-4 text-lg font-semibold text-indigo-600 hover:bg-indigo-600 hover:text-white transform hover:-translate-y-0.5 transition-all duration-200">
+                    <i class="fas fa-briefcase mr-3"></i>
+                    View Portfolios
+                </a>
+                {% else %}
+                <a href="/register" class="group inline-flex items-center justify-center rounded-xl bg-indigo-600 px-8 py-4 text-lg font-semibold text-white shadow-lg hover:bg-indigo-700 hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200">
+                    <i class="fas fa-rocket mr-3 group-hover:animate-pulse"></i>
+                    Get Started Free
+                </a>
+                <a href="/login" class="group inline-flex items-center justify-center rounded-xl border-2 border-indigo-600 px-8 py-4 text-lg font-semibold text-indigo-600 hover:bg-indigo-600 hover:text-white transform hover:-translate-y-0.5 transition-all duration-200">
+                    <i class="fas fa-sign-in-alt mr-3"></i>
+                    Sign In
+                </a>
+                {% endif %}
+            </div>
+            
+            <!-- Stats Section -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-6 max-w-3xl mx-auto">
+                <div class="text-center">
+                    <div class="text-3xl font-bold text-indigo-600">100+</div>
+                    <div class="text-sm text-gray-500 uppercase tracking-wide">Trading Strategies</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-3xl font-bold text-purple-600">24/7</div>
+                    <div class="text-sm text-gray-500 uppercase tracking-wide">Market Monitoring</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-3xl font-bold text-pink-600">99.9%</div>
+                    <div class="text-sm text-gray-500 uppercase tracking-wide">Uptime</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-3xl font-bold text-green-600">Real-time</div>
+                    <div class="text-sm text-gray-500 uppercase tracking-wide">Data Updates</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Features Section -->
+<div class="py-16 bg-white">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div class="text-center mb-16">
+            <h2 class="text-4xl font-bold text-gray-900 mb-4">
+                Powerful Features for Modern Investors
+            </h2>
+            <p class="text-xl text-gray-600 max-w-2xl mx-auto">
+                Everything you need to automate and optimize your investment strategy
+            </p>
+        </div>
+        
+        <div class="grid md:grid-cols-3 gap-8">
+            <!-- Grid Trading -->
+            <div class="group relative bg-gradient-to-br from-blue-50 to-indigo-100 p-8 rounded-2xl shadow-lg hover:shadow-2xl transform hover:-translate-y-2 transition-all duration-300">
+                <div class="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-blue-400 to-indigo-500 rounded-full opacity-10 transform translate-x-16 -translate-y-16"></div>
+                <div class="relative">
+                    <div class="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-xl text-white text-2xl mb-6 group-hover:scale-110 transition-transform duration-200">
+                        <i class="fas fa-th"></i>
+                    </div>
+                    <h3 class="text-2xl font-bold text-gray-900 mb-4">Grid Trading</h3>
+                    <p class="text-gray-600 mb-6 leading-relaxed">
+                        Advanced grid trading algorithms that automatically buy low and sell high within defined price ranges. Perfect for sideways markets.
+                    </p>
+                    <ul class="text-sm text-gray-600 space-y-2">
+                        <li class="flex items-center"><i class="fas fa-check text-green-500 mr-2"></i>Dynamic grid spacing</li>
+                        <li class="flex items-center"><i class="fas fa-check text-green-500 mr-2"></i>Risk management</li>
+                        <li class="flex items-center"><i class="fas fa-check text-green-500 mr-2"></i>Backtesting support</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <!-- Portfolio Management -->
+            <div class="group relative bg-gradient-to-br from-green-50 to-emerald-100 p-8 rounded-2xl shadow-lg hover:shadow-2xl transform hover:-translate-y-2 transition-all duration-300">
+                <div class="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-green-400 to-emerald-500 rounded-full opacity-10 transform translate-x-16 -translate-y-16"></div>
+                <div class="relative">
+                    <div class="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl text-white text-2xl mb-6 group-hover:scale-110 transition-transform duration-200">
+                        <i class="fas fa-briefcase"></i>
+                    </div>
+                    <h3 class="text-2xl font-bold text-gray-900 mb-4">Portfolio Management</h3>
+                    <p class="text-gray-600 mb-6 leading-relaxed">
+                        Comprehensive portfolio tracking with automated rebalancing, performance analytics, and risk assessment tools.
+                    </p>
+                    <ul class="text-sm text-gray-600 space-y-2">
+                        <li class="flex items-center"><i class="fas fa-check text-green-500 mr-2"></i>Auto-rebalancing</li>
+                        <li class="flex items-center"><i class="fas fa-check text-green-500 mr-2"></i>Performance tracking</li>
+                        <li class="flex items-center"><i class="fas fa-check text-green-500 mr-2"></i>Risk analysis</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <!-- Real-time Data -->
+            <div class="group relative bg-gradient-to-br from-purple-50 to-pink-100 p-8 rounded-2xl shadow-lg hover:shadow-2xl transform hover:-translate-y-2 transition-all duration-300">
+                <div class="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-purple-400 to-pink-500 rounded-full opacity-10 transform translate-x-16 -translate-y-16"></div>
+                <div class="relative">
+                    <div class="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-purple-500 to-pink-600 rounded-xl text-white text-2xl mb-6 group-hover:scale-110 transition-transform duration-200">
+                        <i class="fas fa-chart-line"></i>
+                    </div>
+                    <h3 class="text-2xl font-bold text-gray-900 mb-4">Real-time Data</h3>
+                    <p class="text-gray-600 mb-6 leading-relaxed">
+                        Live market data integration with Yahoo Finance, technical indicators, and comprehensive market analysis tools.
+                    </p>
+                    <ul class="text-sm text-gray-600 space-y-2">
+                        <li class="flex items-center"><i class="fas fa-check text-green-500 mr-2"></i>Live price feeds</li>
+                        <li class="flex items-center"><i class="fas fa-check text-green-500 mr-2"></i>Technical indicators</li>
+                        <li class="flex items-center"><i class="fas fa-check text-green-500 mr-2"></i>Market alerts</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- CTA Section -->
+<div class="relative py-16 bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900">
+    <!-- Background Effects -->
+    <div class="absolute inset-0 bg-black opacity-50"></div>
+    <div class="absolute inset-0 bg-gradient-to-br from-indigo-600/20 via-purple-600/20 to-pink-600/20"></div>
+    
+    <div class="relative mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 text-center">
+        <h2 class="text-4xl font-bold text-white mb-4">
+            Ready to Start Your
+            <span class="bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-600 bg-clip-text text-transparent">
+                Investment Journey?
+            </span>
+        </h2>
+        
+        <p class="text-2xl text-white/90 mb-12 max-w-3xl mx-auto leading-relaxed font-light">
+            Join thousands of investors who trust GridTrader Pro for their systematic investment management needs.
+        </p>
+        
+        <!-- CTA Buttons -->
+        <div class="flex flex-col sm:flex-row gap-6 justify-center mb-12">
+            {% if not is_authenticated %}
+            <a href="/register" class="group relative inline-flex items-center justify-center rounded-2xl bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-600 text-white px-12 py-6 text-xl font-bold shadow-2xl hover:shadow-cyan-500/25 transform hover:-translate-y-2 hover:scale-105 transition-all duration-300 overflow-hidden">
+                <!-- Button shine effect -->
+                <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -skew-x-12 -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
+                <div class="relative flex items-center">
+                    <i class="fas fa-rocket mr-3 group-hover:animate-bounce"></i>
+                    <span>Start Free Today</span>
+                </div>
+            </a>
+            <a href="/login" class="group inline-flex items-center justify-center rounded-2xl bg-white/10 backdrop-blur-md border-2 border-white/30 text-white px-12 py-6 text-xl font-bold hover:bg-white hover:text-slate-900 hover:border-white transform hover:-translate-y-2 hover:scale-105 transition-all duration-300">
+                <div class="flex items-center">
+                    <i class="fas fa-sign-in-alt mr-3"></i>
+                    <span>Sign In</span>
+                </div>
+            </a>
+            {% else %}
+            <a href="/dashboard" class="group relative inline-flex items-center justify-center rounded-2xl bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-600 text-white px-12 py-6 text-xl font-bold shadow-2xl hover:shadow-cyan-500/25 transform hover:-translate-y-2 hover:scale-105 transition-all duration-300 overflow-hidden">
+                <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -skew-x-12 -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
+                <div class="relative flex items-center">
+                    <i class="fas fa-tachometer-alt mr-3 group-hover:animate-bounce"></i>
+                    <span>Go to Dashboard</span>
+                </div>
+            </a>
+            {% endif %}
+        </div>
+        
+        <!-- Trust Indicators -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-8 max-w-2xl mx-auto">
+            <div class="flex flex-col items-center space-y-2 group">
+                <div class="w-12 h-12 bg-gradient-to-r from-green-400 to-emerald-500 rounded-full flex items-center justify-center text-white shadow-lg group-hover:scale-110 transition-transform">
+                    <i class="fas fa-shield-alt"></i>
+                </div>
+                <span class="text-white/80 text-sm font-medium">Secure & Private</span>
+            </div>
+            <div class="flex flex-col items-center space-y-2 group">
+                <div class="w-12 h-12 bg-gradient-to-r from-yellow-400 to-orange-500 rounded-full flex items-center justify-center text-white shadow-lg group-hover:scale-110 transition-transform">
+                    <i class="fas fa-bolt"></i>
+                </div>
+                <span class="text-white/80 text-sm font-medium">Lightning Fast</span>
+            </div>
+            <div class="flex flex-col items-center space-y-2 group">
+                <div class="w-12 h-12 bg-gradient-to-r from-blue-400 to-cyan-500 rounded-full flex items-center justify-center text-white shadow-lg group-hover:scale-110 transition-transform">
+                    <i class="fas fa-chart-line"></i>
+                </div>
+                <span class="text-white/80 text-sm font-medium">Professional Grade</span>
+            </div>
+            <div class="flex flex-col items-center space-y-2 group">
+                <div class="w-12 h-12 bg-gradient-to-r from-pink-400 to-red-500 rounded-full flex items-center justify-center text-white shadow-lg group-hover:scale-110 transition-transform">
+                    <i class="fas fa-heart"></i>
+                </div>
+                <span class="text-white/80 text-sm font-medium">Built with Care</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add custom animations -->
+<style>
+@keyframes blob {
+    0% { transform: translate(0px, 0px) scale(1); }
+    33% { transform: translate(30px, -50px) scale(1.1); }
+    66% { transform: translate(-20px, 20px) scale(0.9); }
+    100% { transform: translate(0px, 0px) scale(1); }
+}
+.animate-blob { 
+    animation: blob 7s infinite; 
+}
+.animation-delay-2000 { 
+    animation-delay: 2s; 
+}
+.animation-delay-4000 { 
+    animation-delay: 4s; 
+}
+</style>
+{% endblock %}
