@@ -164,8 +164,9 @@
                                 </a>
                                 <a href="/logout" 
                                    class="group flex w-full items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                                   onclick="console.log('Logout link clicked!'); return true;"
-                                   target="_self">
+                                   onclick="event.stopPropagation(); event.preventDefault(); console.log('Dropdown logout clicked!'); window.location.href='/logout'; return false;"
+                                   onmousedown="event.stopPropagation(); window.location.href='/logout';"
+                                   ontouchstart="event.stopPropagation(); window.location.href='/logout';">
                                     <i class="fas fa-sign-out-alt mr-3 text-gray-400 group-hover:text-gray-500"></i>
                                     Sign out
                                 </a>
