@@ -1,0 +1,91 @@
+version: '3.8'
+
+services:
+  # Main Application
+  gridtrader-app:
+    build: .
+    container_name: gridtrader-pro
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_NAME=gridtrader_db
+      - DB_USER=gridtrader
+      - DB_PASSWORD=gridtrader_secure_password
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=gridtrader_production_secret_key_32_characters_minimum
+      - ENVIRONMENT=production
+      - FRONTEND_URL=http://localhost:3000
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - GOOGLE_REDIRECT_URI=http://localhost:3000/api/auth/google/callback
+      - JWT_ALGORITHM=HS256
+      - JWT_EXPIRE_HOURS=24
+      - YFINANCE_TIMEOUT=30
+      - DATA_UPDATE_INTERVAL=300
+      - LOG_LEVEL=INFO
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - gridtrader-network
+
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: gridtrader-mysql
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=root_secure_password
+      - MYSQL_DATABASE=gridtrader_db
+      - MYSQL_USER=gridtrader
+      - MYSQL_PASSWORD=gridtrader_secure_password
+      - MYSQL_CHARACTER_SET_SERVER=utf8mb4
+      - MYSQL_COLLATION_SERVER=utf8mb4_unicode_ci
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot_secure_password"]
+      timeout: 20s
+      retries: 10
+    networks:
+      - gridtrader-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: gridtrader-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      timeout: 10s
+      retries: 5
+    networks:
+      - gridtrader-network
+
+volumes:
+  mysql_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  gridtrader-network:
+    driver: bridge

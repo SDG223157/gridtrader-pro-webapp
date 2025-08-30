@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}GridTrader Pro - Systematic Investment Management{% endblock %}</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    
+    <!-- Chart.js for analytics -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Plotly.js for advanced charts -->
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    
+    <style>
+        [x-cloak] { display: none !important; }
+        
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .trading-card {
+            background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        
+        .trading-card:hover {
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            transform: translateY(-2px);
+        }
+        
+        .profit-positive { color: #10b981; }
+        .profit-negative { color: #ef4444; }
+        
+        .grid-status-active { background-color: #10b981; }
+        .grid-status-paused { background-color: #f59e0b; }
+        .grid-status-completed { background-color: #6b7280; }
+        
+        .animate-pulse-slow {
+            animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+    </style>
+</head>
+<body class="h-full bg-gray-50" x-data="{ sidebarOpen: false, userMenuOpen: false }">
+    
+    <!-- Mobile sidebar backdrop -->
+    <div x-show="sidebarOpen" class="fixed inset-0 flex z-40 md:hidden" x-cloak>
+        <div x-show="sidebarOpen" 
+             x-transition:enter="transition-opacity ease-linear duration-300"
+             x-transition:enter-start="opacity-0"
+             x-transition:enter-end="opacity-100"
+             x-transition:leave="transition-opacity ease-linear duration-300"
+             x-transition:leave-start="opacity-100"
+             x-transition:leave-end="opacity-0"
+             class="fixed inset-0 bg-gray-600 bg-opacity-75" 
+             @click="sidebarOpen = false"></div>
+        
+        <div x-show="sidebarOpen"
+             x-transition:enter="transition ease-in-out duration-300 transform"
+             x-transition:enter-start="-translate-x-full"
+             x-transition:enter-end="translate-x-0"
+             x-transition:leave="transition ease-in-out duration-300 transform"
+             x-transition:leave-start="translate-x-0"
+             x-transition:leave-end="-translate-x-full"
+             class="relative flex-1 flex flex-col max-w-xs w-full bg-white">
+            
+            <div class="absolute top-0 right-0 -mr-12 pt-2">
+                <button @click="sidebarOpen = false" 
+                        class="ml-1 flex items-center justify-center h-10 w-10 rounded-full focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white">
+                    <i class="fas fa-times text-white"></i>
+                </button>
+            </div>
+            
+            <!-- Mobile sidebar content -->
+            <div class="flex-1 h-0 pt-5 pb-4 overflow-y-auto">
+                <div class="flex-shrink-0 flex items-center px-4">
+                    <h1 class="text-2xl font-bold text-indigo-600">
+                        <i class="fas fa-chart-line mr-2"></i>GridTrader Pro
+                    </h1>
+                </div>
+                <nav class="mt-8 px-4 space-y-2">
+                    {% include 'partials/navigation.html' %}
+                </nav>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Desktop sidebar -->
+    <div class="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0">
+        <div class="flex-1 flex flex-col min-h-0 bg-white border-r border-gray-200">
+            <div class="flex-1 flex flex-col pt-5 pb-4 overflow-y-auto">
+                <div class="flex items-center flex-shrink-0 px-6">
+                    <h1 class="text-2xl font-bold text-indigo-600">
+                        <i class="fas fa-chart-line mr-2"></i>GridTrader Pro
+                    </h1>
+                </div>
+                <nav class="mt-8 flex-1 px-4 space-y-2">
+                    {% include 'partials/navigation.html' %}
+                </nav>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Main content -->
+    <div class="md:pl-64 flex flex-col flex-1">
+        <!-- Top navigation -->
+        <div class="sticky top-0 z-10 md:hidden pl-1 pt-1 sm:pl-3 sm:pt-3 bg-white border-b border-gray-200">
+            <button @click="sidebarOpen = true" 
+                    class="h-12 w-12 inline-flex items-center justify-center rounded-md text-gray-500 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500">
+                <i class="fas fa-bars"></i>
+            </button>
+        </div>
+        
+        <!-- Top bar for desktop -->
+        <div class="hidden md:block bg-white shadow-sm border-b border-gray-200">
+            <div class="px-6 py-4">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-4">
+                        <h2 class="text-xl font-semibold text-gray-900">
+                            {% block page_title %}Dashboard{% endblock %}
+                        </h2>
+                        {% block breadcrumbs %}{% endblock %}
+                    </div>
+                    
+                    <!-- User menu -->
+                    <div class="relative" x-data="{ open: false }">
+                        {% if is_authenticated %}
+                        <button @click="open = !open" 
+                                class="flex items-center space-x-2 text-sm rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                            <img class="h-8 w-8 rounded-full" 
+                                 src="{{ user.profile.avatar_url or 'https://ui-avatars.com/api/?name=' + (user.profile.display_name or user.email) + '&background=6366f1&color=white' }}" 
+                                 alt="User avatar">
+                            <span class="text-gray-700">{{ user.profile.display_name or user.email }}</span>
+                            <i class="fas fa-chevron-down text-gray-400"></i>
+                        </button>
+                        
+                        <div x-show="open" 
+                             x-transition:enter="transition ease-out duration-200"
+                             x-transition:enter-start="transform opacity-0 scale-95"
+                             x-transition:enter-end="transform opacity-100 scale-100"
+                             x-transition:leave="transition ease-in duration-75"
+                             x-transition:leave-start="transform opacity-100 scale-100"
+                             x-transition:leave-end="transform opacity-0 scale-95"
+                             @click.away="open = false"
+                             class="origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 divide-y divide-gray-100" 
+                             x-cloak>
+                            <div class="px-4 py-3">
+                                <p class="text-sm text-gray-900">{{ user.profile.display_name or 'User' }}</p>
+                                <p class="text-sm text-gray-500 truncate">{{ user.email }}</p>
+                            </div>
+                            <div class="py-1">
+                                <a href="/settings" class="group flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                    <i class="fas fa-cog mr-3 text-gray-400 group-hover:text-gray-500"></i>
+                                    Settings
+                                </a>
+                                <form action="/logout" method="post" class="block">
+                                    <button type="submit" class="group flex w-full items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                        <i class="fas fa-sign-out-alt mr-3 text-gray-400 group-hover:text-gray-500"></i>
+                                        Sign out
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                        {% else %}
+                        <div class="flex items-center space-x-4">
+                            <a href="/login" class="text-gray-500 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
+                                Sign In
+                            </a>
+                            <a href="/register" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-medium">
+                                Get Started
+                            </a>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Main content area -->
+        <main class="flex-1 relative overflow-y-auto focus:outline-none">
+            <!-- Flash messages -->
+            <div id="flash-messages" class="fixed top-20 right-4 z-50 space-y-2"></div>
+            
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+    
+    <!-- JavaScript utilities -->
+    <script>
+        // Flash message system
+        function showFlash(message, type = 'info') {
+            const container = document.getElementById('flash-messages');
+            const flash = document.createElement('div');
+            
+            const bgColor = {
+                'success': 'bg-green-500',
+                'error': 'bg-red-500', 
+                'warning': 'bg-yellow-500',
+                'info': 'bg-blue-500'
+            }[type] || 'bg-blue-500';
+            
+            flash.className = `${bgColor} text-white px-6 py-3 rounded-lg shadow-lg transform translate-x-full transition-transform duration-300`;
+            flash.innerHTML = `
+                <div class="flex items-center justify-between">
+                    <span>${message}</span>
+                    <button onclick="this.parentElement.parentElement.remove()" class="ml-4 text-white hover:text-gray-200">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            `;
+            
+            container.appendChild(flash);
+            
+            // Animate in
+            setTimeout(() => {
+                flash.classList.remove('translate-x-full');
+            }, 100);
+            
+            // Auto remove after 5 seconds
+            setTimeout(() => {
+                flash.classList.add('translate-x-full');
+                setTimeout(() => flash.remove(), 300);
+            }, 5000);
+        }
+        
+        // API helper functions
+        async function apiCall(url, options = {}) {
+            try {
+                const response = await fetch(url, {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...options.headers
+                    },
+                    ...options
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                return await response.json();
+            } catch (error) {
+                console.error('API call failed:', error);
+                showFlash(`Error: ${error.message}`, 'error');
+                throw error;
+            }
+        }
+        
+        // Format currency
+        function formatCurrency(amount, currency = 'USD') {
+            return new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: currency,
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(amount);
+        }
+        
+        // Format percentage
+        function formatPercent(value, decimals = 2) {
+            return `${value >= 0 ? '+' : ''}${value.toFixed(decimals)}%`;
+        }
+        
+        // Format number with commas
+        function formatNumber(num, decimals = 2) {
+            return new Intl.NumberFormat('en-US', {
+                minimumFractionDigits: decimals,
+                maximumFractionDigits: decimals
+            }).format(num);
+        }
+        
+        // Real-time price updates
+        let priceUpdateInterval;
+        
+        function startPriceUpdates(symbols) {
+            if (priceUpdateInterval) {
+                clearInterval(priceUpdateInterval);
+            }
+            
+            priceUpdateInterval = setInterval(async () => {
+                try {
+                    for (const symbol of symbols) {
+                        const response = await apiCall(`/api/market/${symbol}?period=current`);
+                        if (response.price) {
+                            updatePriceDisplay(symbol, response.price);
+                        }
+                    }
+                } catch (error) {
+                    console.error('Price update failed:', error);
+                }
+            }, 30000); // Update every 30 seconds
+        }
+        
+        function updatePriceDisplay(symbol, price) {
+            const elements = document.querySelectorAll(`[data-symbol="${symbol}"]`);
+            elements.forEach(el => {
+                if (el.dataset.field === 'price') {
+                    const oldPrice = parseFloat(el.textContent.replace(/[^0-9.-]/g, ''));
+                    el.textContent = formatCurrency(price);
+                    
+                    // Add visual feedback for price changes
+                    if (price > oldPrice) {
+                        el.classList.add('text-green-600');
+                        el.classList.remove('text-red-600');
+                    } else if (price < oldPrice) {
+                        el.classList.add('text-red-600');
+                        el.classList.remove('text-green-600');
+                    }
+                }
+            });
+        }
+        
+        // Stop price updates when leaving page
+        window.addEventListener('beforeunload', () => {
+            if (priceUpdateInterval) {
+                clearInterval(priceUpdateInterval);
+            }
+        });
+    </script>
+    
+    {% block extra_js %}{% endblock %}
+</body>
+</html>
