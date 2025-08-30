@@ -85,11 +85,19 @@
                     <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded">
                         Export Data
                     </button>
-                    <form action="/logout" method="post" class="inline">
-                        <button type="submit" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">
+                    <form action="/logout" method="post" class="inline" id="settings-logout-form">
+                        <button type="submit" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded" onclick="handleSettingsLogout(event)">
                             Sign Out
                         </button>
                     </form>
+                    <script>
+                    function handleSettingsLogout(event) {
+                        console.log('Settings logout button clicked');
+                        event.preventDefault();
+                        // Force logout
+                        window.location.href = '/logout';
+                    }
+                    </script>
                 </div>
             </div>
         </div>
