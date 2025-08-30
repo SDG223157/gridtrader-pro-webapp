@@ -4,7 +4,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy import Column, Integer, String, Text, DECIMAL, Boolean, DateTime, Date, JSON, Enum, BigInteger, ForeignKey
 from sqlalchemy.dialects.mysql import VARCHAR
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
+from sqlalchemy.sql import func, text
 import os
 import enum
 import asyncio
@@ -86,7 +86,7 @@ class AlertType(enum.Enum):
 class User(Base):
     __tablename__ = "users"
 
-    id = Column(VARCHAR(36), primary_key=True, server_default=func.uuid())
+    id = Column(VARCHAR(36), primary_key=True, server_default=text("(UUID())"))
     email = Column(String(255), unique=True, nullable=False, index=True)
     password_hash = Column(String(255), nullable=True)
     google_id = Column(String(255), unique=True, nullable=True, index=True)
@@ -122,7 +122,7 @@ class UserProfile(Base):
 class OAuthSession(Base):
     __tablename__ = "oauth_sessions"
 
-    id = Column(VARCHAR(36), primary_key=True, server_default=func.uuid())
+    id = Column(VARCHAR(36), primary_key=True, server_default=text("(UUID())"))
     user_id = Column(VARCHAR(36), ForeignKey("users.id"), nullable=False)
     provider = Column(Enum(AuthProvider), nullable=False)
     access_token = Column(Text, nullable=False)
@@ -137,7 +137,7 @@ class OAuthSession(Base):
 class Portfolio(Base):
     __tablename__ = "portfolios"
 
-    id = Column(VARCHAR(36), primary_key=True, server_default=func.uuid())
+    id = Column(VARCHAR(36), primary_key=True, server_default=text("(UUID())"))
     user_id = Column(VARCHAR(36), ForeignKey("users.id"), nullable=False)
     name = Column(String(100), nullable=False)
     description = Column(Text)
@@ -160,7 +160,7 @@ class Portfolio(Base):
 class Holding(Base):
     __tablename__ = "holdings"
 
-    id = Column(VARCHAR(36), primary_key=True, server_default=func.uuid())
+    id = Column(VARCHAR(36), primary_key=True, server_default=text("(UUID())"))
     portfolio_id = Column(VARCHAR(36), ForeignKey("portfolios.id"), nullable=False)
     symbol = Column(String(20), nullable=False, index=True)
     quantity = Column(DECIMAL(15, 6), nullable=False)
@@ -178,7 +178,7 @@ class Holding(Base):
 class Transaction(Base):
     __tablename__ = "transactions"
 
-    id = Column(VARCHAR(36), primary_key=True, server_default=func.uuid())
+    id = Column(VARCHAR(36), primary_key=True, server_default=text("(UUID())"))
     portfolio_id = Column(VARCHAR(36), ForeignKey("portfolios.id"), nullable=False)
     symbol = Column(String(20), nullable=False, index=True)
     transaction_type = Column(Enum(TransactionType), nullable=False)
@@ -194,7 +194,7 @@ class Transaction(Base):
 class Grid(Base):
     __tablename__ = "grids"
 
-    id = Column(VARCHAR(36), primary_key=True, server_default=func.uuid())
+    id = Column(VARCHAR(36), primary_key=True, server_default=text("(UUID())"))
     portfolio_id = Column(VARCHAR(36), ForeignKey("portfolios.id"), nullable=False)
     symbol = Column(String(20), nullable=False, index=True)
     name = Column(String(100), nullable=False)
@@ -216,7 +216,7 @@ class Grid(Base):
 class GridOrder(Base):
     __tablename__ = "grid_orders"
 
-    id = Column(VARCHAR(36), primary_key=True, server_default=func.uuid())
+    id = Column(VARCHAR(36), primary_key=True, server_default=text("(UUID())"))
     grid_id = Column(VARCHAR(36), ForeignKey("grids.id"), nullable=False)
     order_type = Column(Enum(TransactionType), nullable=False)
     target_price = Column(DECIMAL(10, 4), nullable=False)
@@ -247,7 +247,7 @@ class MarketData(Base):
 class Alert(Base):
     __tablename__ = "alerts"
 
-    id = Column(VARCHAR(36), primary_key=True, server_default=func.uuid())
+    id = Column(VARCHAR(36), primary_key=True, server_default=text("(UUID())"))
     user_id = Column(VARCHAR(36), ForeignKey("users.id"), nullable=False)
     alert_type = Column(Enum(AlertType), nullable=False)
     title = Column(String(200), nullable=False)
@@ -278,10 +278,24 @@ async def connect_with_retry(max_retries=5, delay=5):
                 raise e
 
 def create_tables():
-    """Create all database tables"""
+    """Create all database tables with proper UUID handling"""
     try:
+        # Test connection first
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        logger.info("✅ Database connection verified")
+        
+        # Create tables
         Base.metadata.create_all(bind=engine)
         logger.info("✅ Database tables created/verified")
+        
+        # Verify tables exist
+        with engine.connect() as conn:
+            result = conn.execute(text("SHOW TABLES"))
+            tables = [row[0] for row in result]
+            logger.info(f"📊 Available tables: {', '.join(tables)}")
+            
     except Exception as e:
         logger.error(f"❌ Error creating database tables: {e}")
+        logger.error("💡 Try running: python init_database.py")
         raise e

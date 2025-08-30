@@ -108,9 +108,8 @@ def create_user(db: Session, email: str, password: str = None, google_id: str = 
                 detail="User with this email already exists"
             )
         
-        # Create user
+        # Create user (let MySQL generate UUID)
         user_data = {
-            "id": str(uuid.uuid4()),
             "email": email,
             "auth_provider": auth_provider,
             "is_email_verified": auth_provider == "google"  # Google users are pre-verified
