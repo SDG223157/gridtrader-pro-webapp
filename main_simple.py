@@ -73,6 +73,10 @@ app.mount("/static", StaticFiles(directory=static_dir), name="static")
 # Templates
 templates = Jinja2Templates(directory="templates")
 
+# Initialize OAuth with the app
+from auth_simple import oauth
+oauth.init_app(app)
+
 def get_user_context(request: Request, db: Session) -> dict:
     """Get user context for templates"""
     user = get_current_user(request, db)
@@ -377,8 +381,23 @@ async def port_info():
         "APP_PORT_env": os.getenv('APP_PORT', 'Not set'),
         "HOST_env": os.getenv('HOST', 'Not set'),
         "HOSTNAME_env": os.getenv('HOSTNAME', 'Not set'),
-        "actual_port_used": int(os.getenv('PORT', os.getenv('APP_PORT', '3000'))),
+        "actual_port_used": 3000,
         "message": "GridTrader Pro Simple is running!"
+    }
+
+@app.get("/debug/oauth-info")
+async def oauth_info():
+    """Debug Google OAuth configuration"""
+    from auth_simple import setup_oauth
+    
+    google_client = setup_oauth()
+    return {
+        "google_client_configured": google_client is not None,
+        "GOOGLE_CLIENT_ID": "Set" if os.getenv('GOOGLE_CLIENT_ID') else "Not set",
+        "GOOGLE_CLIENT_SECRET": "Set" if os.getenv('GOOGLE_CLIENT_SECRET') else "Not set",
+        "FRONTEND_URL": os.getenv('FRONTEND_URL', 'Not set'),
+        "expected_redirect_uri": f"{os.getenv('FRONTEND_URL', 'https://gridsai.app')}/api/auth/google/callback",
+        "oauth_client_type": str(type(google_client)) if google_client else "None"
     }
 
 # Simple startup
