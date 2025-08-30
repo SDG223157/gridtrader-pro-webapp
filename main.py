@@ -539,6 +539,81 @@ async def debug_session(request: Request, db: Session = Depends(get_db)):
     except Exception as e:
         return {"session_debug": "❌ Error", "error": str(e)}
 
+@app.get("/debug/logout-test", response_class=HTMLResponse)
+async def debug_logout_test(request: Request, db: Session = Depends(get_db)):
+    """Debug logout functionality with test buttons"""
+    context = get_user_context(request, db)
+    
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Logout Debug Test</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; margin: 40px; }}
+            .test-button {{ 
+                display: block; 
+                margin: 10px 0; 
+                padding: 15px; 
+                background: #007bff; 
+                color: white; 
+                text-decoration: none; 
+                border-radius: 5px; 
+                text-align: center;
+                font-weight: bold;
+            }}
+            .test-button:hover {{ background: #0056b3; }}
+            .debug-info {{ background: #f8f9fa; padding: 15px; margin: 15px 0; border-radius: 5px; }}
+        </style>
+    </head>
+    <body>
+        <h1>🔍 Logout Debug Test Page</h1>
+        
+        <div class="debug-info">
+            <h3>Current Session Status:</h3>
+            <p><strong>Authenticated:</strong> {context['is_authenticated']}</p>
+            <p><strong>User:</strong> {context['user'].email if context['user'] else 'None'}</p>
+            <p><strong>Session ID:</strong> {request.session.get('user_id', 'None')}</p>
+        </div>
+        
+        <h3>Test Different Logout Methods:</h3>
+        
+        <a href="/logout" class="test-button">
+            🔗 Method 1: Simple Link to /logout
+        </a>
+        
+        <a href="javascript:window.location.href='/logout'" class="test-button">
+            🔗 Method 2: JavaScript Navigation
+        </a>
+        
+        <button onclick="fetch('/api/auth/logout').then(() => window.location.href='/')" class="test-button">
+            🔗 Method 3: API Call + Redirect
+        </button>
+        
+        <button onclick="document.cookie='session=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;'; window.location.href='/'" class="test-button">
+            🔗 Method 4: Clear Cookie + Redirect
+        </button>
+        
+        <form method="post" action="/logout" style="display: inline;">
+            <button type="submit" class="test-button">
+                🔗 Method 5: POST Form
+            </button>
+        </form>
+        
+        <p><a href="/dashboard">← Back to Dashboard</a></p>
+        
+        <script>
+            console.log('Logout debug page loaded');
+            console.log('Current URL:', window.location.href);
+            console.log('Session storage:', sessionStorage);
+            console.log('Local storage:', localStorage);
+        </script>
+    </body>
+    </html>
+    """
+    
+    return HTMLResponse(content=html_content)
+
 @app.get("/debug/create-test-user")
 async def debug_create_user(db: Session = Depends(get_db)):
     """Debug user creation"""
