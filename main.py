@@ -523,7 +523,7 @@ async def debug_create_user(db: Session = Depends(get_db)):
             db.delete(existing)
             db.commit()
         
-        # Try to create user manually to see the raw error
+        # Try to create user manually with explicit ID generation
         from passlib.context import CryptContext
         pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
         
@@ -536,7 +536,7 @@ async def debug_create_user(db: Session = Depends(get_db)):
         
         user = User(**user_data)
         db.add(user)
-        db.flush()  # Get the user ID
+        db.flush()  # Get the user ID (should work now with fixed UUID generation)
         
         # Create user profile
         profile = UserProfile(
