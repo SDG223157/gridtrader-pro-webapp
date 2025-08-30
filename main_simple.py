@@ -168,43 +168,76 @@ async def logout_api(request: Request):
     request.session.clear()
     return JSONResponse({"success": True, "message": "Logged out successfully"})
 
-# Google OAuth routes - following prombank pattern
+# Google OAuth routes - simplified direct implementation
 @app.get("/api/auth/google")
 async def google_auth(request: Request):
-    """Initiate Google OAuth"""
-    google_client = setup_oauth()
-    if not google_client:
+    """Initiate Google OAuth - simplified approach"""
+    google_client_id = os.getenv('GOOGLE_CLIENT_ID')
+    if not google_client_id:
         raise HTTPException(status_code=500, detail="Google OAuth not configured")
     
+    # Build OAuth URL manually (more reliable)
     redirect_uri = f"{os.getenv('FRONTEND_URL', 'https://gridsai.app')}/api/auth/google/callback"
-    return await google_client.authorize_redirect(request, redirect_uri)
+    
+    oauth_url = (
+        "https://accounts.google.com/o/oauth2/auth?"
+        f"client_id={google_client_id}&"
+        f"redirect_uri={redirect_uri}&"
+        "scope=openid email profile&"
+        "response_type=code&"
+        "access_type=offline&"
+        "prompt=consent"
+    )
+    
+    return RedirectResponse(oauth_url)
 
 @app.get("/api/auth/google/callback")
-async def google_callback(request: Request, db: Session = Depends(get_db)):
-    """Handle Google OAuth callback"""
+async def google_callback(request: Request, code: str, db: Session = Depends(get_db)):
+    """Handle Google OAuth callback - simplified approach"""
     try:
-        google_client = setup_oauth()
-        if not google_client:
+        google_client_id = os.getenv('GOOGLE_CLIENT_ID')
+        google_client_secret = os.getenv('GOOGLE_CLIENT_SECRET')
+        
+        if not google_client_id or not google_client_secret:
             raise HTTPException(status_code=500, detail="Google OAuth not configured")
         
-        # Get token from Google
-        token = await google_client.authorize_access_token(request)
+        # Exchange code for token manually
+        redirect_uri = f"{os.getenv('FRONTEND_URL', 'https://gridsai.app')}/api/auth/google/callback"
         
-        # Get user info
-        user_info = token.get('userinfo')
-        if not user_info:
-            # Fetch user info manually
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    'https://www.googleapis.com/oauth2/v2/userinfo',
-                    headers={'Authorization': f'Bearer {token["access_token"]}'}
-                )
-                user_info = response.json()
+        async with httpx.AsyncClient() as client:
+            # Get access token
+            token_response = await client.post(
+                "https://oauth2.googleapis.com/token",
+                data={
+                    "client_id": google_client_id,
+                    "client_secret": google_client_secret,
+                    "code": code,
+                    "grant_type": "authorization_code",
+                    "redirect_uri": redirect_uri
+                }
+            )
+            
+            if token_response.status_code != 200:
+                raise Exception(f"Token exchange failed: {token_response.text}")
+            
+            token_data = token_response.json()
+            access_token = token_data.get("access_token")
+            
+            # Get user info
+            user_response = await client.get(
+                "https://www.googleapis.com/oauth2/v2/userinfo",
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+            
+            if user_response.status_code != 200:
+                raise Exception(f"User info fetch failed: {user_response.text}")
+            
+            user_info = user_response.json()
         
         # Create or update user
         user = await create_or_update_user_from_google(user_info, db)
         
-        # Set session - simple and reliable
+        # Set session
         request.session["user_id"] = user.id
         
         return RedirectResponse(url="/dashboard", status_code=302)
