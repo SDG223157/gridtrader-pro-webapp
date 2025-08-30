@@ -312,7 +312,6 @@ async def create_portfolio_page(request: Request, db: Session = Depends(get_db))
 async def create_portfolio(request: CreatePortfolioRequest, user: User = Depends(require_auth), db: Session = Depends(get_db)):
     try:
         portfolio = Portfolio(
-            id=str(uuid.uuid4()),
             user_id=user.id,
             name=request.name,
             description=request.description,
@@ -398,7 +397,6 @@ async def create_grid(request: CreateGridRequest, user: User = Depends(require_a
         
         # Create grid record
         grid = Grid(
-            id=str(uuid.uuid4()),
             portfolio_id=request.portfolio_id,
             symbol=request.symbol,
             name=request.name,

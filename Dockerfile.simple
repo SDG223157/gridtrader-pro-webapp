@@ -53,7 +53,7 @@ fi\n\
 \n\
 # Create database tables\n\
 echo "🔧 Setting up database..."\n\
-python -c "from database import create_tables; create_tables()"\n\
+python init_database.py\n\
 \n\
 # Start application\n\
 echo "🎬 Starting GridTrader Pro..."\n\

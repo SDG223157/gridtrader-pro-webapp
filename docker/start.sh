@@ -37,7 +37,7 @@ fi
 
 # Create database tables
 echo "🔧 Setting up database..."
-python -c "from database import create_tables; create_tables()"
+python init_database.py
 
 # Start supervisor
 echo "🎬 Starting services..."
