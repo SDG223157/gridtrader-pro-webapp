@@ -162,22 +162,13 @@
                                     <i class="fas fa-cog mr-3 text-gray-400 group-hover:text-gray-500"></i>
                                     Settings
                                 </a>
-                                <!-- Logout with multiple triggers -->
-                                <div class="group flex w-full items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 cursor-pointer"
-                                     onmouseover="this.style.backgroundColor='#f3f4f6'"
-                                     onmouseout="this.style.backgroundColor=''"
-                                     onclick="window.location.href='/logout'"
-                                     onmousedown="window.location.href='/logout'"
-                                     ontouchstart="window.location.href='/logout'"
-                                     onmouseenter="setTimeout(() => window.location.href='/logout', 500)">
-                                    <i class="fas fa-sign-out-alt mr-3 text-gray-400 group-hover:text-gray-500"></i>
-                                    Sign out (hover to logout)
-                                </div>
-                                
-                                <!-- Fallback: Simple text link -->
-                                <div style="padding: 8px 16px; border-top: 1px solid #e5e7eb;">
-                                    <a href="/logout" style="color: #dc2626; text-decoration: underline; font-size: 12px;">
-                                        → Click here to sign out
+                                <!-- Simple logout following prombank_backup pattern -->
+                                <div style="padding: 4px 16px; border-top: 1px solid #e5e7eb;">
+                                    <a href="/logout" 
+                                       style="display: block; padding: 8px 0; color: #dc2626; text-decoration: none; font-size: 14px; font-weight: 500;"
+                                       onmouseover="this.style.textDecoration='underline'"
+                                       onmouseout="this.style.textDecoration='none'">
+                                        🚪 Sign Out
                                     </a>
                                 </div>
                             </div>
