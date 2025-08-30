@@ -73,10 +73,6 @@ app.mount("/static", StaticFiles(directory=static_dir), name="static")
 # Templates
 templates = Jinja2Templates(directory="templates")
 
-# Initialize OAuth with the app
-from auth_simple import oauth
-oauth.init_app(app)
-
 def get_user_context(request: Request, db: Session) -> dict:
     """Get user context for templates"""
     user = get_current_user(request, db)
