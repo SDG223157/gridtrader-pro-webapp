@@ -40,7 +40,8 @@ def setup_oauth():
         name='google',
         client_id=google_client_id,
         client_secret=google_client_secret,
-        server_metadata_url='https://accounts.google.com/.well-known/openid_configuration',
+        authorize_url='https://accounts.google.com/o/oauth2/auth',
+        access_token_url='https://oauth2.googleapis.com/token',
         client_kwargs={
             'scope': 'openid email profile'
         }
