@@ -1072,32 +1072,50 @@ async def delete_portfolio(portfolio_id: str, user: User = Depends(require_auth)
         if not portfolio:
             raise HTTPException(status_code=404, detail="Portfolio not found")
         
+        logger.info(f"🗑️ Starting deletion of portfolio: {portfolio.name} (ID: {portfolio_id})")
+        
         # Check if portfolio has holdings
         holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio_id).all()
         transactions = db.query(Transaction).filter(Transaction.portfolio_id == portfolio_id).all()
         grids = db.query(Grid).filter(Grid.portfolio_id == portfolio_id).all()
         
-        # Delete all associated data (cascade delete)
+        logger.info(f"📊 Found {len(holdings)} holdings, {len(transactions)} transactions, {len(grids)} grids to delete")
+        
+        # Delete all associated data (cascade delete in proper order)
+        # 1. Delete grid orders first (they reference grids)
+        grid_orders_deleted = 0
+        for grid in grids:
+            grid_orders = db.query(GridOrder).filter(GridOrder.grid_id == grid.id).all()
+            for order in grid_orders:
+                db.delete(order)
+                grid_orders_deleted += 1
+        
+        logger.info(f"🔧 Deleted {grid_orders_deleted} grid orders")
+        
+        # 2. Delete grids
+        for grid in grids:
+            db.delete(grid)
+        
+        # 3. Delete holdings
         for holding in holdings:
             db.delete(holding)
         
+        # 4. Delete transactions
         for transaction in transactions:
             db.delete(transaction)
-            
-        for grid in grids:
-            db.delete(grid)
         
         # Delete the portfolio
         db.delete(portfolio)
         db.commit()
         
-        logger.info(f"Portfolio deleted: {portfolio.name} (ID: {portfolio_id}) for user {user.email}")
+        logger.info(f"✅ Portfolio deleted: {portfolio.name} (ID: {portfolio_id}) for user {user.email}")
         return {
             "success": True, 
             "message": "Portfolio deleted successfully",
             "deleted_holdings": len(holdings),
             "deleted_transactions": len(transactions),
-            "deleted_grids": len(grids)
+            "deleted_grids": len(grids),
+            "deleted_grid_orders": grid_orders_deleted
         }
     
     except HTTPException:
