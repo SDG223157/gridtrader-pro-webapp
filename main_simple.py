@@ -27,6 +27,7 @@ import yfinance as yf
 import time
 import asyncio
 import sys
+import threading
 from functools import lru_cache
 
 # Pydantic models for API requests
@@ -113,6 +114,11 @@ def normalize_symbol_for_yfinance(symbol: str) -> str:
 # Price cache to avoid rate limiting
 price_cache = {}
 cache_duration = 300  # 5 minutes
+
+# Auto-update configuration (like TrendWise)
+auto_update_enabled = True
+auto_update_interval = 900  # 15 minutes (like TrendWise likely uses)
+auto_update_thread = None
 
 async def get_real_stock_price_simple(symbol: str) -> float:
     """Get real stock price using the simplest possible approach"""
