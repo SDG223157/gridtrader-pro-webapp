@@ -580,6 +580,39 @@ async def debug_user_info(request: Request, db: Session = Depends(get_db)):
     except Exception as e:
         return {"error": str(e), "session": dict(request.session)}
 
+@app.post("/admin/fix-user-display-name")
+async def fix_user_display_name(request: Request, db: Session = Depends(get_db)):
+    """Fix user display name from Debug User to actual name"""
+    try:
+        user = get_current_user(request, db)
+        if not user:
+            return {"error": "No user found"}
+        
+        # Update display name if it's Debug User
+        if user.profile and user.profile.display_name == "Debug User":
+            if user.email:
+                new_display_name = user.email.split('@')[0].title()
+                user.profile.display_name = new_display_name
+                db.commit()
+                
+                return {
+                    "success": True,
+                    "message": f"Display name updated from 'Debug User' to '{new_display_name}'",
+                    "old_name": "Debug User",
+                    "new_name": new_display_name
+                }
+        
+        return {
+            "success": False,
+            "message": "No update needed",
+            "current_display_name": user.profile.display_name if user.profile else None,
+            "email": user.email
+        }
+        
+    except Exception as e:
+        db.rollback()
+        return {"error": str(e)}
+
 def get_user_context(request: Request, db: Session) -> dict:
     """Get user context for templates"""
     user = get_current_user(request, db)
