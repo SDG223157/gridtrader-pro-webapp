@@ -45,7 +45,6 @@ class CreateTransactionRequest(BaseModel):
     quantity: float
     price: float
     fees: float = 0.00
-    notes: str = ""
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -394,7 +393,6 @@ async def create_transaction(request: CreateTransactionRequest, user: User = Dep
             price=price_decimal,
             total_amount=total_amount,
             fees=fees_decimal,
-            notes=request.notes,
             executed_at=datetime.utcnow()
         )
         
@@ -595,11 +593,10 @@ async def debug_test_transaction(request: Request, db: Session = Depends(get_db)
             portfolio_id=portfolio.id,
             symbol="TEST",
             transaction_type=TransactionType.buy,
-            quantity=1.0,
-            price=100.0,
-            total_amount=100.0,
-            fees=0.0,
-            notes="Debug test transaction",
+            quantity=Decimal('1.0'),
+            price=Decimal('100.0'),
+            total_amount=Decimal('100.0'),
+            fees=Decimal('0.0'),
             executed_at=datetime.utcnow()
         )
         
