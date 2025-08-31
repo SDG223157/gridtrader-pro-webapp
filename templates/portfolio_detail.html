@@ -1,0 +1,159 @@
+{% extends "base_simple.html" %}
+
+{% block title %}{{ portfolio.name }} - Portfolio Details{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <!-- Portfolio Header -->
+    <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+        <div class="flex justify-between items-start mb-4">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900">{{ portfolio.name }}</h1>
+                <p class="text-gray-600 mt-2">{{ portfolio.description or "No description" }}</p>
+                <p class="text-sm text-gray-500 mt-1">Strategy: {{ portfolio.strategy_type|title }}</p>
+            </div>
+            <div class="text-right">
+                <div class="text-2xl font-bold text-gray-900">${{ "%.2f"|format(portfolio.current_value or 0) }}</div>
+                <div class="text-sm text-gray-600">Current Value</div>
+                {% set return_pct = ((portfolio.current_value or 0) - portfolio.initial_capital) / portfolio.initial_capital * 100 if portfolio.initial_capital > 0 else 0 %}
+                <div class="text-sm {% if return_pct >= 0 %}text-green-600{% else %}text-red-600{% endif %}">
+                    {{ "%.2f"|format(return_pct) }}% Return
+                </div>
+            </div>
+        </div>
+        
+        <!-- Portfolio Summary -->
+        <div class="grid grid-cols-4 gap-4 mt-6 pt-6 border-t">
+            <div class="text-center">
+                <div class="text-lg font-semibold text-gray-900">${{ "%.2f"|format(portfolio.initial_capital) }}</div>
+                <div class="text-sm text-gray-600">Initial Capital</div>
+            </div>
+            <div class="text-center">
+                <div class="text-lg font-semibold text-gray-900">${{ "%.2f"|format(portfolio.cash_balance or 0) }}</div>
+                <div class="text-sm text-gray-600">Cash Balance</div>
+            </div>
+            <div class="text-center">
+                <div class="text-lg font-semibold text-gray-900">{{ holdings|length }}</div>
+                <div class="text-sm text-gray-600">Holdings</div>
+            </div>
+            <div class="text-center">
+                <div class="text-lg font-semibold text-gray-900">{{ transactions|length }}</div>
+                <div class="text-sm text-gray-600">Transactions</div>
+            </div>
+        </div>
+        
+        <!-- Action Buttons -->
+        <div class="flex space-x-3 mt-6">
+            <a href="/portfolios/{{ portfolio.id }}/add-transaction" 
+               class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                Add Transaction
+            </a>
+            <a href="/portfolios" 
+               class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded">
+                Back to Portfolios
+            </a>
+        </div>
+    </div>
+    
+    <!-- Holdings Section -->
+    <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+        <h2 class="text-xl font-bold text-gray-900 mb-4">Current Holdings</h2>
+        
+        {% if holdings %}
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Symbol</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Avg Cost</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Price</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Market Value</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">P&L</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for holding in holdings %}
+                    {% set market_value = holding.quantity * holding.current_price %}
+                    {% set cost_basis = holding.quantity * holding.average_cost %}
+                    {% set pnl = market_value - cost_basis %}
+                    {% set pnl_pct = (pnl / cost_basis * 100) if cost_basis > 0 else 0 %}
+                    <tr>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ holding.symbol }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ "%.2f"|format(holding.quantity) }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${{ "%.2f"|format(holding.average_cost) }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${{ "%.2f"|format(holding.current_price) }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${{ "%.2f"|format(market_value) }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm {% if pnl >= 0 %}text-green-600{% else %}text-red-600{% endif %}">
+                            ${{ "%.2f"|format(pnl) }} ({{ "%.1f"|format(pnl_pct) }}%)
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-8">
+            <i class="fas fa-chart-pie text-4xl text-gray-300 mb-4"></i>
+            <p class="text-gray-500 mb-4">No holdings yet</p>
+            <a href="/portfolios/{{ portfolio.id }}/add-transaction" 
+               class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                Add Your First Transaction
+            </a>
+        </div>
+        {% endif %}
+    </div>
+    
+    <!-- Recent Transactions -->
+    <div class="bg-white rounded-lg shadow-md p-6">
+        <h2 class="text-xl font-bold text-gray-900 mb-4">Recent Transactions</h2>
+        
+        {% if transactions %}
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Symbol</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for transaction in transactions %}
+                    <tr>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {{ transaction.transaction_date.strftime('%m/%d/%Y %H:%M') }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
+                                {% if transaction.transaction_type.value == 'buy' %}bg-green-100 text-green-800{% else %}bg-red-100 text-red-800{% endif %}">
+                                {{ transaction.transaction_type.value|title }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ transaction.symbol }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ "%.2f"|format(transaction.quantity) }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${{ "%.2f"|format(transaction.price) }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${{ "%.2f"|format(transaction.total_amount) }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ transaction.notes or "-" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-8">
+            <i class="fas fa-exchange-alt text-4xl text-gray-300 mb-4"></i>
+            <p class="text-gray-500 mb-4">No transactions yet</p>
+            <a href="/portfolios/{{ portfolio.id }}/add-transaction" 
+               class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                Add Your First Transaction
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

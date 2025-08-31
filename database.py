@@ -259,6 +259,33 @@ class Alert(Base):
 
     user = relationship("User", back_populates="alerts")
 
+class Transaction(Base):
+    __tablename__ = "transactions"
+
+    id = Column(VARCHAR(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    portfolio_id = Column(VARCHAR(36), ForeignKey("portfolios.id"), nullable=False)
+    symbol = Column(String(20), nullable=False, index=True)
+    transaction_type = Column(Enum(TransactionType), nullable=False)
+    quantity = Column(DECIMAL(15, 6), nullable=False)
+    price = Column(DECIMAL(10, 4), nullable=False)
+    total_amount = Column(DECIMAL(15, 2), nullable=False)  # quantity * price + fees
+    fees = Column(DECIMAL(10, 2), default=0.00)
+    notes = Column(Text)
+    transaction_date = Column(DateTime, server_default=func.current_timestamp())
+    created_at = Column(DateTime, server_default=func.current_timestamp())
+
+    # Relationships
+    portfolio = relationship("Portfolio", back_populates="transactions")
+
+# Add TransactionType enum
+class TransactionType(enum.Enum):
+    buy = "buy"
+    sell = "sell"
+    dividend = "dividend"
+    split = "split"
+    transfer_in = "transfer_in"
+    transfer_out = "transfer_out"
+
 # Database connection and table creation functions
 async def connect_with_retry(max_retries=5, delay=5):
     """Connect to database with retry logic"""

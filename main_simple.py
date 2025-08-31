@@ -11,7 +11,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy.orm import Session
-from database import get_db, User, UserProfile, Portfolio, Grid, Holding, Alert
+from database import get_db, User, UserProfile, Portfolio, Grid, Holding, Alert, Transaction, TransactionType
 from auth_simple import (
     setup_oauth, create_access_token, get_current_user, require_auth, 
     create_user, authenticate_user, create_or_update_user_from_google
@@ -36,6 +36,15 @@ class CreateGridRequest(BaseModel):
     lower_price: float
     grid_count: int = 10
     investment_amount: float
+
+class CreateTransactionRequest(BaseModel):
+    portfolio_id: str
+    symbol: str
+    transaction_type: str  # "buy" or "sell"
+    quantity: float
+    price: float
+    fees: float = 0.00
+    notes: str = ""
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -310,6 +319,139 @@ async def create_portfolio(request: CreatePortfolioRequest, user: User = Depends
         db.rollback()
         logger.error(f"Error creating portfolio: {e}")
         raise HTTPException(status_code=500, detail="Failed to create portfolio")
+
+# Portfolio Detail and Transaction Routes
+@app.get("/portfolios/{portfolio_id}", response_class=HTMLResponse)
+async def portfolio_detail(portfolio_id: str, request: Request, db: Session = Depends(get_db)):
+    context = get_user_context(request, db)
+    if not context["is_authenticated"]:
+        return RedirectResponse(url="/login", status_code=302)
+    
+    # Get portfolio with ownership check
+    portfolio = db.query(Portfolio).filter(
+        Portfolio.id == portfolio_id,
+        Portfolio.user_id == context["user"].id
+    ).first()
+    
+    if not portfolio:
+        raise HTTPException(status_code=404, detail="Portfolio not found")
+    
+    # Get holdings and transactions
+    holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio_id).all()
+    transactions = db.query(Transaction).filter(Transaction.portfolio_id == portfolio_id).order_by(Transaction.transaction_date.desc()).limit(20).all()
+    
+    context.update({
+        "portfolio": portfolio,
+        "holdings": holdings,
+        "transactions": transactions
+    })
+    
+    return templates.TemplateResponse("portfolio_detail.html", {"request": request, **context})
+
+@app.get("/portfolios/{portfolio_id}/add-transaction", response_class=HTMLResponse)
+async def add_transaction_page(portfolio_id: str, request: Request, db: Session = Depends(get_db)):
+    context = get_user_context(request, db)
+    if not context["is_authenticated"]:
+        return RedirectResponse(url="/login", status_code=302)
+    
+    # Verify portfolio ownership
+    portfolio = db.query(Portfolio).filter(
+        Portfolio.id == portfolio_id,
+        Portfolio.user_id == context["user"].id
+    ).first()
+    
+    if not portfolio:
+        raise HTTPException(status_code=404, detail="Portfolio not found")
+    
+    context["portfolio"] = portfolio
+    return templates.TemplateResponse("add_transaction.html", {"request": request, **context})
+
+@app.post("/api/transactions")
+async def create_transaction(request: CreateTransactionRequest, user: User = Depends(require_auth), db: Session = Depends(get_db)):
+    try:
+        # Verify portfolio ownership
+        portfolio = db.query(Portfolio).filter(
+            Portfolio.id == request.portfolio_id,
+            Portfolio.user_id == user.id
+        ).first()
+        
+        if not portfolio:
+            raise HTTPException(status_code=404, detail="Portfolio not found")
+        
+        # Calculate total amount
+        total_amount = (request.quantity * request.price) + request.fees
+        
+        # Create transaction
+        transaction = Transaction(
+            portfolio_id=request.portfolio_id,
+            symbol=request.symbol.upper(),
+            transaction_type=TransactionType(request.transaction_type),
+            quantity=request.quantity,
+            price=request.price,
+            total_amount=total_amount,
+            fees=request.fees,
+            notes=request.notes
+        )
+        
+        db.add(transaction)
+        
+        # Update or create holding
+        holding = db.query(Holding).filter(
+            Holding.portfolio_id == request.portfolio_id,
+            Holding.symbol == request.symbol.upper()
+        ).first()
+        
+        if request.transaction_type == "buy":
+            if holding:
+                # Update existing holding
+                total_cost = (holding.quantity * holding.average_cost) + total_amount
+                total_quantity = holding.quantity + request.quantity
+                holding.average_cost = total_cost / total_quantity
+                holding.quantity = total_quantity
+            else:
+                # Create new holding
+                holding = Holding(
+                    portfolio_id=request.portfolio_id,
+                    symbol=request.symbol.upper(),
+                    quantity=request.quantity,
+                    average_cost=request.price,
+                    current_price=request.price
+                )
+                db.add(holding)
+            
+            # Update portfolio cash balance
+            portfolio.cash_balance -= total_amount
+            
+        elif request.transaction_type == "sell":
+            if not holding or holding.quantity < request.quantity:
+                raise HTTPException(status_code=400, detail="Insufficient shares to sell")
+            
+            # Update holding
+            holding.quantity -= request.quantity
+            if holding.quantity == 0:
+                db.delete(holding)
+            
+            # Update portfolio cash balance
+            portfolio.cash_balance += (request.quantity * request.price) - request.fees
+        
+        # Update portfolio current value (simplified)
+        portfolio.current_value = portfolio.cash_balance
+        remaining_holdings = db.query(Holding).filter(Holding.portfolio_id == request.portfolio_id).all()
+        for h in remaining_holdings:
+            portfolio.current_value += h.quantity * h.current_price
+        
+        db.commit()
+        db.refresh(transaction)
+        
+        logger.info(f"Transaction created: {request.transaction_type} {request.quantity} {request.symbol} at ${request.price}")
+        return {"success": True, "transaction_id": transaction.id, "message": "Transaction added successfully"}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error creating transaction: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create transaction")
 
 # Grid Trading Routes
 @app.get("/grids", response_class=HTMLResponse)
