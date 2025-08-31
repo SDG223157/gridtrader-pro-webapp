@@ -616,6 +616,103 @@ def determine_asset_type(symbol: str, name: str) -> str:
     # Default to Equity
     return 'Equity'
 
+def convert_yfinance_to_tradingview_symbol(yfinance_symbol: str) -> str:
+    """Convert yfinance ticker symbol to TradingView format for proper charting"""
+    symbol = yfinance_symbol.upper().strip()
+    
+    # Handle Chinese stocks
+    if symbol.endswith('.SS'):  # Shanghai Stock Exchange
+        base_symbol = symbol.replace('.SS', '')
+        return f"SSE:{base_symbol}"
+    
+    if symbol.endswith('.SZ'):  # Shenzhen Stock Exchange  
+        base_symbol = symbol.replace('.SZ', '')
+        return f"SZSE:{base_symbol}"
+    
+    # Handle Hong Kong stocks
+    if symbol.endswith('.HK'):
+        base_symbol = symbol.replace('.HK', '')
+        # Remove leading zeros for Hong Kong (e.g., 0700.HK -> HKEX:700)
+        base_symbol = base_symbol.lstrip('0') or '0'  # Keep at least one zero
+        return f"HKEX:{base_symbol}"
+    
+    # Handle other international exchanges
+    if symbol.endswith('.T'):  # Tokyo
+        base_symbol = symbol.replace('.T', '')
+        return f"TSE:{base_symbol}"
+    
+    if symbol.endswith('.L'):  # London
+        base_symbol = symbol.replace('.L', '')
+        return f"LSE:{base_symbol}"
+    
+    if symbol.endswith('.PA'):  # Paris
+        base_symbol = symbol.replace('.PA', '')
+        return f"EURONEXT:{base_symbol}"
+    
+    if symbol.endswith('.DE'):  # Germany
+        base_symbol = symbol.replace('.DE', '')
+        return f"XETRA:{base_symbol}"
+    
+    # Handle cryptocurrencies
+    if symbol.endswith('-USD'):
+        crypto_base = symbol.replace('-USD', '')
+        crypto_mappings = {
+            'BTC': 'BITSTAMP:BTCUSD',
+            'ETH': 'BITSTAMP:ETHUSD', 
+            'LTC': 'BITSTAMP:LTCUSD',
+            'XRP': 'BITSTAMP:XRPUSD'
+        }
+        return crypto_mappings.get(crypto_base, f"BINANCE:{crypto_base}USDT")
+    
+    # Handle forex
+    forex_mappings = {
+        'EURUSD=X': 'OANDA:EURUSD',
+        'GBPUSD=X': 'OANDA:GBPUSD',
+        'USDJPY=X': 'OANDA:USDJPY',
+        'USDCNH=X': 'OANDA:USDCNH'
+    }
+    if symbol in forex_mappings:
+        return forex_mappings[symbol]
+    
+    # Handle indices
+    index_mappings = {
+        '^GSPC': 'SP:SPX',
+        '^DJI': 'DJ:DJI', 
+        '^IXIC': 'NASDAQ:IXIC',
+        '^HSI': 'HKEX:HSI',
+        '^N225': 'TSE:NI225',
+        '^FTSE': 'LSE:UKX'
+    }
+    if symbol in index_mappings:
+        return index_mappings[symbol]
+    
+    # Handle commodities
+    commodity_mappings = {
+        'GC=F': 'COMEX:GC1!',
+        'SI=F': 'COMEX:SI1!',
+        'CL=F': 'NYMEX:CL1!',
+        'NG=F': 'NYMEX:NG1!'
+    }
+    if symbol in commodity_mappings:
+        return commodity_mappings[symbol]
+    
+    # For US stocks, determine exchange
+    if len(symbol) <= 5 and symbol.isalpha():
+        # Common NASDAQ stocks
+        nasdaq_stocks = {
+            'AAPL', 'MSFT', 'GOOGL', 'GOOG', 'AMZN', 'META', 'TSLA', 'NVDA', 
+            'NFLX', 'ADBE', 'CSCO', 'INTC', 'AMD', 'PYPL', 'ABNB', 'ZOOM',
+            'SPOT', 'COST', 'SBUX', 'PEP', 'QCOM', 'MU', 'ATVI', 'EA'
+        }
+        
+        if symbol in nasdaq_stocks:
+            return f"NASDAQ:{symbol}"
+        else:
+            return f"NYSE:{symbol}"
+    
+    # Default: return as-is for TradingView
+    return symbol
+
 @app.get("/search_ticker")
 async def search_ticker(request: Request, query: str = ""):
     """Search for ticker symbols with TrendWise's exact approach - prioritize real verified symbols"""
@@ -1285,8 +1382,12 @@ async def analyze_stock(symbol: str, request: Request, db: Session = Depends(get
             "3m": hist_3m.to_dict('records') if not hist_3m.empty else []
         }
         
+        # Convert to TradingView format for charts
+        tradingview_symbol = convert_yfinance_to_tradingview_symbol(ticker_symbol)
+        
         context.update({
             "symbol": ticker_symbol,
+            "tradingview_symbol": tradingview_symbol,
             "current_price": current_price,
             "company_info": company_info,
             "chart_data": chart_data
@@ -1294,8 +1395,11 @@ async def analyze_stock(symbol: str, request: Request, db: Session = Depends(get
         
     except Exception as e:
         logger.error(f"Error analyzing {symbol}: {e}")
+        # Even in error case, provide TradingView symbol
+        tradingview_symbol = convert_yfinance_to_tradingview_symbol(ticker_symbol)
         context.update({
             "symbol": ticker_symbol,
+            "tradingview_symbol": tradingview_symbol,
             "current_price": 0,
             "company_info": {"longName": ticker_symbol},
             "chart_data": {},
