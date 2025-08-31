@@ -78,12 +78,17 @@
     </div>
     
     <!-- TradingView Mini Chart -->
-    <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+    <div class="bg-white rounded-lg shadow-md p-6 mb-6" id="quick-chart-container">
         <h2 class="text-xl font-bold text-gray-900 mb-4">Quick Chart</h2>
         
         <!-- TradingView Mini Widget -->
         <div class="tradingview-widget-container" style="height: 300px; width: 100%;">
             <div id="tradingview_mini" style="height: 100%; width: 100%;"></div>
+            <div class="tradingview-widget-copyright" style="font-size: 13px!important;">
+                <a href="https://www.tradingview.com/" rel="noopener nofollow" target="_blank">
+                    <span class="blue-text">Track all markets on TradingView</span>
+                </a>
+            </div>
         </div>
     </div>
     
@@ -173,23 +178,53 @@ function initTradingViewChart() {
     });
 }
 
-// Initialize TradingView Mini Widget
+// Initialize TradingView Mini Widget with error handling
 function initTradingViewMini() {
-    new TradingView.MiniWidget({
-        "symbol": "{{ tradingview_symbol }}",
-        "width": "100%",
-        "height": "300",
-        "locale": "en",
-        "dateRange": "12M",
-        "colorTheme": "light",
-        "trendLineColor": "rgba(41, 98, 255, 1)",
-        "underLineColor": "rgba(41, 98, 255, 0.3)",
-        "underLineBottomColor": "rgba(41, 98, 255, 0)",
-        "isTransparent": false,
-        "autosize": false,
-        "largeChartUrl": "",
-        "container_id": "tradingview_mini"
-    });
+    try {
+        // Check if TradingView MiniWidget is available
+        if (typeof TradingView === 'undefined' || !TradingView.MiniWidget) {
+            console.warn('TradingView MiniWidget not available, hiding Quick Chart');
+            hideQuickChart();
+            return;
+        }
+        
+        const miniWidget = new TradingView.MiniWidget({
+            "symbol": "{{ tradingview_symbol }}",
+            "width": "100%",
+            "height": "300",
+            "locale": "en",
+            "dateRange": "12M",
+            "colorTheme": "light",
+            "trendLineColor": "rgba(41, 98, 255, 1)",
+            "underLineColor": "rgba(41, 98, 255, 0.3)",
+            "underLineBottomColor": "rgba(41, 98, 255, 0)",
+            "isTransparent": false,
+            "autosize": false,
+            "largeChartUrl": "",
+            "container_id": "tradingview_mini"
+        });
+        
+        // Set a timeout to check if the widget loaded
+        setTimeout(() => {
+            const miniContainer = document.getElementById('tradingview_mini');
+            if (!miniContainer || miniContainer.children.length === 0) {
+                console.warn('TradingView Mini Widget failed to load, hiding Quick Chart');
+                hideQuickChart();
+            }
+        }, 5000); // Wait 5 seconds for widget to load
+        
+    } catch (error) {
+        console.error('Error initializing TradingView Mini Widget:', error);
+        hideQuickChart();
+    }
+}
+
+// Hide the Quick Chart section if it fails to load
+function hideQuickChart() {
+    const quickChartContainer = document.getElementById('quick-chart-container');
+    if (quickChartContainer) {
+        quickChartContainer.style.display = 'none';
+    }
 }
 
 async function refreshAnalysis() {
@@ -214,11 +249,23 @@ document.addEventListener('DOMContentLoaded', function() {
     const script = document.createElement('script');
     script.src = 'https://s3.tradingview.com/tv.js';
     script.onload = function() {
+        console.log('TradingView script loaded successfully');
         // Initialize both widgets after TradingView script loads
         setTimeout(() => {
+            console.log('Initializing TradingView widgets...');
             initTradingViewChart();
-            initTradingViewMini();
+            // Try to initialize mini widget, but hide if it fails
+            try {
+                initTradingViewMini();
+            } catch (error) {
+                console.error('Mini widget initialization failed:', error);
+                hideQuickChart();
+            }
         }, 1000);
+    };
+    script.onerror = function() {
+        console.error('Failed to load TradingView script');
+        hideQuickChart();
     };
     document.head.appendChild(script);
 });
