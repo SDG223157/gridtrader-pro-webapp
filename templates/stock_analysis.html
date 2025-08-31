@@ -120,11 +120,11 @@
                 <div class="space-y-2">
                     <div class="flex justify-between">
                         <span class="text-sm text-gray-600">Volume:</span>
-                        <span class="text-sm font-medium">{{ "{:,}"|format(company_info.volume or 0) }}</span>
+                        <span class="text-sm font-medium">{{ "{:,}".format(company_info.volume or 0) }}</span>
                     </div>
                     <div class="flex justify-between">
                         <span class="text-sm text-gray-600">Avg Volume:</span>
-                        <span class="text-sm font-medium">{{ "{:,}"|format(company_info.avgVolume or 0) }}</span>
+                        <span class="text-sm font-medium">{{ "{:,}".format(company_info.avgVolume or 0) }}</span>
                     </div>
                     <div class="flex justify-between">
                         <span class="text-sm text-gray-600">Dividend Yield:</span>
