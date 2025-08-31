@@ -209,9 +209,9 @@ class SystematicTradingEngine:
             # Select appropriate ETF dictionary
             if market.upper() == "CHINA":
                 sector_etfs = self.china_sector_etfs
-                # Use Shanghai Composite (000001.SS) as benchmark for Chinese market
-                benchmark_ticker = "000001.SS"
-                logger.info(f"🇨🇳 Analyzing Chinese market ETFs with Shanghai Composite benchmark")
+                # Use CSI 300 Index (000300.SS) as benchmark for Chinese market
+                benchmark_ticker = "000300.SS"
+                logger.info(f"🇨🇳 Analyzing Chinese market ETFs with CSI 300 benchmark")
             else:
                 sector_etfs = self.us_sector_etfs
                 # Use S&P 500 as benchmark for US market

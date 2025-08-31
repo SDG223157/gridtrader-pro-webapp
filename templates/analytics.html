@@ -260,7 +260,7 @@ function showSectorAnalysisModal(data) {
             </div>
             <div class="mb-4">
                 <p class="text-sm text-gray-600">Market: <strong>${data.market === 'US' ? '🇺🇸 United States' : '🇨🇳 China'}</strong></p>
-                <p class="text-sm text-gray-600">Benchmark: <strong>${data.market === 'US' ? 'S&P 500 (SPY)' : 'Shanghai Composite (000001.SS)'}</strong></p>
+                <p class="text-sm text-gray-600">Benchmark: <strong>${data.market === 'US' ? 'S&P 500 (SPY)' : 'CSI 300 Index (000300.SS)'}</strong></p>
                 <p class="text-sm text-gray-600">Market Regime: <strong>${data.market_regime.replace('_', ' ').toUpperCase()}</strong></p>
                 <p class="text-sm text-gray-600">Analyzed ${data.sectors_analyzed} sectors over ${data.lookback_days} days</p>
             </div>
