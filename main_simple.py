@@ -1308,8 +1308,15 @@ async def create_grid(request: CreateGridRequest, user: User = Depends(require_a
             raise HTTPException(status_code=400, detail="Investment amount must be positive")
         
         # Check if portfolio has sufficient cash
+        logger.info(f"💰 Portfolio {portfolio.name} cash balance: ${portfolio.cash_balance}")
+        logger.info(f"💸 Requested investment amount: ${request.investment_amount}")
+        logger.info(f"🔍 Sufficient funds check: ${portfolio.cash_balance} >= ${request.investment_amount} = {portfolio.cash_balance >= request.investment_amount}")
+        
         if portfolio.cash_balance < request.investment_amount:
-            raise HTTPException(status_code=400, detail="Insufficient cash balance in portfolio")
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Insufficient cash balance. Available: ${portfolio.cash_balance}, Requested: ${request.investment_amount}"
+            )
         
         # Get current stock price for validation
         current_price = get_current_stock_price_trendwise_pattern(request.symbol)
