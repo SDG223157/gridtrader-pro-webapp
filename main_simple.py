@@ -1180,14 +1180,25 @@ async def portfolio_detail(portfolio_id: str, request: Request, db: Session = De
     
     db.commit()
     
-    # Get holdings and transactions for display
+    # Get holdings, transactions, and grid allocations for display
     holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio_id).all()
     transactions = db.query(Transaction).filter(Transaction.portfolio_id == portfolio_id).order_by(Transaction.executed_at.desc()).limit(20).all()
+    
+    # Calculate grid allocations total
+    active_grids = db.query(Grid).filter(
+        Grid.portfolio_id == portfolio_id,
+        Grid.status == GridStatus.active
+    ).all()
+    
+    grid_allocations = sum([float(grid.investment_amount or 0) for grid in active_grids])
     
     context.update({
         "portfolio": portfolio,
         "holdings": holdings,
-        "transactions": transactions
+        "transactions": transactions,
+        "grid_allocations": grid_allocations,
+        "active_grids": active_grids,
+        "grid_count": len(active_grids)
     })
     
     return templates.TemplateResponse("portfolio_detail.html", {"request": request, **context})
