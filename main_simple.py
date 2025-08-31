@@ -1344,9 +1344,14 @@ async def create_grid(request: CreateGridRequest, user: User = Depends(require_a
             if current_price > request.upper_price or current_price < request.lower_price:
                 logger.warning(f"Current price {current_price} is outside grid range [{request.lower_price}, {request.upper_price}]")
         
-        # Calculate grid spacing and strategy configuration
-        grid_spacing = Decimal(str((request.upper_price - request.lower_price) / request.grid_count))
-        price_per_grid = Decimal(str(request.investment_amount / request.grid_count))
+        # Calculate grid spacing and strategy configuration (fix Decimal/float arithmetic)
+        upper_decimal = Decimal(str(request.upper_price))
+        lower_decimal = Decimal(str(request.lower_price))
+        grid_count_decimal = Decimal(str(request.grid_count))
+        investment_decimal = Decimal(str(request.investment_amount))
+        
+        grid_spacing = (upper_decimal - lower_decimal) / grid_count_decimal
+        price_per_grid = investment_decimal / grid_count_decimal
         
         # Create strategy configuration
         strategy_config = {
@@ -1357,14 +1362,23 @@ async def create_grid(request: CreateGridRequest, user: User = Depends(require_a
             "grid_levels": []
         }
         
-        # Generate grid levels
+        # Generate grid levels (fix Decimal arithmetic)
         for i in range(request.grid_count + 1):
-            level_price = request.lower_price + (i * float(grid_spacing))
+            level_price_decimal = lower_decimal + (Decimal(str(i)) * grid_spacing)
+            level_price = float(level_price_decimal)
+            
+            # Calculate quantity using Decimal arithmetic
+            if level_price > 0:
+                quantity_decimal = price_per_grid / level_price_decimal
+                quantity = float(quantity_decimal)
+            else:
+                quantity = 0
+            
             strategy_config["grid_levels"].append({
                 "level": i,
                 "price": level_price,
                 "type": "buy" if level_price < current_price else "sell",
-                "quantity": float(price_per_grid / level_price) if level_price > 0 else 0
+                "quantity": quantity
             })
         
         logger.info(f"📊 Strategy config created with {len(strategy_config['grid_levels'])} levels")
@@ -1377,10 +1391,10 @@ async def create_grid(request: CreateGridRequest, user: User = Depends(require_a
         grid.symbol = normalize_symbol_for_yfinance(request.symbol.upper())
         grid.name = request.name
         grid.strategy_config = strategy_config  # Explicit assignment
-        grid.upper_price = Decimal(str(request.upper_price))
-        grid.lower_price = Decimal(str(request.lower_price))
+        grid.upper_price = upper_decimal
+        grid.lower_price = lower_decimal
         grid.grid_spacing = grid_spacing
-        grid.investment_amount = Decimal(str(request.investment_amount))
+        grid.investment_amount = investment_decimal
         grid.status = GridStatus.active
         grid.total_profit = Decimal('0.00')
         grid.completed_orders = 0
@@ -1388,8 +1402,8 @@ async def create_grid(request: CreateGridRequest, user: User = Depends(require_a
         
         logger.info(f"🔧 Grid object created, strategy_config set: {hasattr(grid, 'strategy_config')}")
         
-        # Reserve cash from portfolio
-        portfolio.cash_balance -= Decimal(str(request.investment_amount))
+        # Reserve cash from portfolio (use Decimal arithmetic)
+        portfolio.cash_balance -= investment_decimal
         
         db.add(grid)
         db.commit()
