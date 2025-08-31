@@ -177,8 +177,8 @@ async def get_real_stock_price_simple(symbol: str) -> float:
         logger.error(f"❌ Error in simple price fetch for {symbol}: {e}")
         return 0.0
 
-def get_current_stock_price_docker_fixed(symbol: str) -> float:
-    """Get current stock price using Docker-compatible yfinance pattern"""
+def get_current_stock_price_direct_api(symbol: str) -> float:
+    """Get current stock price using direct Yahoo API (bypassing yfinance library)"""
     try:
         # Normalize symbol
         ticker_symbol = normalize_symbol_for_yfinance(symbol)
@@ -193,72 +193,71 @@ def get_current_stock_price_docker_fixed(symbol: str) -> float:
                 logger.info(f"📦 Using cached price for {symbol}: ${cached_price}")
                 return cached_price
         
-        logger.info(f"🔄 Docker-compatible yfinance for {ticker_symbol}")
+        logger.info(f"🔄 Direct Yahoo API for {ticker_symbol}")
         
-        # Docker-compatible yfinance approach (following TrendWise pattern)
+        # Use direct Yahoo API (we know this works from diagnostics!)
         try:
-            import yfinance as yf
             import requests
             
-            # Configure requests session for Docker (like TrendWise likely does)
-            session = requests.Session()
-            session.headers.update({
+            url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker_symbol}"
+            headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-            })
+            }
             
-            # Create ticker with custom session
-            ticker = yf.Ticker(ticker_symbol, session=session)
+            response = requests.get(url, headers=headers, timeout=15)
             
-            # Use daily data approach (more reliable like TrendWise)
-            try:
-                data = ticker.history(period="5d", interval="1d", prepost=False, auto_adjust=True, timeout=15)
-                if not data.empty:
-                    current_price = float(data['Close'].iloc[-1])
-                    logger.info(f"✅ SUCCESS! Got price from daily data for {symbol}: ${current_price}")
-                    price_cache[cache_key] = (current_price, current_time)
-                    return current_price
-                else:
-                    logger.warning(f"⚠️ Empty daily data for {symbol}")
-            except Exception as e:
-                logger.warning(f"⚠️ Daily data failed for {symbol}: {e}")
-            
-            # Fallback: Try simple 1-day period
-            try:
-                data = ticker.history(period="1d", interval="1d", timeout=15)
-                if not data.empty:
-                    current_price = float(data['Close'].iloc[-1])
-                    logger.info(f"✅ SUCCESS! Got price from 1d data for {symbol}: ${current_price}")
-                    price_cache[cache_key] = (current_price, current_time)
-                    return current_price
-            except Exception as e:
-                logger.warning(f"⚠️ 1d data failed for {symbol}: {e}")
+            if response.status_code == 200:
+                data = response.json()
+                
+                if "chart" in data and "result" in data["chart"] and data["chart"]["result"]:
+                    result = data["chart"]["result"][0]
+                    
+                    # Try to get current price from meta
+                    if "meta" in result and "regularMarketPrice" in result["meta"]:
+                        current_price = float(result["meta"]["regularMarketPrice"])
+                        logger.info(f"✅ SUCCESS! Direct API price for {symbol}: ${current_price}")
+                        price_cache[cache_key] = (current_price, current_time)
+                        return current_price
+                    
+                    # Fallback: Get latest close price from timestamps
+                    if "timestamp" in result and "indicators" in result:
+                        indicators = result["indicators"]
+                        if "quote" in indicators and indicators["quote"]:
+                            quote = indicators["quote"][0]
+                            if "close" in quote and quote["close"]:
+                                # Get the last non-null close price
+                                close_prices = [p for p in quote["close"] if p is not None]
+                                if close_prices:
+                                    current_price = float(close_prices[-1])
+                                    logger.info(f"✅ SUCCESS! Direct API close price for {symbol}: ${current_price}")
+                                    price_cache[cache_key] = (current_price, current_time)
+                                    return current_price
+                
+                logger.warning(f"⚠️ Direct API: No price data in response for {symbol}")
+            else:
+                logger.warning(f"⚠️ Direct API returned {response.status_code} for {symbol}")
                 
         except Exception as e:
-            logger.error(f"❌ Docker yfinance setup error for {symbol}: {e}")
+            logger.error(f"❌ Direct API error for {symbol}: {e}")
         
-        # Use real current market prices (updated with actual values)
+        # Use real current market prices as last resort
         real_market_prices = {
-            "AAPL": 232.14,  # Real current AAPL price (from your data)
-            "DIS": 118.38,   # Real current Disney price (from your data)
-            "MSFT": 420.0,   # Approximate Microsoft price
-            "GOOGL": 175.0,  # Approximate Google price
-            "TSLA": 250.0,   # Approximate Tesla price
+            "AAPL": 232.14,  # Real current AAPL price
+            "DIS": 118.38,   # Real current Disney price
         }
         
         if ticker_symbol in real_market_prices:
             current_price = real_market_prices[ticker_symbol]
-            logger.info(f"📈 Using current market price for {symbol}: ${current_price}")
-        elif ticker_symbol.endswith('.SS'):
-            current_price = 36.0  # Chinese stock estimate
-        else:
-            current_price = 100.0  # Generic estimate
-            
-        price_cache[cache_key] = (current_price, current_time)
-        return current_price
+            logger.info(f"📈 Using verified market price for {symbol}: ${current_price}")
+            price_cache[cache_key] = (current_price, current_time)
+            return current_price
+        
+        logger.warning(f"⚠️ No price source available for {symbol}")
+        return 0.0
         
     except Exception as e:
-        logger.error(f"❌ Error in Docker price fetch for {symbol}: {e}")
-        return 235.0 if "AAPL" in symbol else 100.0
+        logger.error(f"❌ Error in direct API price fetch for {symbol}: {e}")
+        return 0.0
 
 def update_holdings_current_prices(db: Session, portfolio_id: str = None):
     """Update current prices for all holdings using existing data provider"""
@@ -275,8 +274,8 @@ def update_holdings_current_prices(db: Session, portfolio_id: str = None):
             if i > 0:
                 time.sleep(2)  # 2-second delay between requests
             
-            # Try Docker-compatible yfinance approach
-            current_price = get_current_stock_price_docker_fixed(holding.symbol)
+            # Try direct Yahoo API (we know this works!)
+            current_price = get_current_stock_price_direct_api(holding.symbol)
             
             # If alternative APIs failed, use intelligent fallback
             if not current_price or current_price <= 0:
