@@ -34,14 +34,14 @@
         <!-- Current Price -->
         <div class="bg-white rounded-lg shadow-md p-6">
             <h3 class="text-lg font-semibold text-gray-900 mb-2">Current Price</h3>
-            <p class="text-3xl font-bold text-blue-600">${{ "%.2f".format(current_price) }}</p>
+            <p class="text-3xl font-bold text-blue-600">${{ "{:.2f}".format(current_price) }}</p>
             <p class="text-sm text-gray-500 mt-1">{{ grid.symbol }}</p>
         </div>
 
         <!-- Investment Amount -->
         <div class="bg-white rounded-lg shadow-md p-6">
             <h3 class="text-lg font-semibold text-gray-900 mb-2">Investment</h3>
-            <p class="text-3xl font-bold text-green-600">${{ "%.2f".format(grid.investment_amount) }}</p>
+            <p class="text-3xl font-bold text-green-600">${{ "{:,.2f}".format(grid.investment_amount) }}</p>
             <p class="text-sm text-gray-500 mt-1">Total allocated</p>
         </div>
 
@@ -49,9 +49,9 @@
         <div class="bg-white rounded-lg shadow-md p-6">
             <h3 class="text-lg font-semibold text-gray-900 mb-2">Total Profit</h3>
             <p class="text-3xl font-bold {% if total_profit >= 0 %}text-green-600{% else %}text-red-600{% endif %}">
-                ${{ "%.2f".format(total_profit) }}
+                ${{ "{:,.2f}".format(total_profit) }}
             </p>
-            <p class="text-sm text-gray-500 mt-1">{{ "%.2f%%".format(grid_performance.roi) }} ROI</p>
+            <p class="text-sm text-gray-500 mt-1">{{ "{:.2f}%".format(grid_performance.roi) }} ROI</p>
         </div>
 
         <!-- Status -->
@@ -73,14 +73,14 @@
         <div class="grid md:grid-cols-3 gap-6">
             <div>
                 <h4 class="font-semibold text-gray-700">Price Range</h4>
-                <p class="text-sm text-gray-600">Upper: ${{ "%.2f".format(grid.upper_price) }}</p>
-                <p class="text-sm text-gray-600">Lower: ${{ "%.2f".format(grid.lower_price) }}</p>
-                <p class="text-sm text-gray-600">Spacing: ${{ "%.2f".format(grid.grid_spacing) }}</p>
+                <p class="text-sm text-gray-600">Upper: ${{ "{:.2f}".format(grid.upper_price) }}</p>
+                <p class="text-sm text-gray-600">Lower: ${{ "{:.2f}".format(grid.lower_price) }}</p>
+                <p class="text-sm text-gray-600">Spacing: ${{ "{:.2f}".format(grid.grid_spacing) }}</p>
             </div>
             <div>
                 <h4 class="font-semibold text-gray-700">Grid Setup</h4>
                 <p class="text-sm text-gray-600">Levels: {{ grid.strategy_config.grid_count }}</p>
-                <p class="text-sm text-gray-600">Per Level: ${{ "%.2f".format(grid.strategy_config.price_per_grid) }}</p>
+                <p class="text-sm text-gray-600">Per Level: ${{ "{:,.2f}".format(grid.strategy_config.price_per_grid) }}</p>
             </div>
             <div>
                 <h4 class="font-semibold text-gray-700">Performance</h4>
@@ -95,7 +95,7 @@
         <div class="flex justify-between items-center mb-4">
             <h2 class="text-xl font-bold text-gray-900">Grid Orders</h2>
             <div class="text-sm text-gray-500">
-                Current Price: ${{ "%.2f".format(current_price) }}
+                Current Price: ${{ "{:.2f}".format(current_price) }}
             </div>
         </div>
         
@@ -122,10 +122,10 @@
                             </span>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                            ${{ "%.2f".format(order.target_price) }}
+                            ${{ "{:.2f}".format(order.target_price) }}
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {{ "%.4f".format(order.quantity) }}
+                            {{ "{:.4f}".format(order.quantity) }}
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap">
                             <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full
@@ -138,7 +138,7 @@
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                             {% if order.filled_price %}
-                                ${{ "%.2f".format(order.filled_price) }}
+                                ${{ "{:.2f}".format(order.filled_price) }}
                             {% else %}
                                 -
                             {% endif %}
@@ -183,8 +183,8 @@
                     </div>
                     
                     <div class="flex items-center space-x-4">
-                        <span class="text-sm font-medium text-gray-900">${{ "%.2f".format(level.price) }}</span>
-                        <span class="text-xs text-gray-600">{{ "%.4f".format(level.quantity) }} shares</span>
+                        <span class="text-sm font-medium text-gray-900">${{ "{:.2f}".format(level.price) }}</span>
+                        <span class="text-xs text-gray-600">{{ "{:.4f}".format(level.quantity) }} shares</span>
                         {% if level.price == current_price %}
                         <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
                             CURRENT
