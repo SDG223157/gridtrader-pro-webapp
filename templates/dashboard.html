@@ -36,37 +36,47 @@
             </div>
         </div>
         
-        <!-- Active Portfolios -->
-        <div class="trading-card rounded-xl p-6 transition-all duration-200">
-            <div class="flex items-center">
-                <div class="flex-shrink-0">
-                    <div class="w-12 h-12 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
-                        <i class="fas fa-briefcase text-white text-xl"></i>
+        <!-- Active Portfolios - Clickable -->
+        <a href="/portfolios" class="block">
+            <div class="trading-card rounded-xl p-6 transition-all duration-200 hover:shadow-lg hover:scale-105 cursor-pointer">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-12 h-12 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-briefcase text-white text-xl"></i>
+                        </div>
+                    </div>
+                    <div class="ml-4 flex-1">
+                        <p class="text-sm font-medium text-gray-500">Portfolios</p>
+                        <p class="text-2xl font-bold text-gray-900">{{ portfolio_summary.total_portfolios }}</p>
+                        <p class="text-sm text-gray-600">Active portfolios</p>
+                    </div>
+                    <div class="ml-2">
+                        <i class="fas fa-chevron-right text-gray-400"></i>
                     </div>
                 </div>
-                <div class="ml-4 flex-1">
-                    <p class="text-sm font-medium text-gray-500">Portfolios</p>
-                    <p class="text-2xl font-bold text-gray-900">{{ portfolio_summary.total_portfolios }}</p>
-                    <p class="text-sm text-gray-600">Active portfolios</p>
-                </div>
             </div>
-        </div>
+        </a>
         
-        <!-- Active Grids -->
-        <div class="trading-card rounded-xl p-6 transition-all duration-200">
-            <div class="flex items-center">
-                <div class="flex-shrink-0">
-                    <div class="w-12 h-12 bg-gradient-to-r from-purple-500 to-pink-600 rounded-lg flex items-center justify-center">
-                        <i class="fas fa-th text-white text-xl"></i>
+        <!-- Active Grids - Clickable -->
+        <a href="/grids" class="block">
+            <div class="trading-card rounded-xl p-6 transition-all duration-200 hover:shadow-lg hover:scale-105 cursor-pointer">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-12 h-12 bg-gradient-to-r from-purple-500 to-pink-600 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-th text-white text-xl"></i>
+                        </div>
+                    </div>
+                    <div class="ml-4 flex-1">
+                        <p class="text-sm font-medium text-gray-500">Active Grids</p>
+                        <p class="text-2xl font-bold text-gray-900">{{ portfolio_summary.active_grids }}</p>
+                        <p class="text-sm text-gray-600">Trading strategies</p>
+                    </div>
+                    <div class="ml-2">
+                        <i class="fas fa-chevron-right text-gray-400"></i>
                     </div>
                 </div>
-                <div class="ml-4 flex-1">
-                    <p class="text-sm font-medium text-gray-500">Active Grids</p>
-                    <p class="text-2xl font-bold text-gray-900">{{ portfolio_summary.active_grids }}</p>
-                    <p class="text-sm text-gray-600">Trading strategies</p>
-                </div>
             </div>
-        </div>
+        </a>
         
         <!-- Total Invested -->
         <div class="trading-card rounded-xl p-6 transition-all duration-200">
