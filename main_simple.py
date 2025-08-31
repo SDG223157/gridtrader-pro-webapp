@@ -11,6 +11,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from database import get_db, User, UserProfile, Portfolio, Grid, Holding, Alert, Transaction, TransactionType
 from auth_simple import (
     setup_oauth, create_access_token, get_current_user, require_auth, 
@@ -45,6 +46,7 @@ class CreateTransactionRequest(BaseModel):
     quantity: float
     price: float
     fees: float = 0.00
+    notes: str = ""
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -393,6 +395,7 @@ async def create_transaction(request: CreateTransactionRequest, user: User = Dep
             price=price_decimal,
             total_amount=total_amount,
             fees=fees_decimal,
+            notes=request.notes,
             executed_at=datetime.utcnow()
         )
         
@@ -619,6 +622,32 @@ async def debug_test_transaction(request: Request, db: Session = Depends(get_db)
             "error_type": type(e).__name__,
             "traceback": traceback.format_exc()
         }
+
+@app.get("/admin/migrate-notes")
+async def migrate_notes_column(db: Session = Depends(get_db)):
+    """Add notes column to transactions table"""
+    try:
+        # Check if notes column exists
+        result = db.execute(text("""
+            SELECT COLUMN_NAME 
+            FROM INFORMATION_SCHEMA.COLUMNS 
+            WHERE TABLE_SCHEMA = DATABASE() 
+            AND TABLE_NAME = 'transactions' 
+            AND COLUMN_NAME = 'notes'
+        """))
+        
+        if result.fetchone():
+            return {"success": True, "message": "Notes column already exists"}
+        
+        # Add the notes column
+        db.execute(text("ALTER TABLE transactions ADD COLUMN notes TEXT NULL"))
+        db.commit()
+        
+        return {"success": True, "message": "Notes column added successfully"}
+        
+    except Exception as e:
+        db.rollback()
+        return {"success": False, "error": str(e)}
 
 # Simple startup
 @app.on_event("startup")
