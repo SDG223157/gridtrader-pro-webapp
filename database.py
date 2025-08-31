@@ -200,7 +200,7 @@ class Grid(Base):
     portfolio_id = Column(VARCHAR(36), ForeignKey("portfolios.id"), nullable=False)
     symbol = Column(String(20), nullable=False, index=True)
     name = Column(String(100), nullable=False)
-    strategy_config = Column(JSON, nullable=False)
+    strategy_config = Column(JSON, nullable=False, default={})
     upper_price = Column(DECIMAL(10, 4), nullable=False)
     lower_price = Column(DECIMAL(10, 4), nullable=False)
     grid_spacing = Column(DECIMAL(10, 4), nullable=False)
