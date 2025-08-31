@@ -146,13 +146,25 @@ async def create_or_update_user_from_google(google_user_info: dict, db: Session)
     ).first()
     
     if existing_user:
-        # Update existing user
+        # Update existing user with Google info
         existing_user.google_id = google_id
+        existing_user.auth_provider = "google"
+        
         if existing_user.profile:
+            # Update profile with Google data
             existing_user.profile.first_name = first_name
             existing_user.profile.last_name = last_name
             existing_user.profile.avatar_url = profile_picture
-        existing_user.auth_provider = "google"
+            
+            # Fix display name - use Google name or email prefix
+            google_display_name = f"{first_name} {last_name}".strip()
+            if google_display_name:
+                existing_user.profile.display_name = google_display_name
+            else:
+                existing_user.profile.display_name = email.split("@")[0].title()
+            
+            logger.info(f"🔄 Updated user profile: {existing_user.email} → {existing_user.profile.display_name}")
+        
         db.commit()
         db.refresh(existing_user)
         return existing_user
