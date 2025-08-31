@@ -18,7 +18,7 @@
                 
                 <div class="flex items-center space-x-4">
                     {% if is_authenticated %}
-                        <span class="text-gray-700">Welcome, {{ user.profile.display_name or user.email }}</span>
+                        <span class="text-gray-700">Welcome, {{ display_name }}</span>
                         <a href="/dashboard" class="text-gray-600 hover:text-gray-900">Dashboard</a>
                         <a href="/portfolios" class="text-gray-600 hover:text-gray-900">Portfolios</a>
                         <a href="/grids" class="text-gray-600 hover:text-gray-900">Grid Trading</a>
