@@ -31,6 +31,7 @@ import time
 import asyncio
 import sys
 import threading
+import json
 from functools import lru_cache
 
 # Pydantic models for API requests
@@ -1341,18 +1342,26 @@ async def create_grid(request: CreateGridRequest, user: User = Depends(require_a
                 "quantity": float(price_per_grid / level_price) if level_price > 0 else 0
             })
         
-        # Create grid
-        grid = Grid(
-            portfolio_id=request.portfolio_id,
-            symbol=normalize_symbol_for_yfinance(request.symbol.upper()),
-            name=request.name,
-            strategy_config=strategy_config,
-            upper_price=Decimal(str(request.upper_price)),
-            lower_price=Decimal(str(request.lower_price)),
-            grid_spacing=grid_spacing,
-            investment_amount=Decimal(str(request.investment_amount)),
-            status=GridStatus.active
-        )
+        logger.info(f"📊 Strategy config created with {len(strategy_config['grid_levels'])} levels")
+        logger.info(f"🔧 Strategy config type: {type(strategy_config)}")
+        logger.info(f"🔧 Strategy config content: {strategy_config}")
+        
+        # Create grid with explicit field assignment
+        grid = Grid()
+        grid.portfolio_id = request.portfolio_id
+        grid.symbol = normalize_symbol_for_yfinance(request.symbol.upper())
+        grid.name = request.name
+        grid.strategy_config = strategy_config  # Explicit assignment
+        grid.upper_price = Decimal(str(request.upper_price))
+        grid.lower_price = Decimal(str(request.lower_price))
+        grid.grid_spacing = grid_spacing
+        grid.investment_amount = Decimal(str(request.investment_amount))
+        grid.status = GridStatus.active
+        grid.total_profit = Decimal('0.00')
+        grid.completed_orders = 0
+        grid.active_orders = 0
+        
+        logger.info(f"🔧 Grid object created, strategy_config set: {hasattr(grid, 'strategy_config')}")
         
         # Reserve cash from portfolio
         portfolio.cash_balance -= Decimal(str(request.investment_amount))
