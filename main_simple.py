@@ -459,11 +459,13 @@ async def create_transaction(request: CreateTransactionRequest, user: User = Dep
             sale_proceeds = (quantity_decimal * price_decimal) - fees_decimal
             portfolio.cash_balance = (portfolio.cash_balance or Decimal('0')) + sale_proceeds
         
-        # Update portfolio current value using Decimal arithmetic
+        # Update portfolio current value using Decimal arithmetic (cash + holdings market value)
         portfolio.current_value = portfolio.cash_balance or Decimal('0')
         remaining_holdings = db.query(Holding).filter(Holding.portfolio_id == request.portfolio_id).all()
         for h in remaining_holdings:
-            portfolio.current_value += (h.quantity or Decimal('0')) * (h.current_price or Decimal('0'))
+            holding_market_value = (h.quantity or Decimal('0')) * (h.current_price or Decimal('0'))
+            portfolio.current_value += holding_market_value
+            logger.info(f"Portfolio {portfolio.id}: Adding holding {h.symbol} market value ${holding_market_value}")
         
         db.commit()
         db.refresh(transaction)
@@ -662,6 +664,37 @@ async def migrate_notes_column(db: Session = Depends(get_db)):
         db.commit()
         
         return {"success": True, "message": "Notes column added successfully"}
+        
+    except Exception as e:
+        db.rollback()
+        return {"success": False, "error": str(e)}
+
+@app.get("/admin/recalculate-portfolio-values")
+async def recalculate_portfolio_values(user: User = Depends(require_auth), db: Session = Depends(get_db)):
+    """Recalculate all portfolio values to include holdings market value"""
+    try:
+        portfolios = db.query(Portfolio).filter(Portfolio.user_id == user.id).all()
+        updated_count = 0
+        
+        for portfolio in portfolios:
+            # Calculate correct portfolio value (cash + holdings market value)
+            portfolio.current_value = portfolio.cash_balance or Decimal('0')
+            
+            holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio.id).all()
+            for holding in holdings:
+                holding_market_value = (holding.quantity or Decimal('0')) * (holding.current_price or Decimal('0'))
+                portfolio.current_value += holding_market_value
+            
+            updated_count += 1
+            logger.info(f"Updated portfolio {portfolio.name}: ${portfolio.current_value}")
+        
+        db.commit()
+        
+        return {
+            "success": True, 
+            "message": f"Recalculated {updated_count} portfolios",
+            "portfolios_updated": updated_count
+        }
         
     except Exception as e:
         db.rollback()
