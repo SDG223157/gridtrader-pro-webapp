@@ -164,6 +164,7 @@ class SystematicTradingEngine:
             '512000.SS': '华宝中证全指证券公司',                      # 3.24B volume - Securities
             '512800.SS': '华宝中证银行',                           # 1.35B volume - Banking
             '512700.SS': '南方中证银行',                           # 124.04M volume - Banking
+        }
         
         # Risk management parameters
         self.risk_limits = {
@@ -211,7 +212,7 @@ class SystematicTradingEngine:
                 sector_etfs = self.china_sector_etfs
                 # Use CSI 300 Index (000300.SS) as benchmark for Chinese market
                 benchmark_ticker = "000300.SS"
-                logger.info(f"🇨🇳 Analyzing Chinese market ETFs with CSI 300 benchmark")
+                logger.info(f"🇨🇳 Analyzing Chinese market ETFs with CSI 300 Index benchmark")
             else:
                 sector_etfs = self.us_sector_etfs
                 # Use S&P 500 as benchmark for US market
