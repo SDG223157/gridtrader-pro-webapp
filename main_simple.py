@@ -617,6 +617,37 @@ def determine_asset_type(symbol: str, name: str) -> str:
     # Default to Equity
     return 'Equity'
 
+def calculate_portfolio_value(portfolio: Portfolio, db: Session) -> Decimal:
+    """Calculate total portfolio value including cash, holdings, and grid allocations"""
+    try:
+        # Start with cash balance
+        total_value = portfolio.cash_balance or Decimal('0')
+        
+        # Add holdings market value
+        holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio.id).all()
+        for holding in holdings:
+            holding_market_value = (holding.quantity or Decimal('0')) * (holding.current_price or Decimal('0'))
+            total_value += holding_market_value
+        
+        # Add active grid trading allocations
+        active_grids = db.query(Grid).filter(
+            Grid.portfolio_id == portfolio.id,
+            Grid.status == GridStatus.active
+        ).all()
+        
+        for grid in active_grids:
+            # Add the investment amount allocated to this grid
+            grid_allocation = grid.investment_amount or Decimal('0')
+            total_value += grid_allocation
+            logger.debug(f"📊 Adding grid '{grid.name}' allocation: ${grid_allocation}")
+        
+        logger.info(f"💰 Portfolio {portfolio.name} total value: ${total_value} (cash: ${portfolio.cash_balance}, grids: {len(active_grids)})")
+        return total_value
+        
+    except Exception as e:
+        logger.error(f"❌ Error calculating portfolio value: {e}")
+        return portfolio.cash_balance or Decimal('0')
+
 def convert_yfinance_to_tradingview_symbol(yfinance_symbol: str) -> str:
     """Convert yfinance ticker symbol to TradingView format for proper charting"""
     symbol = yfinance_symbol.upper().strip()
@@ -1144,12 +1175,8 @@ async def portfolio_detail(portfolio_id: str, request: Request, db: Session = De
     # Update current prices from existing data provider before displaying
     update_holdings_current_prices(db, portfolio_id)
     
-    # Recalculate portfolio value with updated prices
-    portfolio.current_value = portfolio.cash_balance or Decimal('0')
-    holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio_id).all()
-    for h in holdings:
-        holding_market_value = (h.quantity or Decimal('0')) * (h.current_price or Decimal('0'))
-        portfolio.current_value += holding_market_value
+    # Recalculate portfolio value with updated prices INCLUDING grid allocations
+    portfolio.current_value = calculate_portfolio_value(portfolio, db)
     
     db.commit()
     
@@ -1261,13 +1288,8 @@ async def create_transaction(request: CreateTransactionRequest, user: User = Dep
         # Update current prices from existing data provider before calculating portfolio value
         update_holdings_current_prices(db, request.portfolio_id)
         
-        # Update portfolio current value using Decimal arithmetic (cash + holdings market value)
-        portfolio.current_value = portfolio.cash_balance or Decimal('0')
-        remaining_holdings = db.query(Holding).filter(Holding.portfolio_id == request.portfolio_id).all()
-        for h in remaining_holdings:
-            holding_market_value = (h.quantity or Decimal('0')) * (h.current_price or Decimal('0'))
-            portfolio.current_value += holding_market_value
-            logger.info(f"Portfolio {portfolio.id}: Adding holding {h.symbol} market value ${holding_market_value} (price: ${h.current_price})")
+        # Update portfolio current value including grid allocations
+        portfolio.current_value = calculate_portfolio_value(portfolio, db)
         
         db.commit()
         db.refresh(transaction)
@@ -1610,6 +1632,44 @@ async def delete_grid(grid_id: str, user: User = Depends(require_auth), db: Sess
         logger.error(f"❌ Error deleting grid: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete grid")
 
+@app.post("/admin/recalculate-portfolio-values-with-grids")
+async def recalculate_portfolio_values_with_grids(user: User = Depends(require_auth), db: Session = Depends(get_db)):
+    """Recalculate all portfolio values including grid trading allocations"""
+    try:
+        portfolios = db.query(Portfolio).filter(Portfolio.user_id == user.id).all()
+        updated_portfolios = []
+        
+        for portfolio in portfolios:
+            old_value = portfolio.current_value
+            
+            # Update holdings prices first
+            update_holdings_current_prices(db, portfolio.id)
+            
+            # Calculate new value including grid allocations
+            portfolio.current_value = calculate_portfolio_value(portfolio, db)
+            
+            updated_portfolios.append({
+                "portfolio_name": portfolio.name,
+                "old_value": float(old_value or 0),
+                "new_value": float(portfolio.current_value),
+                "change": float(portfolio.current_value - (old_value or Decimal('0')))
+            })
+            
+            logger.info(f"📊 Updated {portfolio.name}: ${old_value} → ${portfolio.current_value}")
+        
+        db.commit()
+        
+        return {
+            "success": True,
+            "message": "Portfolio values recalculated with grid allocations",
+            "updated_portfolios": updated_portfolios
+        }
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ Error recalculating portfolio values: {e}")
+        raise HTTPException(status_code=500, detail="Failed to recalculate portfolio values")
+
 # Analytics Route
 @app.get("/analytics", response_class=HTMLResponse)
 async def analytics_page(request: Request, db: Session = Depends(get_db)):
@@ -1845,12 +1905,8 @@ async def recalculate_portfolio_values(user: User = Depends(require_auth), db: S
                         "change": current_price - old_price
                     })
             
-            # Calculate correct portfolio value (cash + holdings market value with real prices)
-            portfolio.current_value = portfolio.cash_balance or Decimal('0')
-            
-            for holding in holdings:
-                holding_market_value = (holding.quantity or Decimal('0')) * (holding.current_price or Decimal('0'))
-                portfolio.current_value += holding_market_value
+            # Calculate correct portfolio value including grid allocations
+            portfolio.current_value = calculate_portfolio_value(portfolio, db)
             
             updated_count += 1
             logger.info(f"Updated portfolio {portfolio.name}: ${portfolio.current_value} (with real-time prices)")
@@ -1882,11 +1938,8 @@ async def refresh_prices(user: User = Depends(require_auth), db: Session = Depen
                 holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio.id).all()
                 total_holdings_updated += len(holdings)
                 
-                # Recalculate portfolio value with new prices
-                portfolio.current_value = portfolio.cash_balance or Decimal('0')
-                for holding in holdings:
-                    holding_market_value = (holding.quantity or Decimal('0')) * (holding.current_price or Decimal('0'))
-                    portfolio.current_value += holding_market_value
+                # Recalculate portfolio value including grid allocations
+                portfolio.current_value = calculate_portfolio_value(portfolio, db)
         
         db.commit()
         
@@ -1975,13 +2028,10 @@ async def manual_update_price(request: UpdatePriceRequest, user: User = Depends(
                 "new_market_value": float(holding.quantity * new_price)
             })
             
-            # Update portfolio value
+            # Update portfolio value including grid allocations
             portfolio = db.query(Portfolio).filter(Portfolio.id == holding.portfolio_id).first()
             if portfolio:
-                portfolio.current_value = portfolio.cash_balance or Decimal('0')
-                portfolio_holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio.id).all()
-                for h in portfolio_holdings:
-                    portfolio.current_value += (h.quantity or Decimal('0')) * (h.current_price or Decimal('0'))
+                portfolio.current_value = calculate_portfolio_value(portfolio, db)
                 
                 updated_portfolios.append({
                     "portfolio_name": portfolio.name,
