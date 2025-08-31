@@ -23,6 +23,8 @@ from typing import List
 from pydantic import BaseModel
 from decimal import Decimal
 import yfinance as yf
+import time
+from functools import lru_cache
 
 # Pydantic models for API requests
 class CreatePortfolioRequest(BaseModel):
@@ -98,43 +100,67 @@ def normalize_symbol_for_yfinance(symbol: str) -> str:
         # Keep original for international symbols (e.g., 600298.SS)
         return symbol
 
+# Price cache to avoid rate limiting
+price_cache = {}
+cache_duration = 300  # 5 minutes
+
 def get_current_stock_price(symbol: str) -> float:
-    """Get current stock price from yfinance"""
+    """Get current stock price from yfinance with rate limiting and caching"""
     try:
         # Normalize symbol for yfinance
         ticker_symbol = normalize_symbol_for_yfinance(symbol)
-        logger.info(f"Fetching price for {symbol} (normalized to: {ticker_symbol})")
+        
+        # Check cache first (5-minute cache)
+        cache_key = ticker_symbol
+        current_time = time.time()
+        
+        if cache_key in price_cache:
+            cached_price, cached_time = price_cache[cache_key]
+            if current_time - cached_time < cache_duration:
+                logger.info(f"📦 Using cached price for {symbol}: ${cached_price}")
+                return cached_price
+        
+        logger.info(f"🔄 Fetching fresh price for {symbol} (normalized to: {ticker_symbol})")
+        
+        # Add delay to avoid rate limiting
+        time.sleep(1)
         
         ticker = yf.Ticker(ticker_symbol)
-        
-        # Try multiple methods to get current price
         current_price = None
         
-        # Method 1: Try ticker.info (most current)
+        # Method 1: Try recent history (more reliable than info)
         try:
-            info = ticker.info
-            if info and 'currentPrice' in info:
-                current_price = float(info['currentPrice'])
-                logger.info(f"Got price from ticker.info: ${current_price}")
-        except:
-            pass
-        
-        # Method 2: Try recent history if info failed
-        if not current_price:
             hist = ticker.history(period="1d")
             if not hist.empty:
                 current_price = float(hist['Close'].iloc[-1])
-                logger.info(f"Got price from history: ${current_price}")
+                logger.info(f"✅ Got price from 1-day history: ${current_price}")
+        except Exception as e:
+            logger.warning(f"⚠️ 1-day history failed for {symbol}: {e}")
         
-        # Method 3: Try 5-day history if 1-day failed
+        # Method 2: Try 5-day history if 1-day failed
         if not current_price:
-            hist = ticker.history(period="5d")
-            if not hist.empty:
-                current_price = float(hist['Close'].iloc[-1])
-                logger.info(f"Got price from 5-day history: ${current_price}")
+            try:
+                hist = ticker.history(period="5d")
+                if not hist.empty:
+                    current_price = float(hist['Close'].iloc[-1])
+                    logger.info(f"✅ Got price from 5-day history: ${current_price}")
+            except Exception as e:
+                logger.warning(f"⚠️ 5-day history failed for {symbol}: {e}")
+        
+        # Method 3: Try ticker.info as last resort (causes rate limiting)
+        if not current_price:
+            try:
+                info = ticker.info
+                if info and 'currentPrice' in info:
+                    current_price = float(info['currentPrice'])
+                    logger.info(f"✅ Got price from ticker.info: ${current_price}")
+            except Exception as e:
+                logger.warning(f"⚠️ ticker.info failed for {symbol}: {e}")
         
         if current_price and current_price > 0:
-            logger.info(f"✅ Current price for {symbol}: ${current_price}")
+            # Cache the result
+            price_cache[cache_key] = (current_price, current_time)
+            logger.info(f"✅ Current price for {symbol}: ${current_price} (cached)")
             return current_price
         else:
             logger.warning(f"⚠️ No valid price data found for {symbol}")
@@ -142,27 +168,43 @@ def get_current_stock_price(symbol: str) -> float:
             
     except Exception as e:
         logger.error(f"❌ Error fetching price for {symbol}: {e}")
+        # If rate limited, return cached price if available
+        if symbol in price_cache:
+            cached_price, _ = price_cache[symbol]
+            logger.info(f"📦 Rate limited, using cached price for {symbol}: ${cached_price}")
+            return cached_price
         return 0.0
 
 def update_holdings_current_prices(db: Session, portfolio_id: str = None):
-    """Update current prices for all holdings using yfinance"""
+    """Update current prices for all holdings using yfinance with rate limiting"""
     try:
         if portfolio_id:
             holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio_id).all()
         else:
             holdings = db.query(Holding).all()
         
-        for holding in holdings:
+        updated_count = 0
+        
+        for i, holding in enumerate(holdings):
+            # Add delay between requests to avoid rate limiting
+            if i > 0:
+                time.sleep(2)  # 2-second delay between requests
+            
             current_price = get_current_stock_price(holding.symbol)
             if current_price > 0:
+                old_price = float(holding.current_price or 0)
                 holding.current_price = Decimal(str(current_price))
-                logger.info(f"Updated {holding.symbol} price: ${current_price}")
+                updated_count += 1
+                logger.info(f"✅ Updated {holding.symbol} price: ${old_price} → ${current_price}")
+            else:
+                logger.warning(f"⚠️ Failed to update price for {holding.symbol}")
         
         db.commit()
+        logger.info(f"✅ Updated {updated_count}/{len(holdings)} holdings prices")
         return True
         
     except Exception as e:
-        logger.error(f"Error updating holdings prices: {e}")
+        logger.error(f"❌ Error updating holdings prices: {e}")
         db.rollback()
         return False
 
