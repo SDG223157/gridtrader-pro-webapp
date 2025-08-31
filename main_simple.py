@@ -22,6 +22,7 @@ from datetime import datetime
 from typing import List
 from pydantic import BaseModel
 from decimal import Decimal
+import yfinance as yf
 
 # Pydantic models for API requests
 class CreatePortfolioRequest(BaseModel):
@@ -83,6 +84,57 @@ app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 # Templates
 templates = Jinja2Templates(directory="templates")
+
+def get_current_stock_price(symbol: str) -> float:
+    """Get current stock price from yfinance"""
+    try:
+        # Handle different symbol formats
+        if symbol.endswith('.SS'):
+            # Chinese stocks - use original symbol
+            ticker_symbol = symbol
+        elif symbol.startswith('NASDAQ:'):
+            # Remove NASDAQ: prefix
+            ticker_symbol = symbol.replace('NASDAQ:', '')
+        else:
+            # Use symbol as-is
+            ticker_symbol = symbol
+        
+        ticker = yf.Ticker(ticker_symbol)
+        hist = ticker.history(period="1d")
+        
+        if not hist.empty:
+            current_price = float(hist['Close'].iloc[-1])
+            logger.info(f"Current price for {symbol}: ${current_price}")
+            return current_price
+        else:
+            logger.warning(f"No price data found for {symbol}")
+            return 0.0
+            
+    except Exception as e:
+        logger.error(f"Error fetching price for {symbol}: {e}")
+        return 0.0
+
+def update_holdings_current_prices(db: Session, portfolio_id: str = None):
+    """Update current prices for all holdings using yfinance"""
+    try:
+        if portfolio_id:
+            holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio_id).all()
+        else:
+            holdings = db.query(Holding).all()
+        
+        for holding in holdings:
+            current_price = get_current_stock_price(holding.symbol)
+            if current_price > 0:
+                holding.current_price = Decimal(str(current_price))
+                logger.info(f"Updated {holding.symbol} price: ${current_price}")
+        
+        db.commit()
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error updating holdings prices: {e}")
+        db.rollback()
+        return False
 
 def get_user_context(request: Request, db: Session) -> dict:
     """Get user context for templates"""
@@ -459,13 +511,16 @@ async def create_transaction(request: CreateTransactionRequest, user: User = Dep
             sale_proceeds = (quantity_decimal * price_decimal) - fees_decimal
             portfolio.cash_balance = (portfolio.cash_balance or Decimal('0')) + sale_proceeds
         
+        # Update current prices from yfinance before calculating portfolio value
+        update_holdings_current_prices(db, request.portfolio_id)
+        
         # Update portfolio current value using Decimal arithmetic (cash + holdings market value)
         portfolio.current_value = portfolio.cash_balance or Decimal('0')
         remaining_holdings = db.query(Holding).filter(Holding.portfolio_id == request.portfolio_id).all()
         for h in remaining_holdings:
             holding_market_value = (h.quantity or Decimal('0')) * (h.current_price or Decimal('0'))
             portfolio.current_value += holding_market_value
-            logger.info(f"Portfolio {portfolio.id}: Adding holding {h.symbol} market value ${holding_market_value}")
+            logger.info(f"Portfolio {portfolio.id}: Adding holding {h.symbol} market value ${holding_market_value} (price: ${h.current_price})")
         
         db.commit()
         db.refresh(transaction)
@@ -671,29 +726,78 @@ async def migrate_notes_column(db: Session = Depends(get_db)):
 
 @app.get("/admin/recalculate-portfolio-values")
 async def recalculate_portfolio_values(user: User = Depends(require_auth), db: Session = Depends(get_db)):
-    """Recalculate all portfolio values to include holdings market value"""
+    """Recalculate all portfolio values with real-time prices from yfinance"""
     try:
         portfolios = db.query(Portfolio).filter(Portfolio.user_id == user.id).all()
         updated_count = 0
+        price_updates = []
         
         for portfolio in portfolios:
-            # Calculate correct portfolio value (cash + holdings market value)
+            # Update all holdings with current prices from yfinance
+            holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio.id).all()
+            
+            for holding in holdings:
+                old_price = float(holding.current_price or 0)
+                current_price = get_current_stock_price(holding.symbol)
+                
+                if current_price > 0:
+                    holding.current_price = Decimal(str(current_price))
+                    price_updates.append({
+                        "symbol": holding.symbol,
+                        "old_price": old_price,
+                        "new_price": current_price,
+                        "change": current_price - old_price
+                    })
+            
+            # Calculate correct portfolio value (cash + holdings market value with real prices)
             portfolio.current_value = portfolio.cash_balance or Decimal('0')
             
-            holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio.id).all()
             for holding in holdings:
                 holding_market_value = (holding.quantity or Decimal('0')) * (holding.current_price or Decimal('0'))
                 portfolio.current_value += holding_market_value
             
             updated_count += 1
-            logger.info(f"Updated portfolio {portfolio.name}: ${portfolio.current_value}")
+            logger.info(f"Updated portfolio {portfolio.name}: ${portfolio.current_value} (with real-time prices)")
         
         db.commit()
         
         return {
             "success": True, 
-            "message": f"Recalculated {updated_count} portfolios",
-            "portfolios_updated": updated_count
+            "message": f"Recalculated {updated_count} portfolios with real-time prices",
+            "portfolios_updated": updated_count,
+            "price_updates": price_updates
+        }
+        
+    except Exception as e:
+        db.rollback()
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/refresh-prices")
+async def refresh_prices(user: User = Depends(require_auth), db: Session = Depends(get_db)):
+    """Refresh current prices for all user's holdings"""
+    try:
+        portfolios = db.query(Portfolio).filter(Portfolio.user_id == user.id).all()
+        total_holdings_updated = 0
+        
+        for portfolio in portfolios:
+            # Update holdings prices
+            success = update_holdings_current_prices(db, portfolio.id)
+            if success:
+                holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio.id).all()
+                total_holdings_updated += len(holdings)
+                
+                # Recalculate portfolio value with new prices
+                portfolio.current_value = portfolio.cash_balance or Decimal('0')
+                for holding in holdings:
+                    holding_market_value = (holding.quantity or Decimal('0')) * (holding.current_price or Decimal('0'))
+                    portfolio.current_value += holding_market_value
+        
+        db.commit()
+        
+        return {
+            "success": True,
+            "message": f"Updated prices for {total_holdings_updated} holdings",
+            "holdings_updated": total_holdings_updated
         }
         
     except Exception as e:
