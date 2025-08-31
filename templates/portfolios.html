@@ -40,6 +40,8 @@
                 <div class="mt-4 flex space-x-2">
                     <a href="/portfolios/{{ portfolio.id }}" class="text-blue-600 hover:text-blue-900 text-sm font-medium">View Details</a>
                     <a href="/portfolios/{{ portfolio.id }}/add-transaction" class="text-green-600 hover:text-green-900 text-sm font-medium">Add Transaction</a>
+                    <button onclick="deletePortfolio('{{ portfolio.id }}', '{{ portfolio.name }}')" 
+                            class="text-red-600 hover:text-red-900 text-sm font-medium">Delete</button>
                 </div>
             </div>
         </div>
@@ -55,4 +57,42 @@
         {% endif %}
     </div>
 </div>
+
+<script>
+async function deletePortfolio(portfolioId, portfolioName) {
+    // Confirm deletion
+    const confirmMessage = `Are you sure you want to delete the portfolio "${portfolioName}"?\n\nThis will permanently delete:\n- The portfolio\n- All holdings\n- All transactions\n- All associated grid strategies\n\nThis action cannot be undone.`;
+    
+    if (!confirm(confirmMessage)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/portfolios/${portfolioId}`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert(`Portfolio "${portfolioName}" deleted successfully!\n\n` +
+                  `Deleted:\n` +
+                  `- ${result.deleted_holdings || 0} holdings\n` +
+                  `- ${result.deleted_transactions || 0} transactions\n` +
+                  `- ${result.deleted_grids || 0} grid strategies`);
+            
+            // Refresh the page to update the portfolio list
+            window.location.reload();
+        } else {
+            alert(`Failed to delete portfolio: ${result.detail || 'Unknown error'}`);
+        }
+    } catch (error) {
+        alert('Failed to delete portfolio. Please try again.');
+        console.error('Delete portfolio error:', error);
+    }
+}
+</script>
 {% endblock %}

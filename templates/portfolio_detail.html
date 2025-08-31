@@ -52,6 +52,10 @@
                class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded">
                 Back to Portfolios
             </a>
+            <button onclick="deletePortfolioFromDetail('{{ portfolio.id }}', '{{ portfolio.name }}')" 
+                    class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">
+                Delete Portfolio
+            </button>
         </div>
     </div>
     
@@ -156,4 +160,53 @@
         {% endif %}
     </div>
 </div>
+
+<script>
+async function deletePortfolioFromDetail(portfolioId, portfolioName) {
+    // Enhanced confirmation for portfolio detail page
+    const confirmMessage = `⚠️ DELETE PORTFOLIO: "${portfolioName}"\n\n` +
+                          `This will permanently delete:\n` +
+                          `• The entire portfolio\n` +
+                          `• All current holdings ({{ holdings|length }} holdings)\n` +
+                          `• All transaction history ({{ transactions|length }} transactions)\n` +
+                          `• Any associated grid strategies\n\n` +
+                          `💰 Current portfolio value: ${{ "%.2f"|format(portfolio.current_value or 0) }}\n\n` +
+                          `This action CANNOT be undone!\n\n` +
+                          `Type "DELETE" to confirm:`;
+    
+    const userInput = prompt(confirmMessage);
+    
+    if (userInput !== "DELETE") {
+        alert("Portfolio deletion cancelled.");
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/portfolios/${portfolioId}`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert(`✅ Portfolio "${portfolioName}" deleted successfully!\n\n` +
+                  `Deleted:\n` +
+                  `• ${result.deleted_holdings || 0} holdings\n` +
+                  `• ${result.deleted_transactions || 0} transactions\n` +
+                  `• ${result.deleted_grids || 0} grid strategies`);
+            
+            // Redirect to portfolios list
+            window.location.href = '/portfolios';
+        } else {
+            alert(`❌ Failed to delete portfolio: ${result.detail || 'Unknown error'}`);
+        }
+    } catch (error) {
+        alert('❌ Failed to delete portfolio. Please try again.');
+        console.error('Delete portfolio error:', error);
+    }
+}
+</script>
 {% endblock %}
