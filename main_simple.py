@@ -264,17 +264,35 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
     if not context["is_authenticated"]:
         return RedirectResponse(url="/login", status_code=302)
     
-    # Simple dashboard data
+    # Calculate real portfolio summary
+    user_portfolios = db.query(Portfolio).filter(Portfolio.user_id == context["user"].id).all()
+    
+    total_value = sum(float(p.current_value or 0) for p in user_portfolios)
+    total_invested = sum(float(p.initial_capital or 0) for p in user_portfolios)
+    total_return = ((total_value - total_invested) / total_invested * 100) if total_invested > 0 else 0
+    
+    # Get active grids count
+    active_grids = db.query(Grid).join(Portfolio).filter(
+        Portfolio.user_id == context["user"].id,
+        Grid.status == "active"
+    ).count()
+    
+    # Get recent alerts
+    recent_alerts = db.query(Alert).filter(
+        Alert.user_id == context["user"].id
+    ).order_by(Alert.created_at.desc()).limit(5).all()
+    
     context.update({
         "portfolio_summary": {
-            "total_portfolios": 0,
-            "total_value": 0.00,
-            "total_invested": 0.00,
-            "total_return": 0.00,
-            "active_grids": 0
+            "total_portfolios": len(user_portfolios),
+            "total_value": total_value,
+            "total_invested": total_invested,
+            "total_return": round(total_return, 2),
+            "active_grids": active_grids
         },
-        "recent_alerts": [],
-        "market_data": {}
+        "recent_alerts": recent_alerts,
+        "market_data": {},
+        "portfolios": user_portfolios  # Add portfolios to context for dashboard display
     })
     
     return templates.TemplateResponse("dashboard.html", {"request": request, **context})
