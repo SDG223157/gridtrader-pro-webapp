@@ -558,6 +558,28 @@ def update_holdings_current_prices(db: Session, portfolio_id: str = None):
         db.rollback()
         return False
 
+@app.get("/debug/user-info")
+async def debug_user_info(request: Request, db: Session = Depends(get_db)):
+    """Debug current user information"""
+    try:
+        user = get_current_user(request, db)
+        if not user:
+            return {"error": "No user found", "session": dict(request.session)}
+        
+        return {
+            "user_id": user.id,
+            "email": user.email,
+            "auth_provider": user.auth_provider.value if user.auth_provider else None,
+            "has_profile": user.profile is not None,
+            "profile_display_name": user.profile.display_name if user.profile else None,
+            "profile_bio": user.profile.bio if user.profile else None,
+            "email_prefix": user.email.split('@')[0] if user.email else None,
+            "calculated_display_name": user.email.split('@')[0].title() if user.email else "User",
+            "session_data": dict(request.session)
+        }
+    except Exception as e:
+        return {"error": str(e), "session": dict(request.session)}
+
 def get_user_context(request: Request, db: Session) -> dict:
     """Get user context for templates"""
     user = get_current_user(request, db)

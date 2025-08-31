@@ -86,10 +86,18 @@
             
             <!-- TradingView S&P 500 Widget -->
             <div class="tradingview-widget-container" style="height: 500px; width: 100%;">
-                <div id="sp500_tradingview_chart" style="height: 100%; width: 100%;"></div>
+                <div class="tradingview-widget-container__widget" style="height: 100%; width: 100%;">
+                    <iframe id="tradingview_sp500" src="https://s.tradingview.com/widgetembed/?frameElementId=tradingview_sp500&symbol=SP%3ASPX&interval=D&hidesidetoolbar=0&hidetoptoolbar=0&symboledit=1&saveimage=1&toolbarbg=F1F3F6&studies=%5B%5D&hideideas=1&theme=Light&style=1&timezone=America%2FNew_York&studies_overrides=%7B%7D&overrides=%7B%7D&enabled_features=%5B%5D&disabled_features=%5B%5D&locale=en&utm_source=gridsai.app&utm_medium=widget&utm_campaign=chart&utm_term=SP%3ASPX" 
+                            style="width: 100%; height: 100%; margin: 0 !important; padding: 0 !important; border: none;" 
+                            frameborder="0" 
+                            allowtransparency="true" 
+                            scrolling="no" 
+                            allowfullscreen>
+                    </iframe>
+                </div>
                 <div class="tradingview-widget-copyright mt-2">
                     <a href="https://www.tradingview.com/" rel="noopener nofollow" target="_blank" class="text-xs text-gray-500">
-                        Real-time market visualization powered by TradingView
+                        Real-time S&P 500 powered by TradingView
                     </a>
                 </div>
             </div>
@@ -109,74 +117,31 @@
 </div>
 
 <script>
-// Initialize TradingView S&P 500 Market Overview Widget
-function initSP500TradingViewWidget() {
-    try {
-        new TradingView.widget({
-            "autosize": true,
-            "symbol": "SP:SPX",  // S&P 500 Index
-            "interval": "D",
-            "timezone": "America/New_York",
-            "theme": "light",
-            "style": "1",
-            "locale": "en",
-            "toolbar_bg": "#f1f3f6",
-            "enable_publishing": false,
-            "allow_symbol_change": true,
-            "container_id": "sp500_tradingview_chart",
-            "studies": [
-                "Volume@tv-basicstudies",
-                "MASimple@tv-basicstudies"
-            ],
-            "show_popup_button": true,
-            "popup_width": "1000",
-            "popup_height": "650",
-            "details": true,
-            "hotlist": true,
-            "calendar": false,
-            "news": ["headlines"],
-            "show_popup_button": true
-        });
-        console.log('✅ S&P 500 TradingView widget initialized');
-    } catch (error) {
-        console.error('❌ Error initializing S&P 500 widget:', error);
-        // Hide the widget container if it fails
-        const container = document.getElementById('sp500_tradingview_chart').parentElement;
-        if (container) {
-            container.innerHTML = '<div class="text-center py-12 text-gray-500">Market chart temporarily unavailable</div>';
-        }
+// Refresh market data (reload the iframe)
+function refreshMarketData() {
+    console.log('🔄 Refreshing S&P 500 market data...');
+    const iframe = document.getElementById('tradingview_sp500');
+    if (iframe) {
+        // Reload the iframe to get fresh data
+        iframe.src = iframe.src;
     }
 }
 
-// Refresh market data (reload the widget)
-function refreshMarketData() {
-    console.log('🔄 Refreshing market data...');
-    // Reload the page to refresh the TradingView widget
-    window.location.reload();
-}
-
-// Load TradingView script and initialize S&P 500 widget
+// Check if iframe loaded successfully
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('📊 Loading TradingView S&P 500 market overview...');
+    console.log('📊 TradingView S&P 500 iframe loaded');
     
-    // Load TradingView script
-    const script = document.createElement('script');
-    script.src = 'https://s3.tradingview.com/tv.js';
-    script.onload = function() {
-        console.log('✅ TradingView script loaded, initializing S&P 500 widget...');
-        // Initialize S&P 500 widget after script loads
-        setTimeout(() => {
-            initSP500TradingViewWidget();
-        }, 1000);
-    };
-    script.onerror = function() {
-        console.error('❌ Failed to load TradingView script');
-        const container = document.getElementById('sp500_tradingview_chart').parentElement;
-        if (container) {
-            container.innerHTML = '<div class="text-center py-12 text-gray-500">Market chart temporarily unavailable</div>';
-        }
-    };
-    document.head.appendChild(script);
+    const iframe = document.getElementById('tradingview_sp500');
+    if (iframe) {
+        iframe.onload = function() {
+            console.log('✅ S&P 500 chart loaded successfully');
+        };
+        
+        iframe.onerror = function() {
+            console.error('❌ Failed to load S&P 500 chart');
+            iframe.parentElement.innerHTML = '<div class="text-center py-12 text-gray-500">Market chart temporarily unavailable</div>';
+        };
+    }
 });
 </script>
 {% endblock %}
