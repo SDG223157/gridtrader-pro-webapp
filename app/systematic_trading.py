@@ -98,72 +98,70 @@ class SystematicTradingEngine:
             'VNQ': 'Vanguard Real Estate ETF',
             
             # CHINESE ETFs - From cn.investing.com actual data (40 most active traded)
-            # Top Volume Chinese ETFs (Trading on Chinese markets)
+            # Note: Added .SS/.SZ suffixes for yfinance compatibility
             
-            # Hong Kong & Tech ETFs (Highest Volume)
-            '513090': '易方达中证香港证券投资ETF',                    # 9.23B volume - Hong Kong securities
-            '513130': 'Huatai-PB CSOP HS Tech Id(QDII)',       # 8.76B volume - Hang Seng Tech
-            '513180': 'ChinaAMC Hangsheng Tech (QDII)',        # 8.67B volume - Hang Seng Tech
-            '513330': '华夏恒生互联网科技业ETF(QDII)',              # 7.95B volume - Internet tech
-            '513120': 'GF CSI Hong Kong Brand Name Drug(QDII)', # 7.85B volume - HK pharma
+            # Hong Kong & Tech ETFs (Highest Volume) - Shanghai Stock Exchange
+            '513090.SS': '易方达中证香港证券投资ETF',                    # 9.23B volume - Hong Kong securities
+            '513130.SS': 'Huatai-PB CSOP HS Tech Id(QDII)',       # 8.76B volume - Hang Seng Tech
+            '513180.SS': 'ChinaAMC Hangsheng Tech (QDII)',        # 8.67B volume - Hang Seng Tech
+            '513330.SS': '华夏恒生互联网科技业ETF(QDII)',              # 7.95B volume - Internet tech
+            '513120.SS': 'GF CSI Hong Kong Brand Name Drug(QDII)', # 7.85B volume - HK pharma
             
-            # Broad Market & Large Cap
-            '512050': 'ChinaAMC CSI A500',                     # 5.54B volume - A500 index
-            '588000': '华夏科创50场内联接基金',                      # 5.36B volume - STAR 50
-            '159792': '港股通互联网ETF',                           # 3.72B volume - HK internet
-            '512880': '国泰中证全指证券公司',                        # 3.70B volume - Securities
-            '159740': '大成恒生科技ETF（QDII）',                    # 3.65B volume - Hang Seng tech
+            # Broad Market & Large Cap - Shanghai Stock Exchange
+            '512050.SS': 'ChinaAMC CSI A500',                     # 5.54B volume - A500 index
+            '588000.SS': '华夏科创50场内联接基金',                      # 5.36B volume - STAR 50
+            '512880.SS': '国泰中证全指证券公司',                        # 3.70B volume - Securities
+            '510300.SS': '华泰柏瑞沪深300',                         # 1.36B volume - CSI 300
+            '510050.SS': '华夏上证50',                             # 1.24B volume - SSE 50
+            '510500.SS': '南方中证500',                            # 349.46M volume - CSI 500
+            '510310.SS': '易方达沪深300',                          # 279.45M volume - CSI 300
+            '510330.SS': '华夏沪深300',                           # 124.07M volume - CSI 300
             
-            # Healthcare & Biotech
-            '513060': '博时恒生医疗保健QDII-ETF',                  # 4.35B volume - Healthcare
-            '159797': 'HuaTai-PineBridge CSI Medical Devices',  # Medical devices
-            '512170': '华宝中证医疗',                             # 2.40B volume - Medical
-            '512010': '易方达沪深300医药卫生',                     # 2.22B volume - Pharma
-            '159892': '华夏恒生香港上市生物科技ETF',                 # 1.79B volume - Biotech
+            # Healthcare & Biotech - Shanghai Stock Exchange
+            '513060.SS': '博时恒生医疗保健QDII-ETF',                  # 4.35B volume - Healthcare
+            '512170.SS': '华宝中证医疗',                             # 2.40B volume - Medical
+            '512010.SS': '易方达沪深300医药卫生',                     # 2.22B volume - Pharma
             
-            # Consumer & Alcohol
-            '512690': '鹏华中证酒',                              # 3.24B volume - Alcohol/liquor
-            '510150': '招商上证消费80',                           # 323.76M volume - Consumer
+            # Consumer & Alcohol - Shanghai Stock Exchange
+            '512690.SS': '鹏华中证酒',                              # 3.24B volume - Alcohol/liquor
+            '510150.SS': '招商上证消费80',                           # 323.76M volume - Consumer
             
-            # Technology & AI  
-            '513980': 'IGW CSI HK Connect Technology',         # 2.67B volume - HK tech
-            '159819': '易方达中证人工智能主题ETF',                   # 1.51B volume - AI theme
-            '515050': '华夏中证5G通信主题',                        # 327.16M volume - 5G
-            '159851': '华宝中证金融科技主题ETF',                    # 1.74B volume - Fintech
+            # Technology & AI - Shanghai Stock Exchange
+            '513980.SS': 'IGW CSI HK Connect Technology',         # 2.67B volume - HK tech
+            '515050.SS': '华夏中证5G通信主题',                        # 327.16M volume - 5G
+            '588200.SS': 'Harvest SSE STAR Chip Index',           # 2.73B volume - STAR chip
             
-            # Growth & Innovation
-            '159915': '易方达创业板',                             # 2.48B volume - ChiNext/Growth
-            '159949': '华安创业板50ETF',                         # 2.36B volume - ChiNext 50
-            '588200': 'Harvest SSE STAR Chip Index',           # 2.73B volume - STAR chip
-            '159780': '双创ETF',                               # 1.56B volume - Innovation
+            # Defense & Military - Shanghai Stock Exchange
+            '512710.SS': 'Fullgoal CSI National Defense Industry', # 2.06B volume - Defense
+            '512660.SS': '国泰中证军工',                            # 1.26B volume - Military
+            '512670.SS': '鹏华中证国防',                            # 528.31M volume - Defense
             
-            # Defense & Military
-            '512710': 'Fullgoal CSI National Defense Industry', # 2.06B volume - Defense
-            '512660': '国泰中证军工',                            # 1.26B volume - Military
-            '512670': '鹏华中证国防',                            # 528.31M volume - Defense
+            # Materials & Chemicals - Shanghai Stock Exchange
+            '512480.SS': '国联安中证全指半导体产品与设备',               # 1.79B volume - Semiconductors
+            '512400.SS': '南方中证申万有色金属',                      # 324.12M volume - Metals
             
-            # Materials & Chemicals
-            '159870': '鹏华中证细分化工产业ETF',                   # 1.94B volume - Chemicals
-            '512480': '国联安中证全指半导体产品与设备',               # 1.79B volume - Semiconductors
-            '512400': '南方中证申万有色金属',                      # 324.12M volume - Metals
+            # Energy & New Energy - Shenzhen Stock Exchange
+            '159755.SZ': '广发国证新能源车电池ETF',                   # 1.33B volume - EV battery
+            '159840.SZ': '工银瑞信国证新能源车电池ETF',                # 340.73M volume - EV battery
+            '515030.SS': '华夏中证新能源汽车',                        # 170.33M volume - New energy auto
+            '159875.SZ': '嘉实中证新能源ETF',                       # 223.39M volume - New energy
             
-            # Broad Market Indices
-            '510300': '华泰柏瑞沪深300',                         # 1.36B volume - CSI 300
-            '510050': '华夏上证50',                             # 1.24B volume - SSE 50
-            '510500': '南方中证500',                            # 349.46M volume - CSI 500
-            '510310': '易方达沪深300',                          # 279.45M volume - CSI 300
-            '510330': '华夏沪深300',                           # 124.07M volume - CSI 300
+            # Growth & ChiNext - Shenzhen Stock Exchange
+            '159915.SZ': '易方达创业板',                             # 2.48B volume - ChiNext/Growth
+            '159949.SZ': '华安创业板50ETF',                         # 2.36B volume - ChiNext 50
+            '159780.SZ': '双创ETF',                               # 1.56B volume - Innovation
+            '159792.SZ': '港股通互联网ETF',                           # 3.72B volume - HK internet
+            '159740.SZ': '大成恒生科技ETF（QDII）',                    # 3.65B volume - Hang Seng tech
+            '159797.SZ': 'HuaTai-PineBridge CSI Medical Devices',  # Medical devices
+            '159892.SZ': '华夏恒生香港上市生物科技ETF',                 # 1.79B volume - Biotech
+            '159819.SZ': '易方达中证人工智能主题ETF',                   # 1.51B volume - AI theme
+            '159851.SZ': '华宝中证金融科技主题ETF',                    # 1.74B volume - Fintech
+            '159870.SZ': '鹏华中证细分化工产业ETF',                   # 1.94B volume - Chemicals
             
-            # Energy & New Energy
-            '159755': '广发国证新能源车电池ETF',                   # 1.33B volume - EV battery
-            '159840': '工银瑞信国证新能源车电池ETF',                # 340.73M volume - EV battery
-            '515030': '华夏中证新能源汽车',                        # 170.33M volume - New energy auto
-            '159875': '嘉实中证新能源ETF',                       # 223.39M volume - New energy
-            
-            # Financial Services
-            '512000': '华宝中证全指证券公司',                      # 3.24B volume - Securities
-            '512800': '华宝中证银行',                           # 1.35B volume - Banking
-            '512700': '南方中证银行',                           # 124.04M volume - Banking
+            # Financial Services - Shanghai Stock Exchange
+            '512000.SS': '华宝中证全指证券公司',                      # 3.24B volume - Securities
+            '512800.SS': '华宝中证银行',                           # 1.35B volume - Banking
+            '512700.SS': '南方中证银行',                           # 124.04M volume - Banking
             
             # International & Emerging (kept from original)
             'EFA': 'iShares MSCI EAFE ETF',
