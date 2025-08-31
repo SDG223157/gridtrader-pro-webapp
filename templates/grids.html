@@ -46,8 +46,18 @@
                 </div>
                 
                 <div class="mt-4 flex space-x-2">
-                    <a href="/grids/{{ grid.id }}" class="text-blue-600 hover:text-blue-900 text-sm">View</a>
-                    <a href="/grids/{{ grid.id }}/edit" class="text-gray-600 hover:text-gray-900 text-sm">Edit</a>
+                    <a href="/grids/{{ grid.id }}" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-1 px-3 rounded">
+                        View Details
+                    </a>
+                    {% if grid.status.value == 'active' %}
+                    <button onclick="quickPauseGrid('{{ grid.id }}')" class="bg-yellow-600 hover:bg-yellow-700 text-white text-xs font-bold py-1 px-3 rounded">
+                        Pause
+                    </button>
+                    {% elif grid.status.value == 'paused' %}
+                    <button onclick="quickResumeGrid('{{ grid.id }}')" class="bg-green-600 hover:bg-green-700 text-white text-xs font-bold py-1 px-3 rounded">
+                        Resume
+                    </button>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -63,4 +73,46 @@
         {% endif %}
     </div>
 </div>
+
+<script>
+async function quickPauseGrid(gridId) {
+    if (!confirm('Pause this grid trading strategy?')) return;
+    
+    try {
+        const response = await fetch(`/api/grids/${gridId}/pause`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const result = await response.json();
+        if (result.success) {
+            window.location.reload();
+        } else {
+            alert(result.detail || 'Failed to pause grid');
+        }
+    } catch (error) {
+        alert('Failed to pause grid. Please try again.');
+    }
+}
+
+async function quickResumeGrid(gridId) {
+    if (!confirm('Resume this grid trading strategy?')) return;
+    
+    try {
+        const response = await fetch(`/api/grids/${gridId}/resume`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const result = await response.json();
+        if (result.success) {
+            window.location.reload();
+        } else {
+            alert(result.detail || 'Failed to resume grid');
+        }
+    } catch (error) {
+        alert('Failed to resume grid. Please try again.');
+    }
+}
+</script>
 {% endblock %}

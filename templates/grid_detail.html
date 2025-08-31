@@ -1,0 +1,265 @@
+{% extends "base_simple.html" %}
+
+{% block title %}{{ grid.name }} - Grid Details{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-6">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-900">{{ grid.name }}</h1>
+            <p class="text-gray-600 mt-1">{{ grid.symbol }} Grid Trading Strategy</p>
+        </div>
+        <div class="flex space-x-3">
+            <a href="/grids" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded">
+                ← Back to Grids
+            </a>
+            {% if grid.status.value == 'active' %}
+            <button onclick="pauseGrid('{{ grid.id }}')" class="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded">
+                Pause Grid
+            </button>
+            {% elif grid.status.value == 'paused' %}
+            <button onclick="resumeGrid('{{ grid.id }}')" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">
+                Resume Grid
+            </button>
+            {% endif %}
+            <button onclick="deleteGrid('{{ grid.id }}')" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">
+                Delete Grid
+            </button>
+        </div>
+    </div>
+
+    <!-- Grid Overview -->
+    <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <!-- Current Price -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-2">Current Price</h3>
+            <p class="text-3xl font-bold text-blue-600">${{ "%.2f".format(current_price) }}</p>
+            <p class="text-sm text-gray-500 mt-1">{{ grid.symbol }}</p>
+        </div>
+
+        <!-- Investment Amount -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-2">Investment</h3>
+            <p class="text-3xl font-bold text-green-600">${{ "%.2f".format(grid.investment_amount) }}</p>
+            <p class="text-sm text-gray-500 mt-1">Total allocated</p>
+        </div>
+
+        <!-- Total Profit -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-2">Total Profit</h3>
+            <p class="text-3xl font-bold {% if total_profit >= 0 %}text-green-600{% else %}text-red-600{% endif %}">
+                ${{ "%.2f".format(total_profit) }}
+            </p>
+            <p class="text-sm text-gray-500 mt-1">{{ "%.2f%%".format(grid_performance.roi) }} ROI</p>
+        </div>
+
+        <!-- Status -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-2">Status</h3>
+            <p class="text-2xl font-bold 
+               {% if grid.status.value == 'active' %}text-green-600
+               {% elif grid.status.value == 'paused' %}text-yellow-600
+               {% else %}text-gray-600{% endif %}">
+                {{ grid.status.value|title }}
+            </p>
+            <p class="text-sm text-gray-500 mt-1">{{ grid.active_orders }} active orders</p>
+        </div>
+    </div>
+
+    <!-- Grid Configuration -->
+    <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+        <h2 class="text-xl font-bold text-gray-900 mb-4">Grid Configuration</h2>
+        <div class="grid md:grid-cols-3 gap-6">
+            <div>
+                <h4 class="font-semibold text-gray-700">Price Range</h4>
+                <p class="text-sm text-gray-600">Upper: ${{ "%.2f".format(grid.upper_price) }}</p>
+                <p class="text-sm text-gray-600">Lower: ${{ "%.2f".format(grid.lower_price) }}</p>
+                <p class="text-sm text-gray-600">Spacing: ${{ "%.2f".format(grid.grid_spacing) }}</p>
+            </div>
+            <div>
+                <h4 class="font-semibold text-gray-700">Grid Setup</h4>
+                <p class="text-sm text-gray-600">Levels: {{ grid.strategy_config.grid_count }}</p>
+                <p class="text-sm text-gray-600">Per Level: ${{ "%.2f".format(grid.strategy_config.price_per_grid) }}</p>
+            </div>
+            <div>
+                <h4 class="font-semibold text-gray-700">Performance</h4>
+                <p class="text-sm text-gray-600">Filled Orders: {{ total_filled_orders }}</p>
+                <p class="text-sm text-gray-600">Completed: {{ grid.completed_orders }}</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Grid Orders Table -->
+    <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-xl font-bold text-gray-900">Grid Orders</h2>
+            <div class="text-sm text-gray-500">
+                Current Price: ${{ "%.2f".format(current_price) }}
+            </div>
+        </div>
+        
+        {% if orders %}
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Target Price</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Filled Price</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Filled At</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for order in orders %}
+                    <tr class="{% if order.target_price <= current_price and order.order_type.value == 'buy' %}bg-green-50{% elif order.target_price >= current_price and order.order_type.value == 'sell' %}bg-red-50{% endif %}">
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full
+                                {% if order.order_type.value == 'buy' %}bg-green-100 text-green-800{% else %}bg-red-100 text-red-800{% endif %}">
+                                {{ order.order_type.value|upper }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            ${{ "%.2f".format(order.target_price) }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {{ "%.4f".format(order.quantity) }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full
+                                {% if order.status.value == 'filled' %}bg-green-100 text-green-800
+                                {% elif order.status.value == 'pending' %}bg-yellow-100 text-yellow-800
+                                {% elif order.status.value == 'cancelled' %}bg-gray-100 text-gray-800
+                                {% else %}bg-red-100 text-red-800{% endif %}">
+                                {{ order.status.value|title }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {% if order.filled_price %}
+                                ${{ "%.2f".format(order.filled_price) }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {% if order.filled_at %}
+                                {{ order.filled_at.strftime('%Y-%m-%d %H:%M') }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-8">
+            <p class="text-gray-500">No grid orders found.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Grid Visualization -->
+    <div class="bg-white rounded-lg shadow-md p-6">
+        <h2 class="text-xl font-bold text-gray-900 mb-4">Grid Visualization</h2>
+        <div class="relative">
+            <!-- Price axis -->
+            <div class="space-y-2">
+                {% for level in grid.strategy_config.grid_levels %}
+                <div class="flex items-center justify-between p-2 rounded
+                    {% if level.price <= current_price and level.type == 'buy' %}bg-green-100 border-l-4 border-green-500
+                    {% elif level.price >= current_price and level.type == 'sell' %}bg-red-100 border-l-4 border-red-500
+                    {% else %}bg-gray-50 border-l-4 border-gray-300{% endif %}">
+                    
+                    <div class="flex items-center space-x-4">
+                        <span class="text-sm font-medium text-gray-700">Level {{ level.level }}</span>
+                        <span class="text-sm font-bold
+                            {% if level.type == 'buy' %}text-green-700{% else %}text-red-700{% endif %}">
+                            {{ level.type|upper }}
+                        </span>
+                    </div>
+                    
+                    <div class="flex items-center space-x-4">
+                        <span class="text-sm font-medium text-gray-900">${{ "%.2f".format(level.price) }}</span>
+                        <span class="text-xs text-gray-600">{{ "%.4f".format(level.quantity) }} shares</span>
+                        {% if level.price == current_price %}
+                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
+                            CURRENT
+                        </span>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+async function pauseGrid(gridId) {
+    if (!confirm('Are you sure you want to pause this grid strategy?')) return;
+    
+    try {
+        const response = await fetch(`/api/grids/${gridId}/pause`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const result = await response.json();
+        if (result.success) {
+            alert('Grid paused successfully!');
+            window.location.reload();
+        } else {
+            alert(result.detail || 'Failed to pause grid');
+        }
+    } catch (error) {
+        alert('Failed to pause grid. Please try again.');
+    }
+}
+
+async function resumeGrid(gridId) {
+    if (!confirm('Are you sure you want to resume this grid strategy?')) return;
+    
+    try {
+        const response = await fetch(`/api/grids/${gridId}/resume`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const result = await response.json();
+        if (result.success) {
+            alert('Grid resumed successfully!');
+            window.location.reload();
+        } else {
+            alert(result.detail || 'Failed to resume grid');
+        }
+    } catch (error) {
+        alert('Failed to resume grid. Please try again.');
+    }
+}
+
+async function deleteGrid(gridId) {
+    if (!confirm('Are you sure you want to delete this grid strategy? This will return unused cash to your portfolio.')) return;
+    
+    try {
+        const response = await fetch(`/api/grids/${gridId}`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const result = await response.json();
+        if (result.success) {
+            alert('Grid deleted successfully! Unused cash returned to portfolio.');
+            window.location.href = '/grids';
+        } else {
+            alert(result.detail || 'Failed to delete grid');
+        }
+    } catch (error) {
+        alert('Failed to delete grid. Please try again.');
+    }
+}
+</script>
+{% endblock %}

@@ -1296,30 +1296,271 @@ async def create_grid(request: CreateGridRequest, user: User = Depends(require_a
         if not portfolio:
             raise HTTPException(status_code=404, detail="Portfolio not found")
         
+        # Validate grid parameters
+        if request.upper_price <= request.lower_price:
+            raise HTTPException(status_code=400, detail="Upper price must be greater than lower price")
+        
+        if request.grid_count < 2:
+            raise HTTPException(status_code=400, detail="Grid count must be at least 2")
+        
+        if request.investment_amount <= 0:
+            raise HTTPException(status_code=400, detail="Investment amount must be positive")
+        
+        # Check if portfolio has sufficient cash
+        if portfolio.cash_balance < request.investment_amount:
+            raise HTTPException(status_code=400, detail="Insufficient cash balance in portfolio")
+        
+        # Get current stock price for validation
+        current_price = get_current_stock_price_trendwise_pattern(request.symbol)
+        
+        # Validate price range makes sense
+        if current_price > 0:
+            if current_price > request.upper_price or current_price < request.lower_price:
+                logger.warning(f"Current price {current_price} is outside grid range [{request.lower_price}, {request.upper_price}]")
+        
+        # Calculate grid spacing and strategy configuration
+        grid_spacing = Decimal(str((request.upper_price - request.lower_price) / request.grid_count))
+        price_per_grid = Decimal(str(request.investment_amount / request.grid_count))
+        
+        # Create strategy configuration
+        strategy_config = {
+            "grid_count": request.grid_count,
+            "price_per_grid": float(price_per_grid),
+            "current_price": current_price,
+            "created_at": datetime.now().isoformat(),
+            "grid_levels": []
+        }
+        
+        # Generate grid levels
+        for i in range(request.grid_count + 1):
+            level_price = request.lower_price + (i * float(grid_spacing))
+            strategy_config["grid_levels"].append({
+                "level": i,
+                "price": level_price,
+                "type": "buy" if level_price < current_price else "sell",
+                "quantity": float(price_per_grid / level_price) if level_price > 0 else 0
+            })
+        
         # Create grid
         grid = Grid(
             portfolio_id=request.portfolio_id,
-            symbol=request.symbol,
+            symbol=normalize_symbol_for_yfinance(request.symbol.upper()),
             name=request.name,
-            upper_price=request.upper_price,
-            lower_price=request.lower_price,
-            grid_spacing=(request.upper_price - request.lower_price) / request.grid_count,
-            investment_amount=request.investment_amount
+            strategy_config=strategy_config,
+            upper_price=Decimal(str(request.upper_price)),
+            lower_price=Decimal(str(request.lower_price)),
+            grid_spacing=grid_spacing,
+            investment_amount=Decimal(str(request.investment_amount)),
+            status=GridStatus.active
         )
+        
+        # Reserve cash from portfolio
+        portfolio.cash_balance -= Decimal(str(request.investment_amount))
         
         db.add(grid)
         db.commit()
         db.refresh(grid)
         
-        logger.info(f"Grid created: {grid.name} for {request.symbol}")
-        return {"success": True, "grid_id": grid.id, "message": "Grid created successfully"}
+        # Create initial grid orders (buy orders below current price, sell orders above)
+        await create_initial_grid_orders(grid, current_price, db)
+        
+        logger.info(f"✅ Grid created: {grid.name} for {request.symbol} with {request.grid_count} levels")
+        return {
+            "success": True, 
+            "grid_id": grid.id, 
+            "message": f"Grid trading strategy '{request.name}' created successfully with {request.grid_count} levels",
+            "current_price": current_price,
+            "grid_levels": len(strategy_config["grid_levels"])
+        }
     
     except HTTPException:
         raise
     except Exception as e:
         db.rollback()
-        logger.error(f"Error creating grid: {e}")
-        raise HTTPException(status_code=500, detail="Failed to create grid")
+        logger.error(f"❌ Error creating grid: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create grid: {str(e)}")
+
+async def create_initial_grid_orders(grid: Grid, current_price: float, db: Session):
+    """Create initial buy/sell orders for the grid strategy"""
+    try:
+        orders_created = 0
+        
+        for level in grid.strategy_config["grid_levels"]:
+            level_price = level["price"]
+            quantity = level["quantity"]
+            
+            if quantity <= 0:
+                continue
+                
+            # Create buy orders below current price
+            if level_price < current_price:
+                order = GridOrder(
+                    grid_id=grid.id,
+                    order_type=TransactionType.buy,
+                    target_price=Decimal(str(level_price)),
+                    quantity=Decimal(str(quantity)),
+                    status=OrderStatus.pending
+                )
+                db.add(order)
+                orders_created += 1
+            
+            # Create sell orders above current price (if we had existing holdings)
+            elif level_price > current_price:
+                # For now, we'll create these as pending until we have shares to sell
+                order = GridOrder(
+                    grid_id=grid.id,
+                    order_type=TransactionType.sell,
+                    target_price=Decimal(str(level_price)),
+                    quantity=Decimal(str(quantity)),
+                    status=OrderStatus.pending
+                )
+                db.add(order)
+                orders_created += 1
+        
+        grid.active_orders = orders_created
+        db.commit()
+        
+        logger.info(f"✅ Created {orders_created} initial grid orders for {grid.name}")
+        
+    except Exception as e:
+        logger.error(f"❌ Error creating initial grid orders: {e}")
+        raise
+
+@app.get("/grids/{grid_id}", response_class=HTMLResponse)
+async def grid_detail(grid_id: str, request: Request, db: Session = Depends(get_db)):
+    """View individual grid trading strategy details"""
+    context = get_user_context(request, db)
+    if not context["is_authenticated"]:
+        return RedirectResponse(url="/login", status_code=302)
+    
+    # Get grid with ownership verification
+    grid = db.query(Grid).join(Portfolio).filter(
+        Grid.id == grid_id,
+        Portfolio.user_id == context["user"].id
+    ).first()
+    
+    if not grid:
+        raise HTTPException(status_code=404, detail="Grid not found")
+    
+    # Get current stock price
+    current_price = get_current_stock_price_trendwise_pattern(grid.symbol)
+    
+    # Get grid orders
+    orders = db.query(GridOrder).filter(GridOrder.grid_id == grid_id).order_by(GridOrder.target_price).all()
+    
+    # Calculate grid performance
+    total_filled_orders = len([o for o in orders if o.status == OrderStatus.filled])
+    total_profit = sum([float(o.filled_price - o.target_price) * float(o.filled_quantity) 
+                       for o in orders if o.status == OrderStatus.filled and o.order_type == TransactionType.sell])
+    
+    context.update({
+        "grid": grid,
+        "current_price": current_price,
+        "orders": orders,
+        "total_filled_orders": total_filled_orders,
+        "total_profit": total_profit,
+        "grid_performance": {
+            "roi": (total_profit / float(grid.investment_amount)) * 100 if grid.investment_amount > 0 else 0,
+            "active_orders": grid.active_orders,
+            "completed_orders": grid.completed_orders
+        }
+    })
+    
+    return templates.TemplateResponse("grid_detail.html", {"request": request, **context})
+
+@app.post("/api/grids/{grid_id}/pause")
+async def pause_grid(grid_id: str, user: User = Depends(require_auth), db: Session = Depends(get_db)):
+    """Pause a grid trading strategy"""
+    try:
+        grid = db.query(Grid).join(Portfolio).filter(
+            Grid.id == grid_id,
+            Portfolio.user_id == user.id
+        ).first()
+        
+        if not grid:
+            raise HTTPException(status_code=404, detail="Grid not found")
+        
+        grid.status = GridStatus.paused
+        db.commit()
+        
+        logger.info(f"✅ Grid paused: {grid.name}")
+        return {"success": True, "message": "Grid paused successfully"}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ Error pausing grid: {e}")
+        raise HTTPException(status_code=500, detail="Failed to pause grid")
+
+@app.post("/api/grids/{grid_id}/resume")
+async def resume_grid(grid_id: str, user: User = Depends(require_auth), db: Session = Depends(get_db)):
+    """Resume a paused grid trading strategy"""
+    try:
+        grid = db.query(Grid).join(Portfolio).filter(
+            Grid.id == grid_id,
+            Portfolio.user_id == user.id
+        ).first()
+        
+        if not grid:
+            raise HTTPException(status_code=404, detail="Grid not found")
+        
+        grid.status = GridStatus.active
+        db.commit()
+        
+        logger.info(f"✅ Grid resumed: {grid.name}")
+        return {"success": True, "message": "Grid resumed successfully"}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ Error resuming grid: {e}")
+        raise HTTPException(status_code=500, detail="Failed to resume grid")
+
+@app.delete("/api/grids/{grid_id}")
+async def delete_grid(grid_id: str, user: User = Depends(require_auth), db: Session = Depends(get_db)):
+    """Delete a grid trading strategy and return invested cash"""
+    try:
+        grid = db.query(Grid).join(Portfolio).filter(
+            Grid.id == grid_id,
+            Portfolio.user_id == user.id
+        ).first()
+        
+        if not grid:
+            raise HTTPException(status_code=404, detail="Grid not found")
+        
+        portfolio = grid.portfolio
+        
+        # Cancel all pending orders
+        pending_orders = db.query(GridOrder).filter(
+            GridOrder.grid_id == grid_id,
+            GridOrder.status == OrderStatus.pending
+        ).all()
+        
+        for order in pending_orders:
+            order.status = OrderStatus.cancelled
+        
+        # Return unused investment amount to portfolio cash
+        if grid.status == GridStatus.active:
+            unused_amount = grid.investment_amount - (grid.total_profit or 0)
+            portfolio.cash_balance += unused_amount
+            logger.info(f"💰 Returned ${unused_amount} to portfolio from deleted grid")
+        
+        # Mark grid as cancelled
+        grid.status = GridStatus.cancelled
+        
+        db.commit()
+        
+        logger.info(f"✅ Grid deleted: {grid.name}")
+        return {"success": True, "message": "Grid deleted successfully"}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ Error deleting grid: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete grid")
 
 # Analytics Route
 @app.get("/analytics", response_class=HTMLResponse)
