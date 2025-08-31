@@ -17,6 +17,7 @@ from auth_simple import (
     setup_oauth, create_access_token, get_current_user, require_auth, 
     create_user, authenticate_user, create_or_update_user_from_google
 )
+from data_provider import YFinanceDataProvider
 import httpx
 from datetime import datetime
 from typing import List
@@ -87,6 +88,9 @@ app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 # Templates
 templates = Jinja2Templates(directory="templates")
+
+# Initialize data provider (existing working implementation)
+data_provider = YFinanceDataProvider()
 
 def normalize_symbol_for_yfinance(symbol: str) -> str:
     """Convert any symbol format to proper yfinance ticker symbol"""
@@ -168,8 +172,8 @@ async def get_real_stock_price_simple(symbol: str) -> float:
         logger.error(f"❌ Error in simple price fetch for {symbol}: {e}")
         return 0.0
 
-def get_current_stock_price_simple(symbol: str) -> float:
-    """Get current stock price using simple yfinance pattern like TrendWise"""
+def get_current_stock_price_working(symbol: str) -> float:
+    """Get current stock price using existing working data provider"""
     try:
         # Normalize symbol
         ticker_symbol = normalize_symbol_for_yfinance(symbol)
@@ -184,28 +188,20 @@ def get_current_stock_price_simple(symbol: str) -> float:
                 logger.info(f"📦 Using cached price for {symbol}: ${cached_price}")
                 return cached_price
         
-        logger.info(f"🔄 Simple yfinance fetch for {ticker_symbol}")
+        logger.info(f"🔄 Using existing data_provider for {ticker_symbol}")
         
-        # Simple yfinance approach (like TrendWise likely uses)
-        try:
-            ticker = yf.Ticker(ticker_symbol)
-            # Get recent data - simple and direct
-            data = ticker.history(period="1d", interval="1d")
-            
-            if not data.empty:
-                current_price = float(data['Close'].iloc[-1])
-                logger.info(f"✅ SUCCESS! Got real price for {symbol}: ${current_price}")
-                
-                # Cache the result
-                price_cache[cache_key] = (current_price, current_time)
-                return current_price
-            else:
-                logger.warning(f"⚠️ No data returned for {symbol}")
-                
-        except Exception as e:
-            logger.error(f"❌ yfinance error for {symbol}: {e}")
+        # Use the existing working data provider
+        current_price = data_provider.get_current_price(ticker_symbol)
         
-        # Fallback prices if yfinance fails
+        if current_price and current_price > 0:
+            logger.info(f"✅ SUCCESS! Got real price from data_provider for {symbol}: ${current_price}")
+            # Cache the result
+            price_cache[cache_key] = (current_price, current_time)
+            return current_price
+        else:
+            logger.warning(f"⚠️ Data provider returned no price for {symbol}")
+        
+        # Fallback prices if data provider fails
         if ticker_symbol == "AAPL":
             fallback_price = 230.0
         elif ticker_symbol.endswith('.SS'):
@@ -218,11 +214,11 @@ def get_current_stock_price_simple(symbol: str) -> float:
         return fallback_price
         
     except Exception as e:
-        logger.error(f"❌ Error in simple price fetch for {symbol}: {e}")
+        logger.error(f"❌ Error in working price fetch for {symbol}: {e}")
         return 230.0 if "AAPL" in symbol else 100.0
 
-async def update_holdings_current_prices(db: Session, portfolio_id: str = None):
-    """Update current prices for all holdings using multiple real data sources"""
+def update_holdings_current_prices(db: Session, portfolio_id: str = None):
+    """Update current prices for all holdings using existing data provider"""
     try:
         if portfolio_id:
             holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio_id).all()
@@ -234,10 +230,10 @@ async def update_holdings_current_prices(db: Session, portfolio_id: str = None):
         for i, holding in enumerate(holdings):
             # Add delay between requests to avoid rate limiting
             if i > 0:
-                await asyncio.sleep(2)  # 2-second delay between requests
+                time.sleep(2)  # 2-second delay between requests
             
-            # Try simple yfinance approach (like TrendWise)
-            current_price = get_current_stock_price_simple(holding.symbol)
+            # Try existing working data provider
+            current_price = get_current_stock_price_working(holding.symbol)
             
             # If alternative APIs failed, use intelligent fallback
             if not current_price or current_price <= 0:
@@ -586,8 +582,8 @@ async def portfolio_detail(portfolio_id: str, request: Request, db: Session = De
     if not portfolio:
         raise HTTPException(status_code=404, detail="Portfolio not found")
     
-    # Update current prices from real market data before displaying
-    await update_holdings_current_prices(db, portfolio_id)
+    # Update current prices from existing data provider before displaying
+    update_holdings_current_prices(db, portfolio_id)
     
     # Recalculate portfolio value with updated prices
     portfolio.current_value = portfolio.cash_balance or Decimal('0')
@@ -703,8 +699,8 @@ async def create_transaction(request: CreateTransactionRequest, user: User = Dep
             sale_proceeds = (quantity_decimal * price_decimal) - fees_decimal
             portfolio.cash_balance = (portfolio.cash_balance or Decimal('0')) + sale_proceeds
         
-        # Update current prices from real market data before calculating portfolio value
-        await update_holdings_current_prices(db, request.portfolio_id)
+        # Update current prices from existing data provider before calculating portfolio value
+        update_holdings_current_prices(db, request.portfolio_id)
         
         # Update portfolio current value using Decimal arithmetic (cash + holdings market value)
         portfolio.current_value = portfolio.cash_balance or Decimal('0')
