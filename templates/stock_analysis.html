@@ -67,29 +67,24 @@
         </div>
     </div>
     
-    <!-- Price Chart -->
+    <!-- TradingView Chart -->
     <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-        <h2 class="text-xl font-bold text-gray-900 mb-4">Price Chart</h2>
+        <h2 class="text-xl font-bold text-gray-900 mb-4">Advanced Price Chart</h2>
         
-        <!-- Chart Time Period Buttons -->
-        <div class="flex space-x-2 mb-4">
-            <button onclick="loadChart('1d')" class="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700" id="btn-1d">1D</button>
-            <button onclick="loadChart('5d')" class="px-3 py-1 bg-gray-200 text-gray-700 rounded text-sm hover:bg-gray-300" id="btn-5d">5D</button>
-            <button onclick="loadChart('1m')" class="px-3 py-1 bg-gray-200 text-gray-700 rounded text-sm hover:bg-gray-300" id="btn-1m">1M</button>
-            <button onclick="loadChart('3m')" class="px-3 py-1 bg-gray-200 text-gray-700 rounded text-sm hover:bg-gray-300" id="btn-3m">3M</button>
+        <!-- TradingView Widget Container -->
+        <div class="tradingview-widget-container" style="height: 500px; width: 100%;">
+            <div id="tradingview_chart" style="height: 100%; width: 100%;"></div>
         </div>
+    </div>
+    
+    <!-- TradingView Mini Chart -->
+    <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+        <h2 class="text-xl font-bold text-gray-900 mb-4">Quick Chart</h2>
         
-        <!-- Chart Container -->
-        <div class="h-96 bg-gray-50 rounded-lg flex items-center justify-center" id="chart-container">
-            <div class="text-center">
-                <i class="fas fa-chart-line text-4xl text-gray-300 mb-4"></i>
-                <p class="text-gray-500 mb-4">{{ symbol }} Price Chart</p>
-                <button onclick="loadChart('1d')" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
-                    Load Chart
-                </button>
-            </div>
+        <!-- TradingView Mini Widget -->
+        <div class="tradingview-widget-container" style="height: 300px; width: 100%;">
+            <div id="tradingview_mini" style="height: 100%; width: 100%;"></div>
         </div>
-        <canvas id="priceChart" style="display: none;" width="800" height="400"></canvas>
     </div>
     
     <!-- Company Information -->
@@ -136,107 +131,65 @@
     </div>
 </div>
 
-<!-- Chart.js for TrendWise-style charts -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.3/index.min.js"></script>
+<!-- TradingView Widgets -->
+<script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js" async>
+{
+  "autosize": true,
+  "symbol": "{{ symbol }}",
+  "interval": "D",
+  "timezone": "Etc/UTC",
+  "theme": "light",
+  "style": "1",
+  "locale": "en",
+  "enable_publishing": false,
+  "allow_symbol_change": true,
+  "calendar": false,
+  "support_host": "https://www.tradingview.com"
+}
+</script>
 
 <script>
-let currentChart = null;
-const chartData = {{ chart_data|tojson }};
+// Initialize TradingView Advanced Chart
+function initTradingViewChart() {
+    new TradingView.widget({
+        "autosize": true,
+        "symbol": "{{ symbol }}",
+        "interval": "D",
+        "timezone": "Etc/UTC",
+        "theme": "light",
+        "style": "1",
+        "locale": "en",
+        "toolbar_bg": "#f1f3f6",
+        "enable_publishing": false,
+        "allow_symbol_change": true,
+        "container_id": "tradingview_chart",
+        "studies": [
+            "Volume@tv-basicstudies",
+            "MASimple@tv-basicstudies"
+        ],
+        "show_popup_button": true,
+        "popup_width": "1000",
+        "popup_height": "650"
+    });
+}
 
-function loadChart(period) {
-    try {
-        // Update button states
-        document.querySelectorAll('[id^="btn-"]').forEach(btn => {
-            btn.className = 'px-3 py-1 bg-gray-200 text-gray-700 rounded text-sm hover:bg-gray-300';
-        });
-        document.getElementById(`btn-${period}`).className = 'px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700';
-        
-        // Show chart container
-        document.getElementById('chart-container').style.display = 'none';
-        document.getElementById('priceChart').style.display = 'block';
-        
-        // Destroy existing chart
-        if (currentChart) {
-            currentChart.destroy();
-        }
-        
-        // Get data for selected period
-        const data = chartData[period] || [];
-        
-        if (data.length === 0) {
-            alert(`No ${period} data available for {{ symbol }}`);
-            return;
-        }
-        
-        // Prepare chart data
-        const labels = data.map(d => {
-            const date = new Date(d.Date || d.Datetime);
-            if (period === '1d') {
-                return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-            } else {
-                return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-            }
-        });
-        
-        const prices = data.map(d => d.Close);
-        
-        // Create TrendWise-style chart
-        const ctx = document.getElementById('priceChart').getContext('2d');
-        currentChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: '{{ symbol }} Price',
-                    data: prices,
-                    borderColor: '#3B82F6',
-                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                    borderWidth: 2,
-                    fill: true,
-                    tension: 0.1
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    title: {
-                        display: true,
-                        text: `{{ symbol }} - ${period.toUpperCase()} Price Chart`,
-                        font: { size: 16, weight: 'bold' }
-                    },
-                    legend: {
-                        display: false
-                    }
-                },
-                scales: {
-                    x: {
-                        grid: { display: false }
-                    },
-                    y: {
-                        beginAtZero: false,
-                        grid: { color: 'rgba(0,0,0,0.1)' },
-                        ticks: {
-                            callback: function(value) {
-                                return '$' + value.toFixed(2);
-                            }
-                        }
-                    }
-                },
-                elements: {
-                    point: {
-                        radius: 0,
-                        hoverRadius: 4
-                    }
-                }
-            }
-        });
-        
-    } catch (error) {
-        console.error('Chart loading error:', error);
-        alert('Failed to load chart data');
-    }
+// Initialize TradingView Mini Widget
+function initTradingViewMini() {
+    new TradingView.MiniWidget({
+        "symbol": "{{ symbol }}",
+        "width": "100%",
+        "height": "300",
+        "locale": "en",
+        "dateRange": "12M",
+        "colorTheme": "light",
+        "trendLineColor": "rgba(41, 98, 255, 1)",
+        "underLineColor": "rgba(41, 98, 255, 0.3)",
+        "underLineBottomColor": "rgba(41, 98, 255, 0)",
+        "isTransparent": false,
+        "autosize": false,
+        "largeChartUrl": "",
+        "container_id": "tradingview_mini"
+    });
 }
 
 async function refreshAnalysis() {
@@ -255,11 +208,19 @@ async function refreshAnalysis() {
     }
 }
 
-// Auto-load 1-day chart on page load
+// Load TradingView widgets when page loads
 document.addEventListener('DOMContentLoaded', function() {
-    if (chartData['1d'] && chartData['1d'].length > 0) {
-        loadChart('1d');
-    }
+    // Load TradingView script and initialize widgets
+    const script = document.createElement('script');
+    script.src = 'https://s3.tradingview.com/tv.js';
+    script.onload = function() {
+        // Initialize both widgets after TradingView script loads
+        setTimeout(() => {
+            initTradingViewChart();
+            initTradingViewMini();
+        }, 1000);
+    };
+    document.head.appendChild(script);
 });
 </script>
 {% endblock %}
