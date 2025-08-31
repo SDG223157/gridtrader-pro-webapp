@@ -12,7 +12,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from database import get_db, User, UserProfile, Portfolio, Grid, Holding, Alert, Transaction, TransactionType
+from database import get_db, User, UserProfile, Portfolio, Grid, Holding, Alert, Transaction, TransactionType, GridStatus, GridOrder, OrderStatus
 from auth_simple import (
     setup_oauth, create_access_token, get_current_user, require_auth, 
     create_user, authenticate_user, create_or_update_user_from_google
