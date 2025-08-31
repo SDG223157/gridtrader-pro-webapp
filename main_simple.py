@@ -979,6 +979,51 @@ async def fix_existing_symbols(user: User = Depends(require_auth), db: Session =
         db.rollback()
         return {"success": False, "error": str(e)}
 
+@app.get("/debug/force-update-aapl")
+async def force_update_aapl(user: User = Depends(require_auth), db: Session = Depends(get_db)):
+    """Force update AAPL price to test the update mechanism"""
+    try:
+        # Find AAPL holdings for this user
+        aapl_holdings = db.query(Holding).join(Portfolio).filter(
+            Portfolio.user_id == user.id,
+            Holding.symbol.in_(["AAPL", "NASDAQ:AAPL"])
+        ).all()
+        
+        if not aapl_holdings:
+            return {"error": "No AAPL holdings found"}
+        
+        results = []
+        
+        for holding in aapl_holdings:
+            old_price = float(holding.current_price or 0)
+            
+            # Force update to fallback price for testing
+            new_price = 230.0  # Use fallback price directly
+            holding.current_price = Decimal(str(new_price))
+            
+            results.append({
+                "holding_id": holding.id,
+                "symbol": holding.symbol,
+                "old_price": old_price,
+                "new_price": new_price,
+                "quantity": float(holding.quantity),
+                "new_market_value": float(holding.quantity) * new_price
+            })
+            
+            logger.info(f"🔄 Force updated {holding.symbol}: ${old_price} → ${new_price}")
+        
+        db.commit()
+        
+        return {
+            "success": True,
+            "message": f"Force updated {len(aapl_holdings)} AAPL holdings",
+            "holdings_updated": results
+        }
+        
+    except Exception as e:
+        db.rollback()
+        return {"success": False, "error": str(e)}
+
 @app.get("/debug/test-yfinance/{symbol}")
 async def test_yfinance_price(symbol: str):
     """Test yfinance price fetching for a specific symbol"""
