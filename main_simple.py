@@ -20,6 +20,7 @@ import httpx
 from datetime import datetime
 from typing import List
 from pydantic import BaseModel
+from decimal import Decimal
 
 # Pydantic models for API requests
 class CreatePortfolioRequest(BaseModel):
@@ -378,18 +379,21 @@ async def create_transaction(request: CreateTransactionRequest, user: User = Dep
         if not portfolio:
             raise HTTPException(status_code=404, detail="Portfolio not found")
         
-        # Calculate total amount
-        total_amount = (request.quantity * request.price) + request.fees
+        # Calculate total amount using Decimal for precision
+        quantity_decimal = Decimal(str(request.quantity))
+        price_decimal = Decimal(str(request.price))
+        fees_decimal = Decimal(str(request.fees))
+        total_amount = (quantity_decimal * price_decimal) + fees_decimal
         
         # Create transaction
         transaction = Transaction(
             portfolio_id=request.portfolio_id,
             symbol=request.symbol.upper(),
             transaction_type=TransactionType(request.transaction_type),
-            quantity=request.quantity,
-            price=request.price,
+            quantity=quantity_decimal,
+            price=price_decimal,
             total_amount=total_amount,
-            fees=request.fees,
+            fees=fees_decimal,
             notes=request.notes,
             executed_at=datetime.utcnow()
         )
@@ -404,9 +408,9 @@ async def create_transaction(request: CreateTransactionRequest, user: User = Dep
         
         if request.transaction_type == "buy":
             if holding:
-                # Update existing holding
+                # Update existing holding using Decimal arithmetic
                 total_cost = (holding.quantity * holding.average_cost) + total_amount
-                total_quantity = holding.quantity + request.quantity
+                total_quantity = holding.quantity + quantity_decimal
                 holding.average_cost = total_cost / total_quantity
                 holding.quantity = total_quantity
             else:
@@ -414,32 +418,33 @@ async def create_transaction(request: CreateTransactionRequest, user: User = Dep
                 holding = Holding(
                     portfolio_id=request.portfolio_id,
                     symbol=request.symbol.upper(),
-                    quantity=request.quantity,
-                    average_cost=request.price,
-                    current_price=request.price
+                    quantity=quantity_decimal,
+                    average_cost=price_decimal,
+                    current_price=price_decimal
                 )
                 db.add(holding)
             
-            # Update portfolio cash balance
-            portfolio.cash_balance -= total_amount
+            # Update portfolio cash balance using Decimal
+            portfolio.cash_balance = (portfolio.cash_balance or Decimal('0')) - total_amount
             
         elif request.transaction_type == "sell":
-            if not holding or holding.quantity < request.quantity:
+            if not holding or holding.quantity < quantity_decimal:
                 raise HTTPException(status_code=400, detail="Insufficient shares to sell")
             
-            # Update holding
-            holding.quantity -= request.quantity
+            # Update holding using Decimal arithmetic
+            holding.quantity -= quantity_decimal
             if holding.quantity == 0:
                 db.delete(holding)
             
-            # Update portfolio cash balance
-            portfolio.cash_balance += (request.quantity * request.price) - request.fees
+            # Update portfolio cash balance using Decimal
+            sale_proceeds = (quantity_decimal * price_decimal) - fees_decimal
+            portfolio.cash_balance = (portfolio.cash_balance or Decimal('0')) + sale_proceeds
         
-        # Update portfolio current value (simplified)
-        portfolio.current_value = portfolio.cash_balance
+        # Update portfolio current value using Decimal arithmetic
+        portfolio.current_value = portfolio.cash_balance or Decimal('0')
         remaining_holdings = db.query(Holding).filter(Holding.portfolio_id == request.portfolio_id).all()
         for h in remaining_holdings:
-            portfolio.current_value += h.quantity * h.current_price
+            portfolio.current_value += (h.quantity or Decimal('0')) * (h.current_price or Decimal('0'))
         
         db.commit()
         db.refresh(transaction)
@@ -571,6 +576,52 @@ async def oauth_info():
         "expected_redirect_uri": f"{os.getenv('FRONTEND_URL', 'https://gridsai.app')}/api/auth/google/callback",
         "oauth_client_type": str(type(google_client)) if google_client else "None"
     }
+
+@app.post("/debug/test-transaction")
+async def debug_test_transaction(request: Request, db: Session = Depends(get_db)):
+    """Debug transaction creation"""
+    try:
+        user = get_current_user(request, db)
+        if not user:
+            return {"error": "Not authenticated"}
+        
+        # Get user's first portfolio
+        portfolio = db.query(Portfolio).filter(Portfolio.user_id == user.id).first()
+        if not portfolio:
+            return {"error": "No portfolio found"}
+        
+        # Try to create a test transaction
+        test_transaction = Transaction(
+            portfolio_id=portfolio.id,
+            symbol="TEST",
+            transaction_type=TransactionType.buy,
+            quantity=1.0,
+            price=100.0,
+            total_amount=100.0,
+            fees=0.0,
+            notes="Debug test transaction",
+            executed_at=datetime.utcnow()
+        )
+        
+        db.add(test_transaction)
+        db.commit()
+        db.refresh(test_transaction)
+        
+        return {
+            "success": True,
+            "transaction_id": test_transaction.id,
+            "portfolio_id": portfolio.id,
+            "user_id": user.id
+        }
+        
+    except Exception as e:
+        db.rollback()
+        import traceback
+        return {
+            "error": str(e),
+            "error_type": type(e).__name__,
+            "traceback": traceback.format_exc()
+        }
 
 # Simple startup
 @app.on_event("startup")
