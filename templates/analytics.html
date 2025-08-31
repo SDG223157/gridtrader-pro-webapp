@@ -8,7 +8,7 @@
     
     <!-- Portfolio Summary Cards -->
     <!-- Systematic Trading Framework Metrics -->
-    <div class="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
+    <div class="grid gap-6 md:grid-cols-2 lg:grid-cols-5 mb-8">
         <!-- Market Regime -->
         <div class="bg-white overflow-hidden shadow rounded-lg">
             <div class="p-5">
@@ -49,20 +49,40 @@
             </div>
         </div>
         
-        <!-- Sector Analysis -->
-        <div class="bg-white overflow-hidden shadow rounded-lg cursor-pointer" onclick="loadSectorAnalysis()">
+        <!-- US Market Sector Analysis -->
+        <div class="bg-white overflow-hidden shadow rounded-lg cursor-pointer" onclick="loadSectorAnalysis('US')">
             <div class="p-5">
                 <div class="flex items-center">
                     <div class="flex-shrink-0">
                         <div class="w-8 h-8 bg-blue-500 rounded-md flex items-center justify-center">
-                            <i class="fas fa-industry text-white"></i>
+                            <i class="fas fa-flag-usa text-white"></i>
                         </div>
                     </div>
                     <div class="ml-5 w-0 flex-1">
                         <dl>
-                            <dt class="text-sm font-medium text-gray-500 truncate">Sector Rotation</dt>
-                            <dd class="text-lg font-medium text-gray-900">Analyze</dd>
-                            <dd class="text-xs text-gray-600 mt-1">Click for sector recommendations</dd>
+                            <dt class="text-sm font-medium text-gray-500 truncate">US Market</dt>
+                            <dd class="text-lg font-medium text-gray-900">Sector Analysis</dd>
+                            <dd class="text-xs text-gray-600 mt-1">XLK, QQQ, ARKK, XLF, etc.</dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- China Market Sector Analysis -->
+        <div class="bg-white overflow-hidden shadow rounded-lg cursor-pointer" onclick="loadSectorAnalysis('China')">
+            <div class="p-5">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-8 h-8 bg-red-500 rounded-md flex items-center justify-center">
+                            <i class="fas fa-dragon text-white"></i>
+                        </div>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-gray-500 truncate">China Market</dt>
+                            <dd class="text-lg font-medium text-gray-900">Sector Analysis</dd>
+                            <dd class="text-xs text-gray-600 mt-1">513090.SS, 159915.SZ, etc.</dd>
                         </dl>
                     </div>
                 </div>
@@ -185,22 +205,22 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Systematic Trading Framework Functions
 
-// Load sector rotation analysis
-async function loadSectorAnalysis() {
+// Load sector rotation analysis for specific market
+async function loadSectorAnalysis(market = 'US') {
     try {
-        console.log('🔍 Loading sector rotation analysis...');
+        console.log(`🔍 Loading ${market} market sector rotation analysis...`);
         
-        const response = await fetch('/api/sector-analysis?lookback_days=90');
+        const response = await fetch(`/api/sector-analysis?market=${market}&lookback_days=90`);
         const data = await response.json();
         
         if (data.success) {
             showSectorAnalysisModal(data);
         } else {
-            alert('Failed to load sector analysis');
+            alert(`Failed to load ${market} sector analysis`);
         }
     } catch (error) {
-        console.error('Sector analysis error:', error);
-        alert('Failed to load sector analysis');
+        console.error(`${market} sector analysis error:`, error);
+        alert(`Failed to load ${market} sector analysis`);
     }
 }
 
@@ -233,12 +253,14 @@ function showSectorAnalysisModal(data) {
     modal.innerHTML = `
         <div class="bg-white rounded-lg p-6 max-w-4xl max-h-96 overflow-y-auto">
             <div class="flex justify-between items-center mb-4">
-                <h3 class="text-lg font-bold">Sector Rotation Analysis</h3>
+                <h3 class="text-lg font-bold">${data.market} Market Sector Analysis</h3>
                 <button onclick="this.closest('.fixed').remove()" class="text-gray-500 hover:text-gray-700">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
             <div class="mb-4">
+                <p class="text-sm text-gray-600">Market: <strong>${data.market === 'US' ? '🇺🇸 United States' : '🇨🇳 China'}</strong></p>
+                <p class="text-sm text-gray-600">Benchmark: <strong>${data.market === 'US' ? 'S&P 500 (SPY)' : 'Shanghai Composite (000001.SS)'}</strong></p>
                 <p class="text-sm text-gray-600">Market Regime: <strong>${data.market_regime.replace('_', ' ').toUpperCase()}</strong></p>
                 <p class="text-sm text-gray-600">Analyzed ${data.sectors_analyzed} sectors over ${data.lookback_days} days</p>
             </div>

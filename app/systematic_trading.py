@@ -58,7 +58,8 @@ class SystematicTradingEngine:
     """
     
     def __init__(self):
-        self.sector_etfs = {
+        # Separate US and Chinese ETFs for independent analysis
+        self.us_sector_etfs = {
             # US Technology & Growth
             'XLK': 'Technology Select Sector SPDR',
             'QQQ': 'Invesco QQQ Trust',
@@ -97,9 +98,10 @@ class SystematicTradingEngine:
             'XLRE': 'Real Estate Select Sector SPDR',
             'VNQ': 'Vanguard Real Estate ETF',
             
-            # CHINESE ETFs - From cn.investing.com actual data (40 most active traded)
-            # Note: Added .SS/.SZ suffixes for yfinance compatibility
-            
+        }
+        
+        # Chinese Market ETFs - From cn.investing.com actual data (40 most active traded)
+        self.china_sector_etfs = {
             # Hong Kong & Tech ETFs (Highest Volume) - Shanghai Stock Exchange
             '513090.SS': '易方达中证香港证券投资ETF',                    # 9.23B volume - Hong Kong securities
             '513130.SS': 'Huatai-PB CSOP HS Tech Id(QDII)',       # 8.76B volume - Hang Seng Tech
@@ -162,18 +164,6 @@ class SystematicTradingEngine:
             '512000.SS': '华宝中证全指证券公司',                      # 3.24B volume - Securities
             '512800.SS': '华宝中证银行',                           # 1.35B volume - Banking
             '512700.SS': '南方中证银行',                           # 124.04M volume - Banking
-            
-            # International & Emerging (kept from original)
-            'EFA': 'iShares MSCI EAFE ETF',
-            'EEM': 'iShares MSCI Emerging Markets',
-            'VEA': 'Vanguard FTSE Developed Markets',
-            
-            # Fixed Income & Alternatives (kept from original)
-            'TLT': 'iShares 20+ Year Treasury Bond',
-            'HYG': 'iShares iBoxx High Yield Corporate',
-            'GLD': 'SPDR Gold Shares',
-            'SLV': 'iShares Silver Trust'
-        }
         
         # Risk management parameters
         self.risk_limits = {
@@ -204,22 +194,40 @@ class SystematicTradingEngine:
             }
         }
     
-    def calculate_sector_scores(self, lookback_days: int = 90) -> List[SectorScore]:
+    def calculate_sector_scores(self, market: str = "US", lookback_days: int = 90) -> List[SectorScore]:
         """
         Calculate comprehensive sector scores for rotation decisions
         Based on momentum, mean reversion, fundamental, technical factors
+        
+        Args:
+            market: "US" for US market ETFs, "China" for Chinese market ETFs
+            lookback_days: Number of days for analysis
         """
         sector_scores = []
         
         try:
-            # Get market benchmark (S&P 500) for relative performance
-            spy = yf.Ticker("SPY")
-            spy_data = spy.history(period=f"{lookback_days}d")
-            spy_return = (spy_data['Close'].iloc[-1] / spy_data['Close'].iloc[0] - 1) if not spy_data.empty else 0
+            # Select appropriate ETF dictionary
+            if market.upper() == "CHINA":
+                sector_etfs = self.china_sector_etfs
+                # Use Shanghai Composite (000001.SS) as benchmark for Chinese market
+                benchmark_ticker = "000001.SS"
+                logger.info(f"🇨🇳 Analyzing Chinese market ETFs with Shanghai Composite benchmark")
+            else:
+                sector_etfs = self.us_sector_etfs
+                # Use S&P 500 as benchmark for US market
+                benchmark_ticker = "SPY"
+                logger.info(f"🇺🇸 Analyzing US market ETFs with S&P 500 benchmark")
             
-            for symbol, name in self.sector_etfs.items():
+            # Get market benchmark for relative performance
+            benchmark = yf.Ticker(benchmark_ticker)
+            benchmark_data = benchmark.history(period=f"{lookback_days}d")
+            benchmark_return = (benchmark_data['Close'].iloc[-1] / benchmark_data['Close'].iloc[0] - 1) if not benchmark_data.empty else 0
+            
+            logger.info(f"📈 {benchmark_ticker} benchmark return: {benchmark_return:.2%} over {lookback_days} days")
+            
+            for symbol, name in sector_etfs.items():
                 try:
-                    score = self._analyze_sector_etf(symbol, name, spy_return, lookback_days)
+                    score = self._analyze_sector_etf(symbol, name, benchmark_return, lookback_days)
                     if score:
                         sector_scores.append(score)
                         logger.info(f"📊 {symbol}: Conviction {score.conviction_score:.2f}, Weight {score.recommended_weight:.1%}")
@@ -231,11 +239,11 @@ class SystematicTradingEngine:
             # Sort by conviction score (highest first)
             sector_scores.sort(key=lambda x: x.conviction_score, reverse=True)
             
-            logger.info(f"✅ Analyzed {len(sector_scores)} sectors for rotation")
+            logger.info(f"✅ Analyzed {len(sector_scores)} {market} market sectors for rotation")
             return sector_scores
             
         except Exception as e:
-            logger.error(f"❌ Error calculating sector scores: {e}")
+            logger.error(f"❌ Error calculating {market} sector scores: {e}")
             return []
     
     def _analyze_sector_etf(self, symbol: str, name: str, market_return: float, lookback_days: int) -> Optional[SectorScore]:
