@@ -1114,6 +1114,38 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
     
     return templates.TemplateResponse("dashboard.html", {"request": request, **context})
 
+@app.get("/api/dashboard/summary")
+async def dashboard_summary(user: User = Depends(require_auth), db: Session = Depends(get_db)):
+    """Get dashboard summary data for real-time updates"""
+    try:
+        # Get user portfolios
+        portfolios = db.query(Portfolio).filter(Portfolio.user_id == user.id).all()
+        
+        # Calculate totals
+        total_value = sum([float(p.current_value or 0) for p in portfolios])
+        total_invested = sum([float(p.initial_capital or 0) for p in portfolios])
+        total_return = ((total_value - total_invested) / total_invested * 100) if total_invested > 0 else 0
+        
+        # Get active grids
+        active_grids = db.query(Grid).join(Portfolio).filter(
+            Portfolio.user_id == user.id,
+            Grid.status == GridStatus.active
+        ).count()
+        
+        return {
+            "success": True,
+            "total_value": total_value,
+            "total_invested": total_invested,
+            "total_return": total_return,
+            "total_portfolios": len(portfolios),
+            "active_grids": active_grids,
+            "last_updated": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Dashboard summary error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get dashboard summary")
+
 # Portfolio Management Routes
 @app.get("/portfolios", response_class=HTMLResponse)
 async def portfolios_page(request: Request, db: Session = Depends(get_db)):
