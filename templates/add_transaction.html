@@ -25,11 +25,15 @@
                     </select>
                 </div>
                 
-                <!-- Symbol -->
+                <!-- Symbol with Autocomplete -->
                 <div>
                     <label for="symbol" class="block text-sm font-medium text-gray-700">Stock Symbol</label>
-                    <input type="text" id="symbol" name="symbol" required placeholder="e.g., AAPL, MSFT, TSLA"
-                           class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 uppercase">
+                    <div class="ticker-input-container relative">
+                        <input type="text" id="symbol" name="symbol" required placeholder="e.g., AAPL, 600298, TSLA"
+                               autocomplete="off"
+                               class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 uppercase">
+                        <div class="suggestions absolute w-full bg-white border border-gray-300 rounded-md shadow-lg mt-1 z-50 hidden max-h-48 overflow-y-auto"></div>
+                    </div>
                     <p class="mt-1 text-sm text-gray-500">Enter the stock ticker symbol</p>
                 </div>
                 
@@ -153,9 +157,122 @@ document.getElementById('transactionForm').addEventListener('submit', async (e) 
     }
 });
 
-// Auto-uppercase symbol input
-document.getElementById('symbol').addEventListener('input', (e) => {
-    e.target.value = e.target.value.toUpperCase();
+// TrendWise-style ticker autocomplete
+const symbolInput = document.getElementById('symbol');
+const suggestionsDiv = document.querySelector('.suggestions');
+let debounceTimeout;
+
+function formatCompanyName(name) {
+    return name.replace(/\\'/g, "'");
+}
+
+// Clear input on double click
+symbolInput.addEventListener('dblclick', function() {
+    if (this.value) {
+        this.value = '';
+        suggestionsDiv.style.display = 'none';
+        suggestionsDiv.classList.add('hidden');
+    }
+});
+
+symbolInput.addEventListener('input', function() {
+    clearTimeout(debounceTimeout);
+    const query = this.value.trim();
+    
+    // Auto-uppercase
+    this.value = this.value.toUpperCase();
+    
+    if (query.length < 1) {
+        suggestionsDiv.style.display = 'none';
+        suggestionsDiv.classList.add('hidden');
+        return;
+    }
+    
+    debounceTimeout = setTimeout(() => {
+        fetch(`/search_ticker?query=${encodeURIComponent(query)}`)
+            .then(response => response.json())
+            .then(data => {
+                suggestionsDiv.innerHTML = '';
+                
+                if (data.length > 0) {
+                    // Show multiple results with enhanced display
+                    data.slice(0, 6).forEach(item => {
+                        if (item.symbol.toUpperCase() !== item.name.toUpperCase()) {
+                            const div = document.createElement('div');
+                            div.className = 'suggestion-item p-3 cursor-pointer hover:bg-blue-50 border-b border-gray-100 last:border-b-0 flex justify-between items-center';
+                            const formattedName = formatCompanyName(item.name);
+                            
+                            // Create symbol span
+                            const symbolSpan = document.createElement('span');
+                            symbolSpan.className = 'symbol font-bold text-blue-600 text-sm';
+                            symbolSpan.textContent = item.symbol;
+                            
+                            // Create name container with inline metadata
+                            const nameContainer = document.createElement('div');
+                            nameContainer.className = 'name flex-1 ml-3';
+                            
+                            const companyNameSpan = document.createElement('span');
+                            companyNameSpan.className = 'company-name text-gray-800 text-sm font-medium';
+                            companyNameSpan.textContent = formattedName;
+                            nameContainer.appendChild(companyNameSpan);
+                            
+                            // Add asset type and exchange info inline after name
+                            if (item.type || item.exchange) {
+                                const metaSpan = document.createElement('span');
+                                metaSpan.className = 'meta text-xs text-gray-500 ml-2 bg-gray-100 px-2 py-1 rounded';
+                                let metaText = [];
+                                if (item.type) metaText.push(item.type);
+                                if (item.exchange && item.exchange !== item.type) metaText.push(item.exchange);
+                                metaSpan.textContent = metaText.join(' • ');
+                                nameContainer.appendChild(metaSpan);
+                            }
+                            
+                            div.appendChild(symbolSpan);
+                            div.appendChild(nameContainer);
+                           
+                            div.addEventListener('click', function() {
+                                // Set input value to just the symbol
+                                symbolInput.value = item.symbol;
+                                suggestionsDiv.style.display = 'none';
+                                suggestionsDiv.classList.add('hidden');
+                                
+                                // Trigger change event to update calculations
+                                symbolInput.dispatchEvent(new Event('change'));
+                            });
+                            
+                            suggestionsDiv.appendChild(div);
+                        }
+                    });
+                    suggestionsDiv.style.display = 'block';
+                    suggestionsDiv.classList.remove('hidden');
+                } else {
+                    suggestionsDiv.style.display = 'none';
+                    suggestionsDiv.classList.add('hidden');
+                }
+            })
+            .catch(error => {
+                console.error('Search error:', error);
+                suggestionsDiv.style.display = 'none';
+                suggestionsDiv.classList.add('hidden');
+            });
+    }, 300);
+});
+
+// Close suggestions when clicking outside
+document.addEventListener('click', function(e) {
+    if (!symbolInput.contains(e.target) && !suggestionsDiv.contains(e.target)) {
+        suggestionsDiv.style.display = 'none';
+        suggestionsDiv.classList.add('hidden');
+    }
+});
+
+// Prevent suggestions from closing when clicking inside the input
+symbolInput.addEventListener('click', function(e) {
+    e.stopPropagation();
+    if (this.value.trim().length > 0) {
+        suggestionsDiv.style.display = 'block';
+        suggestionsDiv.classList.remove('hidden');
+    }
 });
 </script>
 {% endblock %}
