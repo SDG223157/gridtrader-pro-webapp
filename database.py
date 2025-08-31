@@ -187,6 +187,7 @@ class Transaction(Base):
     price = Column(DECIMAL(10, 4), nullable=False)
     total_amount = Column(DECIMAL(15, 2), nullable=False)
     fees = Column(DECIMAL(10, 2), default=0.00)
+    notes = Column(Text, nullable=True)
     executed_at = Column(DateTime, server_default=func.current_timestamp())
     created_at = Column(DateTime, server_default=func.current_timestamp())
 
