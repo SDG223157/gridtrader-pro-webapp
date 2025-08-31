@@ -392,6 +392,54 @@ async def create_portfolio(request: CreatePortfolioRequest, user: User = Depends
         logger.error(f"Error creating portfolio: {e}")
         raise HTTPException(status_code=500, detail="Failed to create portfolio")
 
+@app.delete("/api/portfolios/{portfolio_id}")
+async def delete_portfolio(portfolio_id: str, user: User = Depends(require_auth), db: Session = Depends(get_db)):
+    """Delete a portfolio and all associated data"""
+    try:
+        # Verify portfolio ownership
+        portfolio = db.query(Portfolio).filter(
+            Portfolio.id == portfolio_id,
+            Portfolio.user_id == user.id
+        ).first()
+        
+        if not portfolio:
+            raise HTTPException(status_code=404, detail="Portfolio not found")
+        
+        # Check if portfolio has holdings
+        holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio_id).all()
+        transactions = db.query(Transaction).filter(Transaction.portfolio_id == portfolio_id).all()
+        grids = db.query(Grid).filter(Grid.portfolio_id == portfolio_id).all()
+        
+        # Delete all associated data (cascade delete)
+        for holding in holdings:
+            db.delete(holding)
+        
+        for transaction in transactions:
+            db.delete(transaction)
+            
+        for grid in grids:
+            db.delete(grid)
+        
+        # Delete the portfolio
+        db.delete(portfolio)
+        db.commit()
+        
+        logger.info(f"Portfolio deleted: {portfolio.name} (ID: {portfolio_id}) for user {user.email}")
+        return {
+            "success": True, 
+            "message": "Portfolio deleted successfully",
+            "deleted_holdings": len(holdings),
+            "deleted_transactions": len(transactions),
+            "deleted_grids": len(grids)
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deleting portfolio: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete portfolio")
+
 # Portfolio Detail and Transaction Routes
 @app.get("/portfolios/{portfolio_id}", response_class=HTMLResponse)
 async def portfolio_detail(portfolio_id: str, request: Request, db: Session = Depends(get_db)):
