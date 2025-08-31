@@ -168,13 +168,13 @@ async def get_real_stock_price_simple(symbol: str) -> float:
         logger.error(f"❌ Error in simple price fetch for {symbol}: {e}")
         return 0.0
 
-def get_current_stock_price(symbol: str) -> float:
-    """Get current stock price with multiple real data sources"""
+def get_current_stock_price_simple(symbol: str) -> float:
+    """Get current stock price using simple yfinance pattern like TrendWise"""
     try:
-        # Normalize symbol for APIs
+        # Normalize symbol
         ticker_symbol = normalize_symbol_for_yfinance(symbol)
         
-        # Check cache first (5-minute cache)
+        # Check cache first
         cache_key = ticker_symbol
         current_time = time.time()
         
@@ -184,48 +184,41 @@ def get_current_stock_price(symbol: str) -> float:
                 logger.info(f"📦 Using cached price for {symbol}: ${cached_price}")
                 return cached_price
         
-        logger.info(f"🔄 Fetching REAL price for {symbol} (normalized to: {ticker_symbol})")
-        current_price = None
+        logger.info(f"🔄 Simple yfinance fetch for {ticker_symbol}")
         
-        # Method 1: Try yfinance (but expect it to fail in container)
+        # Simple yfinance approach (like TrendWise likely uses)
         try:
-            time.sleep(1)  # Rate limiting delay
             ticker = yf.Ticker(ticker_symbol)
-            hist = ticker.history(period="1d", timeout=5)
-            if not hist.empty:
-                current_price = float(hist['Close'].iloc[-1])
-                logger.info(f"✅ Got REAL price from yfinance: ${current_price}")
-        except Exception as e:
-            logger.warning(f"⚠️ yfinance blocked: {e}")
-        
-        # Method 2: Try simple direct APIs for real prices  
-        if not current_price:
-            import asyncio
-            current_price = await get_real_stock_price_simple(symbol)
-        
-        # Method 3: Use intelligent fallback based on recent market data
-        if not current_price or current_price <= 0:
-            if ticker_symbol == "AAPL":
-                current_price = 230.0  # Conservative AAPL estimate
-                logger.info(f"📈 Using intelligent fallback for AAPL: ${current_price}")
-            elif ticker_symbol.endswith('.SS'):
-                current_price = 36.0  # Chinese stock estimate
-                logger.info(f"📈 Using intelligent fallback for {ticker_symbol}: ${current_price}")
-            else:
-                current_price = 100.0  # Generic fallback
-                logger.info(f"📈 Using intelligent fallback for {ticker_symbol}: ${current_price}")
-        
-        # Cache and return the price
-        if current_price and current_price > 0:
-            price_cache[cache_key] = (current_price, current_time)
-            logger.info(f"✅ Final price for {symbol}: ${current_price} (cached)")
-            return current_price
-        else:
-            logger.error(f"❌ All methods failed for {symbol}, using emergency fallback")
-            return 230.0 if ticker_symbol == "AAPL" else 100.0
+            # Get recent data - simple and direct
+            data = ticker.history(period="1d", interval="1d")
             
+            if not data.empty:
+                current_price = float(data['Close'].iloc[-1])
+                logger.info(f"✅ SUCCESS! Got real price for {symbol}: ${current_price}")
+                
+                # Cache the result
+                price_cache[cache_key] = (current_price, current_time)
+                return current_price
+            else:
+                logger.warning(f"⚠️ No data returned for {symbol}")
+                
+        except Exception as e:
+            logger.error(f"❌ yfinance error for {symbol}: {e}")
+        
+        # Fallback prices if yfinance fails
+        if ticker_symbol == "AAPL":
+            fallback_price = 230.0
+        elif ticker_symbol.endswith('.SS'):
+            fallback_price = 36.0
+        else:
+            fallback_price = 100.0
+            
+        logger.info(f"📈 Using fallback price for {symbol}: ${fallback_price}")
+        price_cache[cache_key] = (fallback_price, current_time)
+        return fallback_price
+        
     except Exception as e:
-        logger.error(f"❌ Error fetching price for {symbol}: {e}")
+        logger.error(f"❌ Error in simple price fetch for {symbol}: {e}")
         return 230.0 if "AAPL" in symbol else 100.0
 
 async def update_holdings_current_prices(db: Session, portfolio_id: str = None):
@@ -243,8 +236,8 @@ async def update_holdings_current_prices(db: Session, portfolio_id: str = None):
             if i > 0:
                 await asyncio.sleep(2)  # 2-second delay between requests
             
-            # Try simple direct APIs first for real prices
-            current_price = await get_real_stock_price_simple(holding.symbol)
+            # Try simple yfinance approach (like TrendWise)
+            current_price = get_current_stock_price_simple(holding.symbol)
             
             # If alternative APIs failed, use intelligent fallback
             if not current_price or current_price <= 0:
