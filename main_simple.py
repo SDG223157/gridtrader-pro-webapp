@@ -208,28 +208,29 @@ def get_current_stock_price_docker_fixed(symbol: str) -> float:
             # Create ticker with custom session
             ticker = yf.Ticker(ticker_symbol, session=session)
             
-            # Try multiple approaches like TrendWise might
-            # Method 1: Recent intraday data
+            # Use daily data approach (more reliable like TrendWise)
             try:
-                data = ticker.history(period="1d", interval="5m", prepost=False, auto_adjust=True, timeout=10)
-                if not data.empty:
-                    current_price = float(data['Close'].iloc[-1])
-                    logger.info(f"✅ SUCCESS! Got price from 5m data for {symbol}: ${current_price}")
-                    price_cache[cache_key] = (current_price, current_time)
-                    return current_price
-            except Exception as e:
-                logger.warning(f"⚠️ 5m interval failed for {symbol}: {e}")
-            
-            # Method 2: Daily data with session
-            try:
-                data = ticker.history(period="2d", interval="1d", prepost=False, auto_adjust=True, timeout=10)
+                data = ticker.history(period="5d", interval="1d", prepost=False, auto_adjust=True, timeout=15)
                 if not data.empty:
                     current_price = float(data['Close'].iloc[-1])
                     logger.info(f"✅ SUCCESS! Got price from daily data for {symbol}: ${current_price}")
                     price_cache[cache_key] = (current_price, current_time)
                     return current_price
+                else:
+                    logger.warning(f"⚠️ Empty daily data for {symbol}")
             except Exception as e:
                 logger.warning(f"⚠️ Daily data failed for {symbol}: {e}")
+            
+            # Fallback: Try simple 1-day period
+            try:
+                data = ticker.history(period="1d", interval="1d", timeout=15)
+                if not data.empty:
+                    current_price = float(data['Close'].iloc[-1])
+                    logger.info(f"✅ SUCCESS! Got price from 1d data for {symbol}: ${current_price}")
+                    price_cache[cache_key] = (current_price, current_time)
+                    return current_price
+            except Exception as e:
+                logger.warning(f"⚠️ 1d data failed for {symbol}: {e}")
                 
         except Exception as e:
             logger.error(f"❌ Docker yfinance setup error for {symbol}: {e}")
