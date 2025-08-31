@@ -1180,7 +1180,8 @@ async def portfolio_detail(portfolio_id: str, request: Request, db: Session = De
     
     db.commit()
     
-    # Get transactions
+    # Get holdings and transactions for display
+    holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio_id).all()
     transactions = db.query(Transaction).filter(Transaction.portfolio_id == portfolio_id).order_by(Transaction.executed_at.desc()).limit(20).all()
     
     context.update({
