@@ -338,7 +338,7 @@ async def portfolio_detail(portfolio_id: str, request: Request, db: Session = De
     
     # Get holdings and transactions
     holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio_id).all()
-    transactions = db.query(Transaction).filter(Transaction.portfolio_id == portfolio_id).order_by(Transaction.transaction_date.desc()).limit(20).all()
+    transactions = db.query(Transaction).filter(Transaction.portfolio_id == portfolio_id).order_by(Transaction.executed_at.desc()).limit(20).all()
     
     context.update({
         "portfolio": portfolio,
@@ -390,7 +390,8 @@ async def create_transaction(request: CreateTransactionRequest, user: User = Dep
             price=request.price,
             total_amount=total_amount,
             fees=request.fees,
-            notes=request.notes
+            notes=request.notes,
+            executed_at=datetime.utcnow()
         )
         
         db.add(transaction)

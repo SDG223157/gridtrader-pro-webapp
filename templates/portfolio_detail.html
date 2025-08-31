@@ -126,7 +126,7 @@
                     {% for transaction in transactions %}
                     <tr>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {{ transaction.transaction_date.strftime('%m/%d/%Y %H:%M') }}
+                            {{ transaction.executed_at.strftime('%m/%d/%Y %H:%M') }}
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap">
                             <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
