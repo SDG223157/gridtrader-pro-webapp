@@ -14,9 +14,14 @@
                         class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
                     <option value="">Select a portfolio</option>
                     {% for portfolio in portfolios %}
-                    <option value="{{ portfolio.id }}">{{ portfolio.name }}</option>
+                    <option value="{{ portfolio.id }}" data-cash-balance="{{ portfolio.cash_balance }}">
+                        {{ portfolio.name }} - ${{ "{:,.2f}".format(portfolio.cash_balance) }} available
+                    </option>
                     {% endfor %}
                 </select>
+                <div id="cash-balance-display" class="mt-2 text-sm text-green-600 font-medium hidden">
+                    Available Cash: $<span id="available-cash">0.00</span>
+                </div>
             </div>
             
             <div>
@@ -75,6 +80,61 @@
 </div>
 
 <script>
+// Portfolio cash balance tracking
+const portfolioSelect = document.getElementById('portfolio_id');
+const cashBalanceDisplay = document.getElementById('cash-balance-display');
+const availableCashSpan = document.getElementById('available-cash');
+const investmentInput = document.getElementById('investment_amount');
+let currentCashBalance = 0;
+
+// Update cash balance display when portfolio changes
+portfolioSelect.addEventListener('change', function() {
+    const selectedOption = this.options[this.selectedIndex];
+    if (selectedOption.value) {
+        currentCashBalance = parseFloat(selectedOption.dataset.cashBalance) || 0;
+        availableCashSpan.textContent = currentCashBalance.toLocaleString('en-US', {minimumFractionDigits: 2});
+        cashBalanceDisplay.classList.remove('hidden');
+        
+        // Validate current investment amount
+        validateInvestmentAmount();
+    } else {
+        cashBalanceDisplay.classList.add('hidden');
+        currentCashBalance = 0;
+    }
+});
+
+// Real-time investment amount validation
+function validateInvestmentAmount() {
+    const investmentAmount = parseFloat(investmentInput.value) || 0;
+    
+    if (currentCashBalance > 0 && investmentAmount > currentCashBalance) {
+        investmentInput.style.borderColor = '#ef4444';
+        investmentInput.style.backgroundColor = '#fef2f2';
+        
+        // Show warning message
+        let warningMsg = document.getElementById('investment-warning');
+        if (!warningMsg) {
+            warningMsg = document.createElement('div');
+            warningMsg.id = 'investment-warning';
+            warningMsg.className = 'mt-1 text-sm text-red-600';
+            investmentInput.parentNode.appendChild(warningMsg);
+        }
+        warningMsg.textContent = `Exceeds available cash by $${(investmentAmount - currentCashBalance).toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+    } else {
+        investmentInput.style.borderColor = '';
+        investmentInput.style.backgroundColor = '';
+        
+        // Remove warning message
+        const warningMsg = document.getElementById('investment-warning');
+        if (warningMsg) {
+            warningMsg.remove();
+        }
+    }
+}
+
+// Add event listener for investment amount validation
+investmentInput.addEventListener('input', validateInvestmentAmount);
+
 // TrendWise-style ticker autocomplete for Grid Creation
 const symbolInput = document.getElementById('symbol');
 const suggestionsDiv = document.querySelector('.suggestions');
@@ -193,9 +253,17 @@ symbolInput.addEventListener('click', function(e) {
     }
 });
 
-// Grid form submission
+// Grid form submission with validation
 document.getElementById('gridForm').addEventListener('submit', async (e) => {
     e.preventDefault();
+    
+    // Pre-submission validation
+    const investmentAmount = parseFloat(investmentInput.value) || 0;
+    if (currentCashBalance > 0 && investmentAmount > currentCashBalance) {
+        alert(`Insufficient funds! You have $${currentCashBalance.toLocaleString()} available, but trying to invest $${investmentAmount.toLocaleString()}.`);
+        return;
+    }
+    
     const formData = new FormData(e.target);
     const data = Object.fromEntries(formData);
     
@@ -204,6 +272,23 @@ document.getElementById('gridForm').addEventListener('submit', async (e) => {
     data.lower_price = parseFloat(data.lower_price);
     data.grid_count = parseInt(data.grid_count);
     data.investment_amount = parseFloat(data.investment_amount);
+    
+    // Additional validations
+    if (data.upper_price <= data.lower_price) {
+        alert('Upper price must be greater than lower price.');
+        return;
+    }
+    
+    if (data.grid_count < 2 || data.grid_count > 50) {
+        alert('Grid count must be between 2 and 50.');
+        return;
+    }
+    
+    // Show loading state
+    const submitButton = document.querySelector('button[type="submit"]');
+    const originalText = submitButton.textContent;
+    submitButton.textContent = 'Creating Grid...';
+    submitButton.disabled = true;
     
     try {
         const response = await fetch('/api/grids', {
@@ -217,12 +302,18 @@ document.getElementById('gridForm').addEventListener('submit', async (e) => {
         const result = await response.json();
         
         if (result.success) {
+            alert(`Grid "${data.name}" created successfully with ${result.grid_levels} levels!`);
             window.location.href = '/grids';
         } else {
             alert(result.detail || 'Failed to create grid');
         }
     } catch (error) {
+        console.error('Grid creation error:', error);
         alert('Failed to create grid. Please try again.');
+    } finally {
+        // Reset button state
+        submitButton.textContent = originalText;
+        submitButton.disabled = false;
     }
 });
 </script>
