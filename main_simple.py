@@ -561,8 +561,19 @@ def update_holdings_current_prices(db: Session, portfolio_id: str = None):
 def get_user_context(request: Request, db: Session) -> dict:
     """Get user context for templates"""
     user = get_current_user(request, db)
+    
+    # Determine proper display name
+    display_name = "User"
+    if user:
+        if user.profile and user.profile.display_name and user.profile.display_name != "Debug User":
+            display_name = user.profile.display_name
+        elif user.email:
+            # Use part before @ as display name (e.g., john@gmail.com → john)
+            display_name = user.email.split('@')[0].title()
+        
     return {
         "user": user,
+        "display_name": display_name,
         "is_authenticated": user is not None
     }
 
