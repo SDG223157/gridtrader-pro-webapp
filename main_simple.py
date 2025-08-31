@@ -85,33 +85,63 @@ app.mount("/static", StaticFiles(directory=static_dir), name="static")
 # Templates
 templates = Jinja2Templates(directory="templates")
 
+def normalize_symbol_for_yfinance(symbol: str) -> str:
+    """Convert any symbol format to proper yfinance ticker symbol"""
+    # Remove common prefixes that yfinance doesn't need
+    if symbol.startswith('NASDAQ:'):
+        return symbol.replace('NASDAQ:', '')
+    elif symbol.startswith('NYSE:'):
+        return symbol.replace('NYSE:', '')
+    elif symbol.startswith('AMEX:'):
+        return symbol.replace('AMEX:', '')
+    else:
+        # Keep original for international symbols (e.g., 600298.SS)
+        return symbol
+
 def get_current_stock_price(symbol: str) -> float:
     """Get current stock price from yfinance"""
     try:
-        # Handle different symbol formats
-        if symbol.endswith('.SS'):
-            # Chinese stocks - use original symbol
-            ticker_symbol = symbol
-        elif symbol.startswith('NASDAQ:'):
-            # Remove NASDAQ: prefix
-            ticker_symbol = symbol.replace('NASDAQ:', '')
-        else:
-            # Use symbol as-is
-            ticker_symbol = symbol
+        # Normalize symbol for yfinance
+        ticker_symbol = normalize_symbol_for_yfinance(symbol)
+        logger.info(f"Fetching price for {symbol} (normalized to: {ticker_symbol})")
         
         ticker = yf.Ticker(ticker_symbol)
-        hist = ticker.history(period="1d")
         
-        if not hist.empty:
-            current_price = float(hist['Close'].iloc[-1])
-            logger.info(f"Current price for {symbol}: ${current_price}")
+        # Try multiple methods to get current price
+        current_price = None
+        
+        # Method 1: Try ticker.info (most current)
+        try:
+            info = ticker.info
+            if info and 'currentPrice' in info:
+                current_price = float(info['currentPrice'])
+                logger.info(f"Got price from ticker.info: ${current_price}")
+        except:
+            pass
+        
+        # Method 2: Try recent history if info failed
+        if not current_price:
+            hist = ticker.history(period="1d")
+            if not hist.empty:
+                current_price = float(hist['Close'].iloc[-1])
+                logger.info(f"Got price from history: ${current_price}")
+        
+        # Method 3: Try 5-day history if 1-day failed
+        if not current_price:
+            hist = ticker.history(period="5d")
+            if not hist.empty:
+                current_price = float(hist['Close'].iloc[-1])
+                logger.info(f"Got price from 5-day history: ${current_price}")
+        
+        if current_price and current_price > 0:
+            logger.info(f"✅ Current price for {symbol}: ${current_price}")
             return current_price
         else:
-            logger.warning(f"No price data found for {symbol}")
+            logger.warning(f"⚠️ No valid price data found for {symbol}")
             return 0.0
             
     except Exception as e:
-        logger.error(f"Error fetching price for {symbol}: {e}")
+        logger.error(f"❌ Error fetching price for {symbol}: {e}")
         return 0.0
 
 def update_holdings_current_prices(db: Session, portfolio_id: str = None):
@@ -515,10 +545,13 @@ async def create_transaction(request: CreateTransactionRequest, user: User = Dep
         fees_decimal = Decimal(str(request.fees))
         total_amount = (quantity_decimal * price_decimal) + fees_decimal
         
+        # Normalize symbol for consistent storage and yfinance compatibility
+        normalized_symbol = normalize_symbol_for_yfinance(request.symbol.upper())
+        
         # Create transaction
         transaction = Transaction(
             portfolio_id=request.portfolio_id,
-            symbol=request.symbol.upper(),
+            symbol=normalized_symbol,
             transaction_type=TransactionType(request.transaction_type),
             quantity=quantity_decimal,
             price=price_decimal,
@@ -533,7 +566,7 @@ async def create_transaction(request: CreateTransactionRequest, user: User = Dep
         # Update or create holding
         holding = db.query(Holding).filter(
             Holding.portfolio_id == request.portfolio_id,
-            Holding.symbol == request.symbol.upper()
+            Holding.symbol == normalized_symbol
         ).first()
         
         if request.transaction_type == "buy":
@@ -547,7 +580,7 @@ async def create_transaction(request: CreateTransactionRequest, user: User = Dep
                 # Create new holding
                 holding = Holding(
                     portfolio_id=request.portfolio_id,
-                    symbol=request.symbol.upper(),
+                    symbol=normalized_symbol,
                     quantity=quantity_decimal,
                     average_cost=price_decimal,
                     current_price=price_decimal
@@ -857,6 +890,49 @@ async def refresh_prices(user: User = Depends(require_auth), db: Session = Depen
             "success": True,
             "message": f"Updated prices for {total_holdings_updated} holdings",
             "holdings_updated": total_holdings_updated
+        }
+        
+    except Exception as e:
+        db.rollback()
+        return {"success": False, "error": str(e)}
+
+@app.get("/admin/fix-symbols")
+async def fix_existing_symbols(user: User = Depends(require_auth), db: Session = Depends(get_db)):
+    """Fix existing symbols to use proper yfinance format"""
+    try:
+        # Fix holdings symbols
+        holdings = db.query(Holding).join(Portfolio).filter(Portfolio.user_id == user.id).all()
+        holdings_fixed = 0
+        
+        for holding in holdings:
+            old_symbol = holding.symbol
+            new_symbol = normalize_symbol_for_yfinance(old_symbol)
+            
+            if old_symbol != new_symbol:
+                holding.symbol = new_symbol
+                holdings_fixed += 1
+                logger.info(f"Fixed holding symbol: {old_symbol} → {new_symbol}")
+        
+        # Fix transaction symbols
+        transactions = db.query(Transaction).join(Portfolio).filter(Portfolio.user_id == user.id).all()
+        transactions_fixed = 0
+        
+        for transaction in transactions:
+            old_symbol = transaction.symbol
+            new_symbol = normalize_symbol_for_yfinance(old_symbol)
+            
+            if old_symbol != new_symbol:
+                transaction.symbol = new_symbol
+                transactions_fixed += 1
+                logger.info(f"Fixed transaction symbol: {old_symbol} → {new_symbol}")
+        
+        db.commit()
+        
+        return {
+            "success": True,
+            "message": f"Fixed {holdings_fixed} holdings and {transactions_fixed} transactions",
+            "holdings_fixed": holdings_fixed,
+            "transactions_fixed": transactions_fixed
         }
         
     except Exception as e:
