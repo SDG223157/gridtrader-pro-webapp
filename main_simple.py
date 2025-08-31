@@ -456,8 +456,19 @@ async def portfolio_detail(portfolio_id: str, request: Request, db: Session = De
     if not portfolio:
         raise HTTPException(status_code=404, detail="Portfolio not found")
     
-    # Get holdings and transactions
+    # Update current prices from yfinance before displaying
+    update_holdings_current_prices(db, portfolio_id)
+    
+    # Recalculate portfolio value with updated prices
+    portfolio.current_value = portfolio.cash_balance or Decimal('0')
     holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio_id).all()
+    for h in holdings:
+        holding_market_value = (h.quantity or Decimal('0')) * (h.current_price or Decimal('0'))
+        portfolio.current_value += holding_market_value
+    
+    db.commit()
+    
+    # Get transactions
     transactions = db.query(Transaction).filter(Transaction.portfolio_id == portfolio_id).order_by(Transaction.executed_at.desc()).limit(20).all()
     
     context.update({

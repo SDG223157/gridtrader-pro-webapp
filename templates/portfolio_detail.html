@@ -48,6 +48,10 @@
                class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
                 Add Transaction
             </a>
+            <button onclick="refreshPrices('{{ portfolio.id }}')" 
+                    class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">
+                <i class="fas fa-sync-alt mr-1"></i> Refresh Prices
+            </button>
             <a href="/portfolios" 
                class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded">
                 Back to Portfolios
@@ -206,6 +210,45 @@ async function deletePortfolioFromDetail(portfolioId, portfolioName) {
     } catch (error) {
         alert('❌ Failed to delete portfolio. Please try again.');
         console.error('Delete portfolio error:', error);
+    }
+}
+
+async function refreshPrices(portfolioId) {
+    try {
+        const button = document.querySelector('button[onclick*="refreshPrices"]');
+        const originalText = button.innerHTML;
+        
+        // Show loading state
+        button.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Updating Prices...';
+        button.disabled = true;
+        
+        const response = await fetch('/api/refresh-prices', {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert(`✅ Prices updated successfully!\n\nUpdated ${result.holdings_updated || 0} holdings with real-time market prices from yfinance.`);
+            
+            // Reload the page to show updated prices
+            window.location.reload();
+        } else {
+            alert(`❌ Failed to update prices: ${result.error || 'Unknown error'}`);
+            button.innerHTML = originalText;
+            button.disabled = false;
+        }
+    } catch (error) {
+        alert('❌ Failed to refresh prices. Please try again.');
+        console.error('Refresh prices error:', error);
+        
+        // Restore button
+        const button = document.querySelector('button[onclick*="refreshPrices"]');
+        button.innerHTML = '<i class="fas fa-sync-alt mr-1"></i> Refresh Prices';
+        button.disabled = false;
     }
 }
 </script>
