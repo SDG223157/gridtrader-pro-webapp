@@ -574,65 +574,148 @@ async def homepage(request: Request, db: Session = Depends(get_db)):
         return RedirectResponse(url="/dashboard", status_code=302)
     return templates.TemplateResponse("index.html", {"request": request, **context})
 
+def verify_ticker_yfinance(symbol: str) -> Tuple[bool, Optional[str]]:
+    """Verify ticker with yfinance and get real company name (TrendWise approach)"""
+    try:
+        logger.info(f"🔍 Verifying ticker with yfinance: {symbol}")
+        ticker = yf.Ticker(symbol)
+        info = ticker.info
+        
+        if info and isinstance(info, dict):
+            # Check if we got valid data (not empty or error response)
+            if info.get('longName'):
+                return True, info['longName']
+            elif info.get('shortName'):
+                return True, info['shortName']
+            elif info.get('symbol'):
+                return True, info.get('symbol', symbol)
+                
+        return False, None
+    except Exception as e:
+        logger.warning(f"⚠️ Error verifying ticker {symbol}: {str(e)}")
+        return False, None
+
+def determine_asset_type(symbol: str, name: str) -> str:
+    """Determine asset type based on symbol and name"""
+    symbol_upper = symbol.upper()
+    name_upper = name.upper()
+    
+    # Cryptocurrency patterns
+    if '-USD' in symbol_upper or 'BITCOIN' in name_upper or 'ETHEREUM' in name_upper:
+        return 'Cryptocurrency'
+    
+    # ETF patterns  
+    if ('ETF' in name_upper or 'FUND' in name_upper or 
+        symbol_upper in ['SPY', 'QQQ', 'VTI', 'IWM', 'GLD', 'SLV']):
+        return 'ETF'
+    
+    # Index patterns
+    if 'INDEX' in name_upper or 'COMPOSITE' in name_upper:
+        return 'Index'
+        
+    # Default to Equity
+    return 'Equity'
+
 @app.get("/search_ticker")
 async def search_ticker(request: Request, query: str = ""):
-    """Search for ticker symbols with autocomplete suggestions (from TrendWise pattern)"""
+    """Search for ticker symbols with TrendWise's exact approach - prioritize real verified symbols"""
     if not query or len(query.strip()) < 1:
         return JSONResponse([])
     
     try:
         query = query.strip().upper()
-        logger.info(f"🔍 Searching for ticker: {query}")
+        logger.info(f"🔍 TrendWise-style search for: {query}")
         
-        # Use enhanced ticker search
-        search_results = enhanced_ticker_search.search_as_dict(query, limit=8)
+        search_results = []
         
-        # Handle Chinese stock patterns (like 600298)
-        if query.isdigit() and len(query) == 6:
-            # Shanghai Stock Exchange (.SS)
-            if query.startswith(('60', '68', '51', '56', '58')):
-                symbol_with_suffix = f"{query}.SS"
-                # Add to results if not already present
-                if not any(r['symbol'] == symbol_with_suffix for r in search_results):
-                    search_results.insert(0, {
-                        'symbol': symbol_with_suffix,
-                        'name': f'Shanghai Stock {query}',
-                        'exchange': 'SSE',
-                        'type': 'Equity',
-                        'country': 'CN',
-                        'score': 0.95,
-                        'source': 'pattern_match'
-                    })
+        # Step 1: Process exchange suffixes first (TrendWise priority)
+        exchange_suffix = None
+        
+        # Shanghai Stock Exchange (.SS) 
+        if (query.startswith(('60', '68', '51', '56', '58')) and 
+            len(query) == 6 and query.isdigit()):
+            exchange_suffix = '.SS'
             
-            # Shenzhen Stock Exchange (.SZ)
-            elif query.startswith(('00', '30')):
-                symbol_with_suffix = f"{query}.SZ"
-                if not any(r['symbol'] == symbol_with_suffix for r in search_results):
-                    search_results.insert(0, {
-                        'symbol': symbol_with_suffix,
-                        'name': f'Shenzhen Stock {query}',
-                        'exchange': 'SZSE',
-                        'type': 'Equity',
-                        'country': 'CN',
-                        'score': 0.95,
-                        'source': 'pattern_match'
-                    })
+        # Shenzhen Stock Exchange (.SZ)
+        elif (query.startswith(('00', '30')) and 
+              len(query) == 6 and query.isdigit()):
+            exchange_suffix = '.SZ'
+            
+        # Hong Kong Exchange (.HK)
+        elif len(query) == 4 and query.isdigit():
+            exchange_suffix = '.HK'
         
-        # Hong Kong patterns (4 digits)
-        elif query.isdigit() and len(query) == 4:
-            symbol_with_suffix = f"{query}.HK"
-            if not any(r['symbol'] == symbol_with_suffix for r in search_results):
-                search_results.insert(0, {
-                    'symbol': symbol_with_suffix,
-                    'name': f'Hong Kong Stock {query}',
-                    'exchange': 'HKEX',
-                    'type': 'Equity',
-                    'country': 'HK',
-                    'score': 0.95,
-                    'source': 'pattern_match'
+        # Step 2: Check with exchange suffix if applicable (PRIORITY)
+        if exchange_suffix:
+            symbol_to_check = f"{query}{exchange_suffix}"
+            is_valid, company_name = verify_ticker_yfinance(symbol_to_check)
+            
+            if is_valid and company_name:
+                search_results.append({
+                    'symbol': symbol_to_check,
+                    'name': company_name,
+                    'exchange': exchange_suffix[1:],  # Remove the dot
+                    'type': determine_asset_type(symbol_to_check, company_name),
+                    'source': 'verified_yfinance'
                 })
+                logger.info(f"✅ Found verified stock: {symbol_to_check} - {company_name}")
         
-        logger.info(f"✅ Found {len(search_results)} ticker suggestions for '{query}'")
+        # Step 3: Try direct symbol (for US stocks like AAPL, TSLA)
+        if not search_results:
+            is_valid, company_name = verify_ticker_yfinance(query)
+            if is_valid and company_name:
+                search_results.append({
+                    'symbol': query,
+                    'name': company_name,
+                    'exchange': 'US',
+                    'type': determine_asset_type(query, company_name),
+                    'source': 'verified_yfinance'
+                })
+                logger.info(f"✅ Found verified US stock: {query} - {company_name}")
+        
+        # Step 4: Only if no verified results, try common variations
+        if not search_results:
+            variations = []
+            
+            # Add common US exchange variations
+            if len(query) <= 5 and query.isalpha():
+                variations.extend([query])  # Direct US stock
+            
+            # Add crypto variations
+            if len(query) >= 3:
+                variations.extend([f"{query}-USD"])
+            
+            # Try each variation
+            for variant in variations[:3]:  # Limit to avoid too many API calls
+                try:
+                    is_valid, company_name = verify_ticker_yfinance(variant)
+                    if is_valid and company_name:
+                        search_results.append({
+                            'symbol': variant,
+                            'name': company_name,
+                            'exchange': 'US' if not '-USD' in variant else 'Crypto',
+                            'type': determine_asset_type(variant, company_name),
+                            'source': 'verified_yfinance'
+                        })
+                        logger.info(f"✅ Found verified variant: {variant} - {company_name}")
+                        break  # Stop after first match
+                except Exception as e:
+                    logger.warning(f"⚠️ Error checking variant {variant}: {str(e)}")
+        
+        # Step 5: Fallback to static database only if no verified results (like TrendWise)
+        if not search_results:
+            logger.info(f"🔄 No verified results, trying static database for: {query}")
+            static_results = enhanced_ticker_search.search_as_dict(query, limit=3)
+            # Only add if they actually match the query well
+            for result in static_results:
+                if (result['symbol'].upper().startswith(query) or 
+                    query in result['symbol'].upper()):
+                    search_results.append(result)
+        
+        # Limit total results
+        search_results = search_results[:6]
+        
+        logger.info(f"✅ Found {len(search_results)} suggestions for '{query}' (TrendWise approach)")
         return JSONResponse(search_results)
         
     except Exception as e:
