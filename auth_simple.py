@@ -14,10 +14,14 @@ from database import get_db, User, UserProfile
 import httpx
 import secrets
 import hashlib
+import logging
 from passlib.context import CryptContext
 
 # Password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 # JWT Configuration
 JWT_SECRET = os.getenv('SECRET_KEY', 'your-secret-key-change-in-production')
