@@ -169,6 +169,61 @@ class EnhancedTickerSearch:
             ('FDX', 'FedEx Corporation', 'NYSE', 'Equity', 'US'),
         ]
         
+        # Chinese Stocks (for your 600298 example)
+        chinese_stocks = [
+            ('600298.SS', 'Angang Steel Company Limited', 'SSE', 'Equity', 'CN'),
+            ('000001.SS', 'Shanghai Composite Index', 'SSE', 'Index', 'CN'),
+            ('000001.SZ', 'Ping An Bank Co Ltd', 'SZSE', 'Equity', 'CN'),
+            ('000002.SZ', 'China Vanke Co Ltd', 'SZSE', 'Equity', 'CN'),
+            ('600000.SS', 'Pudong Development Bank', 'SSE', 'Equity', 'CN'),
+            ('600036.SS', 'China Merchants Bank', 'SSE', 'Equity', 'CN'),
+            ('600519.SS', 'Kweichow Moutai Co Ltd', 'SSE', 'Equity', 'CN'),
+            ('600276.SS', 'Jiangsu Hengrui Medicine', 'SSE', 'Equity', 'CN'),
+        ]
+        
+        # International Stocks
+        international_stocks = [
+            # European
+            ('ASML', 'ASML Holding N.V.', 'NASDAQ', 'Equity', 'NL'),
+            ('SAP', 'SAP SE', 'NYSE', 'Equity', 'DE'),
+            ('NVO', 'Novo Nordisk A/S', 'NYSE', 'Equity', 'DK'),
+            ('UL', 'Unilever PLC', 'NYSE', 'Equity', 'GB'),
+            
+            # Asian
+            ('TSM', 'Taiwan Semiconductor', 'NYSE', 'Equity', 'TW'),
+            ('BABA', 'Alibaba Group Holding', 'NYSE', 'Equity', 'CN'),
+            ('JD', 'JD.com Inc.', 'NASDAQ', 'Equity', 'CN'),
+            ('NIO', 'NIO Inc.', 'NYSE', 'Equity', 'CN'),
+            
+            # Hong Kong Format
+            ('0700.HK', 'Tencent Holdings Ltd.', 'HKEX', 'Equity', 'HK'),
+            ('0941.HK', 'China Mobile Limited', 'HKEX', 'Equity', 'HK'),
+            ('1299.HK', 'AIA Group Limited', 'HKEX', 'Equity', 'HK'),
+        ]
+        
+        # Cryptocurrencies
+        cryptocurrencies = [
+            ('BTC-USD', 'Bitcoin USD', 'CCC', 'Cryptocurrency', 'US'),
+            ('ETH-USD', 'Ethereum USD', 'CCC', 'Cryptocurrency', 'US'),
+            ('BNB-USD', 'BNB USD', 'CCC', 'Cryptocurrency', 'US'),
+            ('XRP-USD', 'XRP USD', 'CCC', 'Cryptocurrency', 'US'),
+            ('ADA-USD', 'Cardano USD', 'CCC', 'Cryptocurrency', 'US'),
+            ('SOL-USD', 'Solana USD', 'CCC', 'Cryptocurrency', 'US'),
+            ('DOGE-USD', 'Dogecoin USD', 'CCC', 'Cryptocurrency', 'US'),
+        ]
+        
+        # ETFs
+        etfs = [
+            ('SPY', 'SPDR S&P 500 ETF Trust', 'NYSE', 'ETF', 'US'),
+            ('QQQ', 'Invesco QQQ Trust', 'NASDAQ', 'ETF', 'US'),
+            ('VTI', 'Vanguard Total Stock Market', 'NYSE', 'ETF', 'US'),
+            ('IWM', 'iShares Russell 2000 ETF', 'NYSE', 'ETF', 'US'),
+            ('EFA', 'iShares MSCI EAFE ETF', 'NYSE', 'ETF', 'US'),
+            ('EEM', 'iShares MSCI Emerging Markets', 'NYSE', 'ETF', 'US'),
+            ('GLD', 'SPDR Gold Shares', 'NYSE', 'ETF', 'US'),
+            ('SLV', 'iShares Silver Trust', 'NYSE', 'ETF', 'US'),
+        ]
+        
         # Combine all data
         all_data = us_stocks + chinese_stocks + international_stocks + cryptocurrencies + etfs
         
