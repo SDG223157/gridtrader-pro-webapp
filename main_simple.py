@@ -863,6 +863,43 @@ async def refresh_prices(user: User = Depends(require_auth), db: Session = Depen
         db.rollback()
         return {"success": False, "error": str(e)}
 
+@app.get("/debug/test-yfinance/{symbol}")
+async def test_yfinance_price(symbol: str):
+    """Test yfinance price fetching for a specific symbol"""
+    try:
+        import traceback
+        
+        # Test the price fetching function
+        price = get_current_stock_price(symbol)
+        
+        # Also test yfinance directly
+        ticker = yf.Ticker(symbol)
+        hist = ticker.history(period="1d")
+        
+        return {
+            "symbol": symbol,
+            "our_function_result": price,
+            "yfinance_direct_test": {
+                "history_empty": hist.empty,
+                "history_length": len(hist) if not hist.empty else 0,
+                "latest_close": float(hist['Close'].iloc[-1]) if not hist.empty else None,
+                "columns": list(hist.columns) if not hist.empty else [],
+                "raw_data": hist.to_dict('records')[-1:] if not hist.empty else []
+            },
+            "ticker_info": {
+                "info_available": hasattr(ticker, 'info'),
+                "current_price_from_info": ticker.info.get('currentPrice') if hasattr(ticker, 'info') else None
+            }
+        }
+        
+    except Exception as e:
+        import traceback
+        return {
+            "symbol": symbol,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
 # Simple startup
 @app.on_event("startup")
 async def startup_event():
