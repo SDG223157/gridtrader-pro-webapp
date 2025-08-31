@@ -18,6 +18,7 @@ from auth_simple import (
     create_user, authenticate_user, create_or_update_user_from_google
 )
 from data_provider import YFinanceDataProvider
+from app.systematic_trading import systematic_trading_engine, AlertLevel, MarketRegime
 import httpx
 from datetime import datetime
 from typing import List, Dict, Tuple, Optional
@@ -1748,13 +1749,164 @@ async def recalculate_portfolio_values_with_grids(user: User = Depends(require_a
         logger.error(f"❌ Error recalculating portfolio values: {e}")
         raise HTTPException(status_code=500, detail="Failed to recalculate portfolio values")
 
-# Analytics Route
+# Analytics Routes - Enhanced with Systematic Trading Framework
 @app.get("/analytics", response_class=HTMLResponse)
 async def analytics_page(request: Request, db: Session = Depends(get_db)):
     context = get_user_context(request, db)
     if not context["is_authenticated"]:
         return RedirectResponse(url="/login", status_code=302)
+    
+    # Get user portfolios for risk analysis
+    portfolios = db.query(Portfolio).filter(Portfolio.user_id == context["user"].id).all()
+    
+    # Calculate portfolio risk metrics
+    total_value = sum([float(p.current_value or 0) for p in portfolios])
+    total_cash = sum([float(p.cash_balance or 0) for p in portfolios])
+    cash_pct = (total_cash / total_value) if total_value > 0 else 0
+    
+    # Detect market regime
+    market_regime = systematic_trading_engine.detect_market_regime()
+    
+    context.update({
+        "portfolios": portfolios,
+        "risk_metrics": {
+            "total_value": total_value,
+            "cash_percentage": cash_pct,
+            "portfolio_count": len(portfolios),
+            "risk_status": "HEALTHY" if cash_pct >= 0.05 else "LOW_CASH"
+        },
+        "market_regime": market_regime.value,
+        "regime_description": {
+            "bull_momentum": "Strong upward trend - Favor growth sectors",
+            "bear_momentum": "Strong downward trend - Defensive positioning",
+            "sideways_mean_reversion": "Range-bound market - Mean reversion strategies",
+            "high_volatility": "High volatility environment - Reduce position sizes"
+        }.get(market_regime.value, "Unknown market conditions")
+    })
+    
     return templates.TemplateResponse("analytics.html", {"request": request, **context})
+
+@app.get("/api/sector-analysis")
+async def get_sector_analysis(user: User = Depends(require_auth), lookback_days: int = 90):
+    """Get sector rotation analysis and recommendations"""
+    try:
+        logger.info(f"🔍 Running sector analysis for {lookback_days} days...")
+        
+        # Calculate sector scores
+        sector_scores = systematic_trading_engine.calculate_sector_scores(lookback_days)
+        
+        # Convert to API response format
+        analysis_results = []
+        for score in sector_scores[:15]:  # Top 15 sectors
+            analysis_results.append({
+                "symbol": score.symbol,
+                "sector": score.sector,
+                "conviction_score": round(score.conviction_score, 3),
+                "recommended_weight": round(score.recommended_weight * 100, 2),  # Convert to percentage
+                "momentum_score": round(score.momentum_score, 3),
+                "mean_reversion_score": round(score.mean_reversion_score, 3),
+                "fundamental_score": round(score.fundamental_score, 3),
+                "technical_score": round(score.technical_score, 3),
+                "risk_adjustment": round(score.risk_adjustment, 3),
+                "recommendation": "STRONG_BUY" if score.conviction_score > 1.5 else 
+                               "BUY" if score.conviction_score > 1.0 else
+                               "HOLD" if score.conviction_score > 0.7 else "AVOID"
+            })
+        
+        return {
+            "success": True,
+            "analysis_date": datetime.now().isoformat(),
+            "lookback_days": lookback_days,
+            "sectors_analyzed": len(sector_scores),
+            "market_regime": systematic_trading_engine.detect_market_regime().value,
+            "top_sectors": analysis_results,
+            "summary": {
+                "strongest_momentum": analysis_results[0] if analysis_results else None,
+                "best_value": max(analysis_results, key=lambda x: x['mean_reversion_score']) if analysis_results else None,
+                "highest_conviction": max(analysis_results, key=lambda x: x['conviction_score']) if analysis_results else None
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Sector analysis error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to analyze sectors: {str(e)}")
+
+@app.post("/api/portfolio-risk-check")
+async def check_portfolio_risk(user: User = Depends(require_auth), db: Session = Depends(get_db)):
+    """Comprehensive portfolio risk analysis"""
+    try:
+        # Get user portfolios
+        portfolios = db.query(Portfolio).filter(Portfolio.user_id == user.id).all()
+        
+        all_alerts = []
+        portfolio_summaries = []
+        
+        for portfolio in portfolios:
+            # Get holdings
+            holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio.id).all()
+            
+            # Prepare portfolio data for risk check
+            positions = {}
+            for holding in holdings:
+                market_value = float((holding.quantity or 0) * (holding.current_price or 0))
+                positions[holding.symbol] = market_value
+            
+            portfolio_data = {
+                "total_value": float(portfolio.current_value or 0),
+                "cash_balance": float(portfolio.cash_balance or 0),
+                "positions": positions
+            }
+            
+            # Check risk limits
+            portfolio_alerts = systematic_trading_engine.check_risk_limits(portfolio_data)
+            all_alerts.extend(portfolio_alerts)
+            
+            portfolio_summaries.append({
+                "portfolio_id": portfolio.id,
+                "portfolio_name": portfolio.name,
+                "total_value": portfolio_data["total_value"],
+                "cash_percentage": (portfolio_data["cash_balance"] / portfolio_data["total_value"]) if portfolio_data["total_value"] > 0 else 0,
+                "position_count": len(positions),
+                "largest_position": max(positions.values()) if positions else 0,
+                "risk_score": len([a for a in portfolio_alerts if a.level in [AlertLevel.LEVEL_2, AlertLevel.LEVEL_3]]),
+                "alerts": len(portfolio_alerts)
+            })
+        
+        # Categorize alerts by level
+        level_1_alerts = [a for a in all_alerts if a.level == AlertLevel.LEVEL_1]
+        level_2_alerts = [a for a in all_alerts if a.level == AlertLevel.LEVEL_2]
+        level_3_alerts = [a for a in all_alerts if a.level == AlertLevel.LEVEL_3]
+        
+        return {
+            "success": True,
+            "analysis_date": datetime.now().isoformat(),
+            "total_portfolios": len(portfolios),
+            "total_alerts": len(all_alerts),
+            "alert_breakdown": {
+                "level_1_daily": len(level_1_alerts),
+                "level_2_immediate": len(level_2_alerts),
+                "level_3_review": len(level_3_alerts)
+            },
+            "portfolio_summaries": portfolio_summaries,
+            "alerts": [
+                {
+                    "level": alert.level.value,
+                    "title": alert.title,
+                    "message": alert.message,
+                    "symbol": alert.symbol,
+                    "action_required": alert.action_required,
+                    "deviation_pct": round(alert.deviation_pct * 100, 2)
+                }
+                for alert in all_alerts
+            ],
+            "overall_risk_status": "HIGH" if level_3_alerts else 
+                                 "MEDIUM" if level_2_alerts else 
+                                 "LOW" if level_1_alerts else "HEALTHY"
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Portfolio risk check error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to check portfolio risk: {str(e)}")
 
 # Stock Analysis Route (like TrendWise)
 @app.get("/analyze/{symbol}", response_class=HTMLResponse)
