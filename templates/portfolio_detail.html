@@ -23,14 +23,18 @@
         </div>
         
         <!-- Portfolio Summary -->
-        <div class="grid grid-cols-4 gap-4 mt-6 pt-6 border-t">
+        <div class="grid grid-cols-5 gap-4 mt-6 pt-6 border-t">
             <div class="text-center">
-                <div class="text-lg font-semibold text-gray-900">${{ "%.2f"|format(portfolio.initial_capital) }}</div>
+                <div class="text-lg font-semibold text-gray-900">${{ "{:,.2f}".format(portfolio.initial_capital) }}</div>
                 <div class="text-sm text-gray-600">Initial Capital</div>
             </div>
             <div class="text-center">
-                <div class="text-lg font-semibold text-gray-900">${{ "%.2f"|format(portfolio.cash_balance or 0) }}</div>
+                <div class="text-lg font-semibold text-gray-900">${{ "{:,.2f}".format(portfolio.cash_balance or 0) }}</div>
                 <div class="text-sm text-gray-600">Cash Balance</div>
+            </div>
+            <div class="text-center">
+                <div class="text-lg font-semibold text-blue-600">${{ "{:,.2f}".format(grid_allocations) }}</div>
+                <div class="text-sm text-gray-600">Grid Allocations</div>
             </div>
             <div class="text-center">
                 <div class="text-lg font-semibold text-gray-900">{{ holdings|length }}</div>
@@ -115,6 +119,57 @@
         </div>
         {% endif %}
     </div>
+    
+    <!-- Grid Trading Strategies -->
+    {% if active_grids %}
+    <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-xl font-bold text-gray-900">Active Grid Trading Strategies</h2>
+            <div class="text-sm text-gray-500">
+                {{ grid_count }} active grid{{ 's' if grid_count != 1 else '' }} • ${{ "{:,.2f}".format(grid_allocations) }} allocated
+            </div>
+        </div>
+        
+        <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {% for grid in active_grids %}
+            <div class="border border-gray-200 rounded-lg p-4">
+                <div class="flex justify-between items-start mb-2">
+                    <h3 class="font-semibold text-gray-900">{{ grid.name }}</h3>
+                    <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+                        {{ grid.status.value|title }}
+                    </span>
+                </div>
+                <div class="text-sm text-gray-600 mb-2">{{ grid.symbol }}</div>
+                <div class="space-y-1 text-sm">
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">Investment:</span>
+                        <span class="font-medium">${{ "{:,.2f}".format(grid.investment_amount) }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">Range:</span>
+                        <span class="font-medium">${{ "{:.2f}".format(grid.lower_price) }} - ${{ "{:.2f}".format(grid.upper_price) }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">Orders:</span>
+                        <span class="font-medium">{{ grid.active_orders }} active</span>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <a href="/grids/{{ grid.id }}" class="text-blue-600 hover:text-blue-800 text-sm font-medium">
+                        View Grid Details →
+                    </a>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        
+        <div class="mt-4 text-center">
+            <a href="/grids" class="text-blue-600 hover:text-blue-800 text-sm font-medium">
+                View All Grid Strategies →
+            </a>
+        </div>
+    </div>
+    {% endif %}
     
     <!-- Recent Transactions -->
     <div class="bg-white rounded-lg shadow-md p-6">
