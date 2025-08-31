@@ -1,0 +1,161 @@
+{% extends "base_simple.html" %}
+
+{% block title %}Add Transaction - {{ portfolio.name }}{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <div class="max-w-2xl mx-auto">
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <div class="mb-6">
+                <h1 class="text-3xl font-bold text-gray-900">Add Transaction</h1>
+                <p class="text-gray-600 mt-2">Portfolio: {{ portfolio.name }}</p>
+                <p class="text-sm text-gray-500">Cash Balance: ${{ "%.2f"|format(portfolio.cash_balance or 0) }}</p>
+            </div>
+            
+            <form id="transactionForm" class="space-y-6">
+                <input type="hidden" name="portfolio_id" value="{{ portfolio.id }}">
+                
+                <!-- Transaction Type -->
+                <div>
+                    <label for="transaction_type" class="block text-sm font-medium text-gray-700">Transaction Type</label>
+                    <select id="transaction_type" name="transaction_type" required 
+                            class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                        <option value="buy">Buy</option>
+                        <option value="sell">Sell</option>
+                    </select>
+                </div>
+                
+                <!-- Symbol -->
+                <div>
+                    <label for="symbol" class="block text-sm font-medium text-gray-700">Stock Symbol</label>
+                    <input type="text" id="symbol" name="symbol" required placeholder="e.g., AAPL, MSFT, TSLA"
+                           class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 uppercase">
+                    <p class="mt-1 text-sm text-gray-500">Enter the stock ticker symbol</p>
+                </div>
+                
+                <!-- Quantity -->
+                <div>
+                    <label for="quantity" class="block text-sm font-medium text-gray-700">Quantity</label>
+                    <input type="number" id="quantity" name="quantity" required min="0" step="0.01"
+                           class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                    <p class="mt-1 text-sm text-gray-500">Number of shares</p>
+                </div>
+                
+                <!-- Price -->
+                <div>
+                    <label for="price" class="block text-sm font-medium text-gray-700">Price per Share ($)</label>
+                    <input type="number" id="price" name="price" required min="0" step="0.01"
+                           class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                    <p class="mt-1 text-sm text-gray-500">Execution price per share</p>
+                </div>
+                
+                <!-- Fees -->
+                <div>
+                    <label for="fees" class="block text-sm font-medium text-gray-700">Transaction Fees ($)</label>
+                    <input type="number" id="fees" name="fees" min="0" step="0.01" value="0.00"
+                           class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                    <p class="mt-1 text-sm text-gray-500">Brokerage fees and commissions</p>
+                </div>
+                
+                <!-- Notes -->
+                <div>
+                    <label for="notes" class="block text-sm font-medium text-gray-700">Notes (Optional)</label>
+                    <textarea id="notes" name="notes" rows="3" 
+                              class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                              placeholder="Any additional notes about this transaction..."></textarea>
+                </div>
+                
+                <!-- Transaction Summary -->
+                <div class="bg-gray-50 rounded-lg p-4">
+                    <h3 class="text-lg font-medium text-gray-900 mb-2">Transaction Summary</h3>
+                    <div class="space-y-2">
+                        <div class="flex justify-between">
+                            <span class="text-sm text-gray-600">Shares × Price:</span>
+                            <span class="text-sm font-medium" id="subtotal">$0.00</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-sm text-gray-600">Fees:</span>
+                            <span class="text-sm font-medium" id="fees-display">$0.00</span>
+                        </div>
+                        <div class="flex justify-between border-t pt-2">
+                            <span class="text-base font-medium text-gray-900">Total Amount:</span>
+                            <span class="text-base font-bold text-gray-900" id="total-amount">$0.00</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Submit Buttons -->
+                <div class="flex justify-end space-x-3">
+                    <a href="/portfolios/{{ portfolio.id }}" 
+                       class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded">
+                        Cancel
+                    </a>
+                    <button type="submit" 
+                            class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                        Add Transaction
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+// Calculate transaction totals in real-time
+function updateTransactionSummary() {
+    const quantity = parseFloat(document.getElementById('quantity').value) || 0;
+    const price = parseFloat(document.getElementById('price').value) || 0;
+    const fees = parseFloat(document.getElementById('fees').value) || 0;
+    
+    const subtotal = quantity * price;
+    const total = subtotal + fees;
+    
+    document.getElementById('subtotal').textContent = '$' + subtotal.toFixed(2);
+    document.getElementById('fees-display').textContent = '$' + fees.toFixed(2);
+    document.getElementById('total-amount').textContent = '$' + total.toFixed(2);
+}
+
+// Add event listeners
+document.getElementById('quantity').addEventListener('input', updateTransactionSummary);
+document.getElementById('price').addEventListener('input', updateTransactionSummary);
+document.getElementById('fees').addEventListener('input', updateTransactionSummary);
+
+// Form submission
+document.getElementById('transactionForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const data = Object.fromEntries(formData);
+    
+    // Convert numeric fields
+    data.quantity = parseFloat(data.quantity);
+    data.price = parseFloat(data.price);
+    data.fees = parseFloat(data.fees) || 0;
+    
+    try {
+        const response = await fetch('/api/transactions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert('Transaction added successfully!');
+            window.location.href = '/portfolios/{{ portfolio.id }}';
+        } else {
+            alert(result.detail || 'Failed to add transaction');
+        }
+    } catch (error) {
+        alert('Failed to add transaction. Please try again.');
+    }
+});
+
+// Auto-uppercase symbol input
+document.getElementById('symbol').addEventListener('input', (e) => {
+    e.target.value = e.target.value.toUpperCase();
+});
+</script>
+{% endblock %}
