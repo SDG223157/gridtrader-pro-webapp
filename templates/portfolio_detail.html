@@ -87,7 +87,11 @@
                     {% set pnl = market_value - cost_basis %}
                     {% set pnl_pct = (pnl / cost_basis * 100) if cost_basis > 0 else 0 %}
                     <tr>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ holding.symbol }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                            <a href="/analyze/{{ holding.symbol }}" class="text-blue-600 hover:text-blue-900 font-medium">
+                                {{ holding.symbol }}
+                            </a>
+                        </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ "%.2f"|format(holding.quantity) }}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${{ "%.2f"|format(holding.average_cost) }}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${{ "%.2f"|format(holding.current_price) }}</td>
@@ -142,7 +146,11 @@
                                 {{ transaction.transaction_type.value|title }}
                             </span>
                         </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ transaction.symbol }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                            <a href="/analyze/{{ transaction.symbol }}" class="text-blue-600 hover:text-blue-900 font-medium">
+                                {{ transaction.symbol }}
+                            </a>
+                        </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ "%.2f"|format(transaction.quantity) }}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${{ "%.2f"|format(transaction.price) }}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${{ "%.2f"|format(transaction.total_amount) }}</td>

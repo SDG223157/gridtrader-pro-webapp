@@ -829,6 +829,78 @@ async def analytics_page(request: Request, db: Session = Depends(get_db)):
         return RedirectResponse(url="/login", status_code=302)
     return templates.TemplateResponse("analytics.html", {"request": request, **context})
 
+# Stock Analysis Route (like TrendWise)
+@app.get("/analyze/{symbol}", response_class=HTMLResponse)
+async def analyze_stock(symbol: str, request: Request, db: Session = Depends(get_db)):
+    """Stock analysis page like TrendWise.biz"""
+    context = get_user_context(request, db)
+    if not context["is_authenticated"]:
+        return RedirectResponse(url="/login", status_code=302)
+    
+    # Normalize symbol
+    ticker_symbol = normalize_symbol_for_yfinance(symbol.upper())
+    
+    # Get stock data for analysis
+    try:
+        # Get current price
+        current_price = get_current_stock_price_trendwise_pattern(ticker_symbol)
+        
+        # Get historical data for charts
+        ticker = yf.Ticker(ticker_symbol)
+        hist_1d = ticker.history(period="1d", interval="5m")
+        hist_5d = ticker.history(period="5d", interval="1h") 
+        hist_1m = ticker.history(period="1mo", interval="1d")
+        hist_3m = ticker.history(period="3mo", interval="1d")
+        
+        # Get company info
+        try:
+            info = ticker.info
+            company_info = {
+                "longName": info.get("longName", ticker_symbol),
+                "sector": info.get("sector", "Unknown"),
+                "industry": info.get("industry", "Unknown"),
+                "marketCap": info.get("marketCap", 0),
+                "peRatio": info.get("trailingPE", 0),
+                "dividendYield": info.get("dividendYield", 0),
+                "52WeekHigh": info.get("fiftyTwoWeekHigh", 0),
+                "52WeekLow": info.get("fiftyTwoWeekLow", 0),
+                "volume": info.get("volume", 0),
+                "avgVolume": info.get("averageVolume", 0)
+            }
+        except:
+            company_info = {
+                "longName": ticker_symbol,
+                "sector": "Unknown",
+                "industry": "Unknown"
+            }
+        
+        # Prepare chart data
+        chart_data = {
+            "1d": hist_1d.to_dict('records') if not hist_1d.empty else [],
+            "5d": hist_5d.to_dict('records') if not hist_5d.empty else [],
+            "1m": hist_1m.to_dict('records') if not hist_1m.empty else [],
+            "3m": hist_3m.to_dict('records') if not hist_3m.empty else []
+        }
+        
+        context.update({
+            "symbol": ticker_symbol,
+            "current_price": current_price,
+            "company_info": company_info,
+            "chart_data": chart_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Error analyzing {symbol}: {e}")
+        context.update({
+            "symbol": ticker_symbol,
+            "current_price": 0,
+            "company_info": {"longName": ticker_symbol},
+            "chart_data": {},
+            "error": "Failed to load stock data"
+        })
+    
+    return templates.TemplateResponse("stock_analysis.html", {"request": request, **context})
+
 # Market Data API for charts
 @app.get("/api/market/{symbol}")
 async def get_market_data(symbol: str, period: str = "1d"):
