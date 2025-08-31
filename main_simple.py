@@ -1819,13 +1819,13 @@ async def analytics_page(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse("analytics.html", {"request": request, **context})
 
 @app.get("/api/sector-analysis")
-async def get_sector_analysis(user: User = Depends(require_auth), lookback_days: int = 90):
-    """Get sector rotation analysis and recommendations"""
+async def get_sector_analysis(user: User = Depends(require_auth), market: str = "US", lookback_days: int = 90):
+    """Get sector rotation analysis and recommendations for US or China markets"""
     try:
-        logger.info(f"🔍 Running sector analysis for {lookback_days} days...")
+        logger.info(f"🔍 Running {market} market sector analysis for {lookback_days} days...")
         
-        # Calculate sector scores
-        sector_scores = systematic_trading_engine.calculate_sector_scores(lookback_days)
+        # Calculate sector scores for specified market
+        sector_scores = systematic_trading_engine.calculate_sector_scores(market, lookback_days)
         
         # Convert to API response format
         analysis_results = []
@@ -1847,6 +1847,7 @@ async def get_sector_analysis(user: User = Depends(require_auth), lookback_days:
         
         return {
             "success": True,
+            "market": market.upper(),
             "analysis_date": datetime.now().isoformat(),
             "lookback_days": lookback_days,
             "sectors_analyzed": len(sector_scores),
@@ -1860,8 +1861,8 @@ async def get_sector_analysis(user: User = Depends(require_auth), lookback_days:
         }
         
     except Exception as e:
-        logger.error(f"❌ Sector analysis error: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to analyze sectors: {str(e)}")
+        logger.error(f"❌ {market} sector analysis error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to analyze {market} sectors: {str(e)}")
 
 @app.post("/api/portfolio-risk-check")
 async def check_portfolio_risk(user: User = Depends(require_auth), db: Session = Depends(get_db)):
