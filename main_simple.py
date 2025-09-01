@@ -2291,16 +2291,14 @@ async def create_api_token(request: CreateApiTokenRequest, db: Session = Depends
         return {
             "success": True,
             "message": "API token created successfully. Save this token - it won't be shown again!",
-            "token": {
-                "id": api_token.id,
-                "name": api_token.name,
-                "description": api_token.description,
-                "token": token,  # Only shown once
-                "permissions": api_token.permissions,
-                "expires_at": api_token.expires_at.isoformat() if api_token.expires_at else None,
-                "created_at": api_token.created_at.isoformat()
-            },
-            "mcp_config": mcp_config,
+            "id": api_token.id,
+            "name": api_token.name,
+            "description": api_token.description,
+            "token": token,  # Direct access like prombank_backup
+            "permissions": api_token.permissions,
+            "expires_at": api_token.expires_at.isoformat() if api_token.expires_at else None,
+            "created_at": api_token.created_at.isoformat(),
+            "mcp_config": mcp_config,  # Direct access like prombank_backup
             "installation_command": install_command
         }
     
