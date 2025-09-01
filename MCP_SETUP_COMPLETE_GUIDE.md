@@ -45,22 +45,12 @@ After setup, you can use Cursor to:
 
 ## 🛠️ Step-by-Step Setup
 
-### Step 1: Verify GridTrader Pro is Running
+### Step 1: Access GridTrader Pro
 
-First, make sure your GridTrader Pro application is running:
+Your GridTrader Pro application is running at:
+**https://gridsai.app**
 
-```bash
-cd /Users/sdg223157/gridsai_webapp/gridtrader-pro-webapp
-python main.py
-```
-
-You should see:
-```
-🌐 Starting server on 0.0.0.0:3000
-INFO:     Uvicorn running on http://0.0.0.0:3000
-```
-
-Test it: http://localhost:3000/health
+Test it: https://gridsai.app/health
 
 ### Step 2: Build the MCP Server
 
@@ -94,8 +84,8 @@ You should see a list of available tools.
    - **Command**: `node`
    - **Arguments**: `/Users/sdg223157/gridsai_webapp/gridtrader-pro-webapp/mcp-server/dist/index.js`
    - **Environment Variables**:
-     - `GRIDTRADER_API_URL`: `http://localhost:3000`
-     - `GRIDTRADER_ACCESS_TOKEN`: `gridtrader_dev_token_123`
+     - `GRIDTRADER_API_URL`: `https://gridsai.app`
+     - `GRIDTRADER_ACCESS_TOKEN`: `your_api_token_here`
 
 #### Option B: Manual Configuration File
 
@@ -112,8 +102,8 @@ You should see a list of available tools.
       "command": "node",
       "args": ["/Users/sdg223157/gridsai_webapp/gridtrader-pro-webapp/mcp-server/dist/index.js"],
       "env": {
-        "GRIDTRADER_API_URL": "http://localhost:3000",
-        "GRIDTRADER_ACCESS_TOKEN": "gridtrader_dev_token_123"
+        "GRIDTRADER_API_URL": "https://gridsai.app",
+        "GRIDTRADER_ACCESS_TOKEN": "your_api_token_here"
       }
     }
   }

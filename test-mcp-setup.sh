@@ -17,10 +17,10 @@ NC='\033[0m' # No Color
 
 # Test 1: Check if GridTrader Pro is running
 echo -e "${BLUE}1. Testing GridTrader Pro WebApp...${NC}"
-if curl -s http://localhost:3000/health > /dev/null; then
-    echo -e "${GREEN}✅ GridTrader Pro is running on http://localhost:3000${NC}"
+if curl -s https://gridsai.app/health > /dev/null; then
+    echo -e "${GREEN}✅ GridTrader Pro is running on https://gridsai.app${NC}"
 else
-    echo -e "${RED}❌ GridTrader Pro is not running. Start it with: python main.py${NC}"
+    echo -e "${RED}❌ GridTrader Pro is not running. Check https://gridsai.app${NC}"
     exit 1
 fi
 
@@ -45,7 +45,7 @@ fi
 # Test 4: Test API authentication
 echo -e "${BLUE}4. Testing API Authentication...${NC}"
 cd /Users/sdg223157/gridsai_webapp/gridtrader-pro-webapp
-if curl -s -H "Authorization: Bearer gridtrader_dev_token_123" http://localhost:3000/api/portfolios > /dev/null; then
+if curl -s -H "Authorization: Bearer gridtrader_dev_token_123" https://gridsai.app/api/portfolios > /dev/null; then
     echo -e "${GREEN}✅ API authentication works${NC}"
 else
     echo -e "${RED}❌ API authentication failed${NC}"
@@ -54,7 +54,7 @@ fi
 
 # Test 5: Check market data endpoint
 echo -e "${BLUE}5. Testing Market Data API...${NC}"
-if curl -s -H "Authorization: Bearer gridtrader_dev_token_123" http://localhost:3000/api/market/AAPL?period=current | grep -q "price"; then
+if curl -s -H "Authorization: Bearer gridtrader_dev_token_123" https://gridsai.app/api/market/AAPL?period=current | grep -q "price"; then
     echo -e "${GREEN}✅ Market data API works${NC}"
 else
     echo -e "${YELLOW}⚠️  Market data API may not be working (check yfinance)${NC}"

@@ -843,7 +843,7 @@ async def create_api_token(request: CreateApiTokenRequest, user: User = Depends(
                 "gridtrader-pro": {
                     "command": "gridtrader-pro-mcp",
                     "env": {
-                        "GRIDTRADER_API_URL": f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}",
+                        "GRIDTRADER_API_URL": f"{os.getenv('FRONTEND_URL', 'https://gridsai.app')}",
                         "GRIDTRADER_ACCESS_TOKEN": token
                     }
                 }
@@ -920,7 +920,7 @@ async def get_token_mcp_config(token_id: str, user: User = Depends(require_auth)
                 "gridtrader-pro": {
                     "command": "gridtrader-pro-mcp",
                     "env": {
-                        "GRIDTRADER_API_URL": f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}",
+                        "GRIDTRADER_API_URL": f"{os.getenv('FRONTEND_URL', 'https://gridsai.app')}",
                         "GRIDTRADER_ACCESS_TOKEN": "YOUR_API_TOKEN_HERE"
                     }
                 }

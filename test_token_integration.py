@@ -17,7 +17,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Test configuration
-BASE_URL = "http://localhost:3000"
+BASE_URL = "https://gridsai.app"
 TEST_USER_EMAIL = "test@gridtrader.com"
 TEST_USER_PASSWORD = "testpass123"
 

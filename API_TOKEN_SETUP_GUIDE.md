@@ -76,7 +76,7 @@ python main.py
 
 ### Step 3: Create Your First Token
 
-1. **Visit**: http://localhost:3000/tokens
+1. **Visit**: https://gridsai.app/tokens
 2. **Login** with your GridTrader Pro account
 3. **Click "Create New Token"**
 4. **Fill in details**:
@@ -191,7 +191,7 @@ class ApiToken(Base):
     "gridtrader-pro": {
       "command": "gridtrader-pro-mcp",
       "env": {
-        "GRIDTRADER_API_URL": "http://localhost:3000",
+        "GRIDTRADER_API_URL": "https://gridsai.app",
         "GRIDTRADER_ACCESS_TOKEN": "your_secure_token_here"
       }
     }
@@ -235,7 +235,7 @@ This test will:
 ```bash
 # Test token authentication directly
 curl -H "Authorization: Bearer YOUR_TOKEN" \
-     http://localhost:3000/api/portfolios
+     https://gridsai.app/api/portfolios
 
 # Test MCP server
 echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | \
@@ -284,7 +284,7 @@ python add_api_tokens_migration.py
 mysql -u root -p -e "DESCRIBE gridtrader_db.api_tokens;"
 
 # Test API endpoint directly
-curl -X POST http://localhost:3000/api/tokens \
+curl -X POST https://gridsai.app/api/tokens \
   -H "Content-Type: application/json" \
   -d '{"name":"Test","description":"Test token"}'
 
@@ -296,7 +296,7 @@ which gridtrader-pro-mcp
 
 You know everything is working when:
 
-1. ✅ **Token page loads**: http://localhost:3000/tokens
+1. ✅ **Token page loads**: https://gridsai.app/tokens
 2. ✅ **Token creation works**: Success modal appears
 3. ✅ **API authentication works**: `curl` with token succeeds
 4. ✅ **MCP server responds**: Tools list returns successfully
