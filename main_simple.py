@@ -1801,23 +1801,43 @@ async def update_china_etfs(
         
         generated_code = "\n".join(code_lines)
         
-        logger.info(f"🇨🇳 Generated China ETFs code for {len(processed_etfs)} ETFs via MCP")
+        # Create ETFs dictionary for systematic trading engine
+        etfs_dict = {}
+        for etf in processed_etfs[:50]:  # Top 50
+            etfs_dict[etf['symbol']] = etf['name']
         
-        return {
-            "success": True,
-            "message": f"Successfully processed {len(processed_etfs)} China ETFs",
-            "etfs_processed": len(processed_etfs),
-            "top_10": processed_etfs[:10],
-            "sector_breakdown": {sector: len(etfs) for sector, etfs in sectors.items()},
-            "generated_code": generated_code,
-            "instructions": {
-                "step_1": "Review the generated code below",
-                "step_2": "Copy the code to app/systematic_trading.py",
-                "step_3": "Replace the china_sector_etfs dictionary",
-                "step_4": "Test with: python scripts/validate_china_etfs.py",
-                "step_5": "Deploy: git commit and push"
+        # Update the systematic trading engine in memory
+        from app.systematic_trading import systematic_trading_engine
+        update_success = systematic_trading_engine.update_china_etfs(etfs_dict)
+        
+        if update_success:
+            logger.info(f"🇨🇳 China ETFs updated in systematic trading engine: {len(etfs_dict)} ETFs")
+            
+            return {
+                "success": True,
+                "message": f"Successfully updated {len(processed_etfs)} China ETFs in the app",
+                "etfs_processed": len(processed_etfs),
+                "etfs_updated_in_engine": len(etfs_dict),
+                "top_10": processed_etfs[:10],
+                "sector_breakdown": {sector: len(etfs) for sector, etfs in sectors.items()},
+                "generated_code": generated_code,
+                "auto_update_status": "✅ ETFs automatically updated in systematic trading engine",
+                "instructions": {
+                    "immediate_effect": "✅ Changes are active immediately in the app",
+                    "sector_analysis": "Run 'Show me China sector analysis' to see updated results",
+                    "persistence": "For permanent updates, copy the generated code to app/systematic_trading.py",
+                    "deployment": "Deploy: git commit and push for permanent storage"
+                }
             }
-        }
+        else:
+            logger.error("❌ Failed to update systematic trading engine")
+            return {
+                "success": False,
+                "message": "ETFs processed but failed to update systematic trading engine",
+                "etfs_processed": len(processed_etfs),
+                "generated_code": generated_code,
+                "error": "Systematic trading engine update failed"
+            }
         
     except Exception as e:
         logger.error(f"❌ China ETFs update error: {e}")
