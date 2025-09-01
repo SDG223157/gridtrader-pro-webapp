@@ -408,18 +408,26 @@ async def api_auth_middleware(request: Request, call_next):
                 db.close()
         else:
             # Check if this is a session-based request (for web interface)
-            user_id = request.session.get("user_id")
-            if user_id:
-                db = SessionLocal()
-                try:
-                    user = db.query(User).filter(User.id == user_id).first()
-                    if user:
-                        request.state.user = user
+            try:
+                # Only try to access session if SessionMiddleware is available
+                if hasattr(request, 'session') and 'session' in request.scope:
+                    user_id = request.session.get("user_id")
+                    if user_id:
+                        db = SessionLocal()
+                        try:
+                            user = db.query(User).filter(User.id == user_id).first()
+                            if user:
+                                request.state.user = user
+                            else:
+                                return JSONResponse({"error": "Session invalid"}, status_code=401)
+                        finally:
+                            db.close()
                     else:
-                        return JSONResponse({"error": "Session invalid"}, status_code=401)
-                finally:
-                    db.close()
-            else:
+                        return JSONResponse({"error": "Authorization header required"}, status_code=401)
+                else:
+                    return JSONResponse({"error": "Authorization header required"}, status_code=401)
+            except AssertionError:
+                # SessionMiddleware not available, require Authorization header
                 return JSONResponse({"error": "Authorization header required"}, status_code=401)
     
     response = await call_next(request)
