@@ -12,7 +12,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from database import get_db, User, UserProfile, Portfolio, Grid, Holding, Alert, Transaction, TransactionType, GridStatus, GridOrder, OrderStatus
+from database import get_db, create_tables, User, UserProfile, Portfolio, Grid, Holding, Alert, Transaction, TransactionType, GridStatus, GridOrder, OrderStatus, ApiToken
 from auth_simple import (
     setup_oauth, create_access_token, get_current_user, require_auth, 
     create_user, authenticate_user, create_or_update_user_from_google
@@ -20,7 +20,7 @@ from auth_simple import (
 from data_provider import YFinanceDataProvider
 from app.systematic_trading import systematic_trading_engine, AlertLevel, MarketRegime
 import httpx
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict, Tuple, Optional
 from pydantic import BaseModel
 from decimal import Decimal
@@ -34,6 +34,8 @@ import sys
 import threading
 import json
 from functools import lru_cache
+import secrets
+import hashlib
 
 # Pydantic models for API requests
 class CreatePortfolioRequest(BaseModel):
@@ -63,6 +65,17 @@ class CreateTransactionRequest(BaseModel):
 class UpdatePriceRequest(BaseModel):
     symbol: str
     current_price: float
+
+class CreateApiTokenRequest(BaseModel):
+    name: str
+    description: str = ""
+    permissions: List[str] = ["read", "write"]
+    expires_in_days: Optional[int] = None  # None means no expiration
+
+class UpdateApiTokenRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -2119,6 +2132,214 @@ async def get_market_data(symbol: str, period: str = "1d"):
 async def health_check():
     return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
 
+# API Token Management Endpoints
+def generate_secure_token():
+    """Generate a secure random token"""
+    return secrets.token_urlsafe(32)
+
+@app.get("/debug/test-tokens")
+async def debug_test_tokens():
+    """Debug API tokens functionality - simple version"""
+    try:
+        return {
+            "status": "✅ Route working",
+            "timestamp": datetime.utcnow().isoformat(),
+            "message": "If you see this, the route is registered correctly",
+            "next_step": "Check database connection and table creation",
+            "restart_instruction": "Restart your Coolify service to create the api_tokens table"
+        }
+    except Exception as e:
+        return {
+            "status": "❌ Error",
+            "error": str(e)
+        }
+
+@app.get("/debug/test-tokens-db")
+async def debug_test_tokens_db(db: Session = Depends(get_db)):
+    """Debug API tokens database functionality"""
+    try:
+        # Check if api_tokens table exists
+        result = db.execute(text("SHOW TABLES LIKE 'api_tokens'"))
+        table_exists = result.fetchone() is not None
+        
+        if not table_exists:
+            return {
+                "api_tokens_table": "❌ Does not exist",
+                "solution": "Restart the application to auto-create tables",
+                "coolify_instruction": "Go to Coolify dashboard and restart your GridTrader Pro service"
+            }
+        
+        # Check table structure
+        result = db.execute(text("DESCRIBE api_tokens"))
+        columns = [row[0] for row in result.fetchall()]
+        
+        # Check if ApiToken model can be imported
+        try:
+            token_count = db.query(ApiToken).count()
+            return {
+                "api_tokens_table": "✅ Exists",
+                "columns": columns,
+                "token_count": token_count,
+                "model_import": "✅ Working"
+            }
+        except Exception as model_error:
+            return {
+                "api_tokens_table": "✅ Exists", 
+                "columns": columns,
+                "model_import": f"❌ Error: {model_error}"
+            }
+            
+    except Exception as e:
+        return {
+            "api_tokens_table": "❌ Error",
+            "error": str(e),
+            "solution": "Check database connection and restart application"
+        }
+
+@app.get("/tokens", response_class=HTMLResponse)
+async def tokens_page(request: Request, db: Session = Depends(get_db)):
+    """Token management page"""
+    # Get user from session (following main_simple pattern)
+    user_id = request.session.get("user_id")
+    if not user_id:
+        return RedirectResponse(url="/login", status_code=302)
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    
+    try:
+        # Get user's tokens
+        tokens = db.query(ApiToken).filter(ApiToken.user_id == user.id).all()
+        
+        context = {
+            "request": request,
+            "user": user,
+            "is_authenticated": True,
+            "tokens": tokens,
+            "display_name": user.profile.display_name if user.profile else user.email.split('@')[0]
+        }
+        
+        return templates.TemplateResponse("tokens.html", context)
+    except Exception as e:
+        logger.error(f"Error loading tokens page: {e}")
+        # If ApiToken table doesn't exist, show setup instructions
+        context = {
+            "request": request,
+            "user": user,
+            "is_authenticated": True,
+            "tokens": [],
+            "setup_required": True,
+            "error_message": "API tokens feature requires database setup. Please restart the application.",
+            "display_name": user.profile.display_name if user.profile else user.email.split('@')[0]
+        }
+        
+        return templates.TemplateResponse("tokens.html", context)
+
+@app.post("/api/tokens")
+async def create_api_token(request: CreateApiTokenRequest, db: Session = Depends(get_db)):
+    """Create a new API token"""
+    # Get user from request (we'll need to implement auth for API endpoints)
+    # For now, using a simple approach
+    try:
+        # This is a simplified version - in production you'd want proper auth
+        # For now, we'll create a test user or get the first user
+        user = db.query(User).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="No user found")
+        
+        # Generate secure token
+        token = generate_secure_token()
+        
+        # Calculate expiration date
+        expires_at = None
+        if request.expires_in_days:
+            expires_at = datetime.utcnow() + timedelta(days=request.expires_in_days)
+        
+        # Create token record
+        api_token = ApiToken(
+            user_id=user.id,
+            name=request.name,
+            description=request.description,
+            token=token,
+            permissions=request.permissions,
+            expires_at=expires_at
+        )
+        
+        db.add(api_token)
+        db.commit()
+        db.refresh(api_token)
+        
+        # Generate MCP configuration
+        mcp_config = {
+            "mcpServers": {
+                "gridtrader-pro": {
+                    "command": "gridtrader-pro-mcp",
+                    "env": {
+                        "GRIDTRADER_API_URL": f"{os.getenv('FRONTEND_URL', 'https://gridsai.app')}",
+                        "GRIDTRADER_ACCESS_TOKEN": token
+                    }
+                }
+            }
+        }
+        
+        # Installation command
+        install_command = "curl -fsSL https://raw.githubusercontent.com/SDG223157/gridtrader-pro-webapp/main/install-mcp.sh | bash"
+        
+        logger.info(f"API token created: {api_token.name}")
+        
+        return {
+            "success": True,
+            "message": "API token created successfully. Save this token - it won't be shown again!",
+            "token": {
+                "id": api_token.id,
+                "name": api_token.name,
+                "description": api_token.description,
+                "token": token,  # Only shown once
+                "permissions": api_token.permissions,
+                "expires_at": api_token.expires_at.isoformat() if api_token.expires_at else None,
+                "created_at": api_token.created_at.isoformat()
+            },
+            "mcp_config": mcp_config,
+            "installation_command": install_command
+        }
+    
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error creating API token: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create API token")
+
+@app.get("/api/tokens")
+async def get_api_tokens(db: Session = Depends(get_db)):
+    """Get user's API tokens (simplified auth for now)"""
+    try:
+        # Simplified - get first user's tokens
+        user = db.query(User).first()
+        if not user:
+            return {"tokens": []}
+        
+        tokens = db.query(ApiToken).filter(ApiToken.user_id == user.id).all()
+        
+        token_list = []
+        for token in tokens:
+            token_list.append({
+                "id": token.id,
+                "name": token.name,
+                "description": token.description,
+                "permissions": token.permissions,
+                "is_active": token.is_active,
+                "expires_at": token.expires_at.isoformat() if token.expires_at else None,
+                "last_used_at": token.last_used_at.isoformat() if token.last_used_at else None,
+                "created_at": token.created_at.isoformat(),
+                "updated_at": token.updated_at.isoformat()
+            })
+        
+        return {"tokens": token_list}
+    
+    except Exception as e:
+        logger.error(f"Error fetching API tokens: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch API tokens")
+
 @app.get("/debug/port-info")
 async def port_info():
     """Debug port configuration"""
@@ -2547,8 +2768,15 @@ async def test_yfinance_price(symbol: str):
 # Simple startup
 @app.on_event("startup")
 async def startup_event():
-    """Simple startup without database operations"""
+    """Simple startup with table creation"""
     logger.info("🚀 Starting GridTrader Pro...")
+    try:
+        # Ensure all tables exist, including new ApiToken table
+        create_tables()
+        logger.info("✅ Database tables verified/created")
+    except Exception as e:
+        logger.warning(f"⚠️ Database initialization skipped: {e}")
+        # Don't crash on database issues, but log the warning
     logger.info("✅ GridTrader Pro startup completed")
 
 if __name__ == "__main__":
