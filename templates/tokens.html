@@ -145,8 +145,8 @@
                     <!-- Token Display -->
                     <div class="mt-4 p-3 bg-white border border-green-200 rounded">
                         <div class="flex items-center justify-between">
-                            <code class="text-sm font-mono break-all" x-text="createdToken?.token?.token"></code>
-                            <button @click="copyToClipboard(createdToken?.token?.token)" class="ml-2 bg-green-500 text-white px-3 py-1 rounded text-sm hover:bg-green-600">
+                            <code class="text-sm font-mono break-all" x-text="createdToken?.token"></code>
+                            <button @click="copyToClipboard(createdToken?.token)" class="ml-2 bg-green-500 text-white px-3 py-1 rounded text-sm hover:bg-green-600">
                                 <i class="fas fa-copy"></i>
                             </button>
                         </div>
@@ -307,6 +307,7 @@
                         const data = await response.json();
                         
                         if (data.success) {
+                            console.log('Token created response:', data); // Debug log
                             this.createdToken = data;
                             this.resetForm();
                             // Scroll to success banner
