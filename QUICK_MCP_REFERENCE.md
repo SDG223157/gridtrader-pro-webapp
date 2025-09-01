@@ -9,6 +9,13 @@ Show me my cash balances
 Create a growth portfolio with $25,000
 ```
 
+### 💰 **Buy & Sell Trades**
+```
+Buy 10 shares of AAPL in my growth portfolio
+Sell 20 shares of TSLA from my tech portfolio
+Purchase 50 shares of SPY at $450
+```
+
 ### ⚡ **Grid Trading**
 ```
 Show me my grid strategies
@@ -81,7 +88,15 @@ Calculate portfolio metrics
 ```
 1. Show me US sector analysis
 2. Create a growth portfolio with $30,000
-3. Set up grids for top 3 ETFs
+3. Buy 10 shares of top recommended ETF
+4. Set up grids for remaining ETFs
+```
+
+**Active Trading:**
+```
+1. What's the current price of AAPL?
+2. Buy 20 shares of AAPL in my growth portfolio
+3. Set up grid trading for systematic entries
 ```
 
 **Data Update:**
