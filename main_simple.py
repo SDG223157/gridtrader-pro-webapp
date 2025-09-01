@@ -363,7 +363,7 @@ async def api_auth_middleware(request: Request, call_next):
     # Skip authentication for certain endpoints
     skip_auth_paths = [
         "/api/auth/login", "/api/auth/register", "/api/auth/google", "/api/auth/google/callback",
-        "/health", "/debug/test-tokens", "/debug/test-tokens-db", "/api/market/"
+        "/health", "/debug/test-tokens", "/debug/test-tokens-db", "/debug/session", "/api/market/"
     ]
     
     # Only apply to API endpoints
@@ -2536,6 +2536,26 @@ async def get_market_data(symbol: str, period: str = "1d"):
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
+
+@app.get("/debug/session")
+async def debug_session(request: Request):
+    """Debug endpoint to check session and authentication"""
+    try:
+        session_data = dict(request.session) if hasattr(request, 'session') else {}
+        user_in_state = hasattr(request.state, 'user')
+        user_id = getattr(request.state, 'user', None)
+        
+        return {
+            "session_available": hasattr(request, 'session'),
+            "session_in_scope": 'session' in request.scope,
+            "session_data": session_data,
+            "user_in_state": user_in_state,
+            "user_id": user_id.id if user_id else None,
+            "headers": dict(request.headers),
+            "path": request.url.path
+        }
+    except Exception as e:
+        return {"error": str(e), "type": str(type(e))}
 
 # API Token Management Endpoints
 def generate_secure_token():
