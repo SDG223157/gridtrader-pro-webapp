@@ -185,7 +185,7 @@ class Transaction(Base):
     symbol = Column(String(20), nullable=False, index=True)
     transaction_type = Column(Enum(TransactionType), nullable=False)
     quantity = Column(DECIMAL(15, 6), nullable=False)
-    price = Column(DECIMAL(10, 4), nullable=False)
+    price = Column(DECIMAL(15, 4), nullable=False)
     total_amount = Column(DECIMAL(15, 2), nullable=False)
     fees = Column(DECIMAL(10, 2), default=0.00)
     notes = Column(Text, nullable=True)
