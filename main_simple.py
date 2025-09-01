@@ -1695,6 +1695,134 @@ async def update_portfolio_cash_balance(
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to update cash balance: {str(e)}")
 
+@app.post("/api/china-etfs/update")
+async def update_china_etfs(
+    csv_data: str = Body(..., embed=True),
+    user: User = Depends(require_auth),
+    db: Session = Depends(get_db)
+):
+    """Update China ETFs from cn.investing.com CSV data via MCP"""
+    try:
+        import csv
+        import io
+        from datetime import datetime
+        import re
+        
+        # Parse CSV data
+        csv_reader = csv.DictReader(io.StringIO(csv_data))
+        
+        processed_etfs = []
+        
+        for row in csv_reader:
+            try:
+                # Handle both Chinese and English column names
+                name = row.get('名称', row.get('Name', '')).strip()
+                code = row.get('代码', row.get('Code', '')).strip()
+                volume = row.get('交易量', row.get('Volume', '')).strip()
+                
+                if not name or not code:
+                    continue
+                
+                # Convert code to symbol
+                clean_code = re.sub(r'[^\d]', '', str(code))
+                if len(clean_code) != 6:
+                    continue
+                
+                if clean_code.startswith(('51', '58', '56', '52', '50')):
+                    symbol = f"{clean_code}.SS"
+                elif clean_code.startswith(('15', '16', '17')):
+                    symbol = f"{clean_code}.SZ"
+                else:
+                    symbol = f"{clean_code}.SS"
+                
+                # Parse volume
+                volume_numeric = 0
+                if 'B' in volume:
+                    volume_numeric = float(volume.replace('B', '')) * 1000
+                elif 'M' in volume:
+                    volume_numeric = float(volume.replace('M', ''))
+                
+                # Determine sector
+                name_lower = name.lower()
+                if any(kw in name_lower for kw in ['科技', '互联网', '人工智能', '5g', '通信', '软件', '芯片', '半导体', 'tech', 'ai', 'internet', 'semiconductor']):
+                    sector = "Technology & Innovation"
+                elif any(kw in name_lower for kw in ['医疗', '生物', '医药', '保健', 'medical', 'biotech', 'health', 'pharma']):
+                    sector = "Healthcare & Biotech"
+                elif any(kw in name_lower for kw in ['银行', '证券', '金融', '保险', 'bank', 'financial', 'insurance']):
+                    sector = "Financial Services"
+                elif any(kw in name_lower for kw in ['香港', '恒生', 'qdii', 'hong kong', 'hang seng']):
+                    sector = "Hong Kong & International"
+                elif any(kw in name_lower for kw in ['军工', '国防', 'defense', 'military']):
+                    sector = "Infrastructure & Defense"
+                else:
+                    sector = "Other"
+                
+                processed_etfs.append({
+                    'symbol': symbol,
+                    'name': name,
+                    'volume': volume,
+                    'volume_numeric': volume_numeric,
+                    'sector': sector
+                })
+                
+            except Exception as e:
+                logger.error(f"Error processing ETF row: {e}")
+                continue
+        
+        # Sort by volume
+        processed_etfs.sort(key=lambda x: x['volume_numeric'], reverse=True)
+        
+        # Generate Python code for systematic_trading.py
+        code_lines = []
+        code_lines.append("        # Chinese Market ETFs - Updated from cn.investing.com via MCP")
+        code_lines.append(f"        # Top {len(processed_etfs)} most actively traded ETFs - Updated {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        code_lines.append("        self.china_sector_etfs = {")
+        
+        # Group by sector
+        sectors = {}
+        for etf in processed_etfs[:50]:  # Top 50
+            sector = etf['sector']
+            if sector not in sectors:
+                sectors[sector] = []
+            sectors[sector].append(etf)
+        
+        for sector, sector_etfs in sectors.items():
+            code_lines.append(f"            # {sector} - {len(sector_etfs)} ETFs")
+            for etf in sector_etfs:
+                symbol = etf['symbol']
+                name = etf['name'].replace("'", "\\'")
+                volume = etf['volume']
+                code_lines.append(f"            '{symbol}': '{name}',  # {volume} volume")
+            code_lines.append("")
+        
+        if code_lines[-1] == "":
+            code_lines.pop()
+        code_lines.append("        }")
+        
+        generated_code = "\n".join(code_lines)
+        
+        logger.info(f"🇨🇳 Generated China ETFs code for {len(processed_etfs)} ETFs via MCP")
+        
+        return {
+            "success": True,
+            "message": f"Successfully processed {len(processed_etfs)} China ETFs",
+            "etfs_processed": len(processed_etfs),
+            "top_10": processed_etfs[:10],
+            "sector_breakdown": {sector: len(etfs) for sector, etfs in sectors.items()},
+            "generated_code": generated_code,
+            "instructions": {
+                "step_1": "Review the generated code below",
+                "step_2": "Copy the code to app/systematic_trading.py",
+                "step_3": "Replace the china_sector_etfs dictionary",
+                "step_4": "Test with: python scripts/validate_china_etfs.py",
+                "step_5": "Deploy: git commit and push"
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ China ETFs update error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update China ETFs: {str(e)}")
+
 # Grid Trading Routes
 @app.get("/grids", response_class=HTMLResponse)
 async def grids_page(request: Request, db: Session = Depends(get_db)):

@@ -346,6 +346,20 @@ class GridTraderProMCPServer {
               },
               required: ['symbol']
             }
+          },
+          {
+            name: 'update_china_etfs',
+            description: 'Update China ETFs list from cn.investing.com CSV data',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                csv_data: {
+                  type: 'string',
+                  description: 'CSV data from cn.investing.com with columns: 名称,代码,最新价,涨跌幅,交易量,时间'
+                }
+              },
+              required: ['csv_data']
+            }
           }
         ]
       };
@@ -391,6 +405,9 @@ class GridTraderProMCPServer {
           
           case 'validate_symbol':
             return await this.handleValidateSymbol(args);
+          
+          case 'update_china_etfs':
+            return await this.handleUpdateChinaETFs(args);
           
           default:
             throw new Error(`Unknown tool: ${name}`);
@@ -893,6 +910,63 @@ class GridTraderProMCPServer {
             text: `❌ **Symbol Validation Failed**\n\n` +
               `**${args.symbol}** is not valid or not supported.\n` +
               `Error: ${error.response?.data?.detail || error.message}`
+          }
+        ]
+      };
+    }
+  }
+
+  private async handleUpdateChinaETFs(args: any) {
+    try {
+      const data = await this.makeApiCall('/api/china-etfs/update', 'POST', {
+        csv_data: args.csv_data
+      });
+      
+      if (data.success) {
+        const topETFs = data.top_10.map((etf: any, index: number) => 
+          `${index + 1}. ${etf.symbol}: ${etf.name.substring(0, 40)}... (${etf.volume})`
+        ).join('\n');
+        
+        const sectorBreakdown = Object.entries(data.sector_breakdown)
+          .map(([sector, count]) => `• ${sector}: ${count} ETFs`)
+          .join('\n');
+        
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `🇨🇳 **China ETFs Update Successful!**\n\n` +
+                `✅ Processed **${data.etfs_processed} ETFs** from cn.investing.com\n\n` +
+                `📊 **Top 10 by Volume:**\n${topETFs}\n\n` +
+                `📈 **Sector Breakdown:**\n${sectorBreakdown}\n\n` +
+                `🔧 **Generated Code:**\n` +
+                `\`\`\`python\n${data.generated_code}\`\`\`\n\n` +
+                `📋 **Next Steps:**\n` +
+                `1. Copy the generated code above\n` +
+                `2. Replace china_sector_etfs in app/systematic_trading.py\n` +
+                `3. Test: python scripts/validate_china_etfs.py\n` +
+                `4. Deploy: git commit and push\n\n` +
+                `🎯 **Ready to update your systematic trading engine with the latest China ETFs!**`
+            }
+          ]
+        };
+      } else {
+        throw new Error(data.message || 'Update failed');
+      }
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `❌ **China ETFs Update Failed**\n\n` +
+              `Error: ${error.response?.data?.detail || error.message}\n\n` +
+              `💡 **CSV Format Expected:**\n` +
+              `\`\`\`csv\n` +
+              `名称,代码,最新价,涨跌幅,交易量,时间\n` +
+              `Huatai-PB CSOP HS Tech Id(QDII),513130,0.770,+1.32%,5.94B,11:29:59\n` +
+              `华夏恒生互联网科技业ETF(QDII),513330,0.540,+1.89%,5.37B,11:29:58\n` +
+              `\`\`\`\n\n` +
+              `Please ensure your CSV data is in the correct format from cn.investing.com`
           }
         ]
       };
