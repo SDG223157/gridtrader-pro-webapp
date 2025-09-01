@@ -17,20 +17,14 @@ npm run build
 sudo npm install -g .
 ```
 
-### Step 2: Start GridTrader Pro Application
-Make sure your GridTrader Pro application is running:
-
-```bash
-cd gridtrader-pro-webapp
-python main.py
-# or
-docker run -p 3000:3000 gridtrader-pro
-```
+### Step 2: Access GridTrader Pro Application
+Your GridTrader Pro application is running at:
+**https://gridsai.app**
 
 ### Step 3: Get Your Access Token
-1. Visit: **http://localhost:3000/debug/create-test-user** (for testing)
-2. Or implement proper authentication in your app
-3. Generate an access token for API access
+1. Visit: **https://gridsai.app/tokens**
+2. Login with your GridTrader Pro account
+3. Create a new API token for MCP integration
 
 ### Step 4: Configure Cursor
 Add this configuration to your Cursor MCP settings:
@@ -41,7 +35,7 @@ Add this configuration to your Cursor MCP settings:
     "gridtrader-pro": {
       "command": "gridtrader-pro-mcp",
       "env": {
-        "GRIDTRADER_API_URL": "http://localhost:3000",
+        "GRIDTRADER_API_URL": "https://gridsai.app",
         "GRIDTRADER_ACCESS_TOKEN": "your_access_token_here"
       }
     }

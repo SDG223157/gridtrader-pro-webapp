@@ -82,7 +82,7 @@ class GridTraderProMCPServer {
       }
     );
 
-    this.apiUrl = process.env.GRIDTRADER_API_URL || 'http://localhost:3000';
+    this.apiUrl = process.env.GRIDTRADER_API_URL || 'https://gridsai.app';
     this.accessToken = process.env.GRIDTRADER_ACCESS_TOKEN || '';
 
     this.setupToolHandlers();
