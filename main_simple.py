@@ -4,7 +4,7 @@ Simplified GridTrader Pro following prombank_backup authentication pattern
 import os
 import logging
 from pathlib import Path
-from fastapi import FastAPI, HTTPException, Depends, Request, Form
+from fastapi import FastAPI, HTTPException, Depends, Request, Form, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -1414,6 +1414,78 @@ async def create_transaction(request: CreateTransactionRequest, user: User = Dep
         db.rollback()
         logger.error(f"Error creating transaction: {e}")
         raise HTTPException(status_code=500, detail="Failed to create transaction")
+
+@app.post("/api/portfolios/{portfolio_id}/update-cash")
+async def update_portfolio_cash_balance(
+    portfolio_id: str,
+    cash_adjustment: float = Body(..., embed=True),
+    notes: str = Body("", embed=True),
+    user: User = Depends(require_auth), 
+    db: Session = Depends(get_db)
+):
+    """Update portfolio cash balance manually (e.g., for interest, dividends, deposits)"""
+    try:
+        # Verify portfolio ownership
+        portfolio = db.query(Portfolio).filter(
+            Portfolio.id == portfolio_id,
+            Portfolio.user_id == user.id
+        ).first()
+        
+        if not portfolio:
+            raise HTTPException(status_code=404, detail="Portfolio not found")
+        
+        # Convert to Decimal for precision
+        adjustment_decimal = Decimal(str(cash_adjustment))
+        
+        # Update cash balance
+        old_balance = portfolio.cash_balance or Decimal('0')
+        new_balance = old_balance + adjustment_decimal
+        
+        # Prevent negative cash balance
+        if new_balance < 0:
+            raise HTTPException(status_code=400, detail="Cash balance cannot be negative")
+        
+        portfolio.cash_balance = new_balance
+        
+        # Create a transaction record for audit trail
+        transaction = Transaction(
+            portfolio_id=portfolio_id,
+            transaction_type=TransactionType.buy if cash_adjustment > 0 else TransactionType.sell,
+            symbol="CASH",  # Special symbol for cash adjustments
+            quantity=Decimal('1'),
+            price=abs(adjustment_decimal),
+            total_amount=abs(adjustment_decimal),
+            fees=Decimal('0'),
+            notes=notes or f"Manual cash balance adjustment: {'deposit' if cash_adjustment > 0 else 'withdrawal'}"
+        )
+        db.add(transaction)
+        
+        # Update portfolio current value
+        portfolio.current_value = calculate_portfolio_value(portfolio, db)
+        
+        # Update portfolio return calculation
+        if float(portfolio.initial_capital) > 0:
+            portfolio.total_return = ((portfolio.current_value - portfolio.initial_capital) / portfolio.initial_capital)
+        
+        db.commit()
+        
+        logger.info(f"💰 Portfolio {portfolio.name} cash balance updated: ${old_balance} → ${new_balance} (adjustment: ${adjustment_decimal})")
+        
+        return {
+            "success": True,
+            "old_balance": float(old_balance),
+            "new_balance": float(new_balance),
+            "adjustment": float(adjustment_decimal),
+            "new_total_value": float(portfolio.current_value),
+            "message": f"Cash balance updated successfully"
+        }
+        
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid cash adjustment amount: {str(e)}")
+    except Exception as e:
+        logger.error(f"❌ Cash balance update error: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to update cash balance: {str(e)}")
 
 # Grid Trading Routes
 @app.get("/grids", response_class=HTMLResponse)
