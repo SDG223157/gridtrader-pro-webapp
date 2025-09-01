@@ -2276,7 +2276,7 @@ async def create_api_token(request: CreateApiTokenRequest, db: Session = Depends
                 "gridtrader-pro": {
                     "command": "gridtrader-pro-mcp",
                     "env": {
-                        "GRIDTRADER_API_URL": f"{os.getenv('FRONTEND_URL', 'https://gridsai.app')}",
+                        "GRIDTRADER_API_URL": "https://gridsai.app",
                         "GRIDTRADER_ACCESS_TOKEN": token
                     }
                 }
@@ -2339,6 +2339,106 @@ async def get_api_tokens(db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Error fetching API tokens: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch API tokens")
+
+@app.get("/api/tokens/{token_id}/mcp-config")
+async def get_token_mcp_config(token_id: str, db: Session = Depends(get_db)):
+    """Get MCP configuration for a specific token"""
+    try:
+        token = db.query(ApiToken).filter(ApiToken.id == token_id).first()
+        
+        if not token:
+            raise HTTPException(status_code=404, detail="Token not found")
+        
+        # Generate MCP configuration template (without actual token)
+        mcp_config = {
+            "mcpServers": {
+                "gridtrader-pro": {
+                    "command": "gridtrader-pro-mcp",
+                    "env": {
+                        "GRIDTRADER_API_URL": "https://gridsai.app",
+                        "GRIDTRADER_ACCESS_TOKEN": "YOUR_API_TOKEN_HERE"
+                    }
+                }
+            }
+        }
+        
+        return {
+            "token_name": token.name,
+            "token_id": token.id,
+            "mcp_config": mcp_config,
+            "installation_command": "curl -fsSL https://raw.githubusercontent.com/SDG223157/gridtrader-pro-webapp/main/install-mcp.sh | bash",
+            "note": "Replace 'YOUR_API_TOKEN_HERE' with your actual API token"
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting MCP config: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get MCP configuration")
+
+@app.put("/api/tokens/{token_id}")
+async def update_api_token(token_id: str, request: UpdateApiTokenRequest, db: Session = Depends(get_db)):
+    """Update an API token"""
+    try:
+        token = db.query(ApiToken).filter(ApiToken.id == token_id).first()
+        
+        if not token:
+            raise HTTPException(status_code=404, detail="Token not found")
+        
+        # Update fields
+        if request.name is not None:
+            token.name = request.name
+        if request.description is not None:
+            token.description = request.description
+        if request.is_active is not None:
+            token.is_active = request.is_active
+        
+        db.commit()
+        db.refresh(token)
+        
+        return {
+            "success": True,
+            "message": "Token updated successfully",
+            "token": {
+                "id": token.id,
+                "name": token.name,
+                "description": token.description,
+                "is_active": token.is_active,
+                "updated_at": token.updated_at.isoformat()
+            }
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating API token: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update API token")
+
+@app.delete("/api/tokens/{token_id}")
+async def delete_api_token(token_id: str, db: Session = Depends(get_db)):
+    """Delete an API token"""
+    try:
+        token = db.query(ApiToken).filter(ApiToken.id == token_id).first()
+        
+        if not token:
+            raise HTTPException(status_code=404, detail="Token not found")
+        
+        token_name = token.name
+        db.delete(token)
+        db.commit()
+        
+        return {
+            "success": True,
+            "message": f"Token '{token_name}' deleted successfully"
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deleting API token: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete API token")
 
 @app.get("/debug/port-info")
 async def port_info():
