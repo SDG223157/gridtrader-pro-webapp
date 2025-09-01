@@ -1159,6 +1159,130 @@ async def dashboard_summary(user: User = Depends(require_auth), db: Session = De
         logger.error(f"❌ Dashboard summary error: {e}")
         raise HTTPException(status_code=500, detail="Failed to get dashboard summary")
 
+@app.get("/api/portfolios")
+async def get_portfolios(user: User = Depends(require_auth), db: Session = Depends(get_db)):
+    """Get all portfolios with cash balances for MCP integration"""
+    try:
+        portfolios = db.query(Portfolio).filter(Portfolio.user_id == user.id).all()
+        
+        portfolio_list = []
+        total_cash = 0
+        
+        for portfolio in portfolios:
+            cash_balance = float(portfolio.cash_balance or 0)
+            total_cash += cash_balance
+            
+            portfolio_data = {
+                "id": portfolio.id,
+                "name": portfolio.name,
+                "description": portfolio.description or "",
+                "strategy_type": portfolio.strategy_type.value if portfolio.strategy_type else "balanced",
+                "initial_capital": float(portfolio.initial_capital),
+                "current_value": float(portfolio.current_value or 0),
+                "cash_balance": cash_balance,
+                "total_return": float(portfolio.total_return or 0) * 100,  # Convert to percentage
+                "created_at": portfolio.created_at.isoformat(),
+                "updated_at": portfolio.updated_at.isoformat()
+            }
+            
+            # Get holdings count
+            holdings_count = db.query(Holding).filter(Holding.portfolio_id == portfolio.id).count()
+            portfolio_data["holdings_count"] = holdings_count
+            
+            # Get active grids count
+            active_grids_count = db.query(Grid).filter(
+                Grid.portfolio_id == portfolio.id,
+                Grid.status == GridStatus.active
+            ).count()
+            portfolio_data["active_grids"] = active_grids_count
+            
+            portfolio_list.append(portfolio_data)
+        
+        return {
+            "portfolios": portfolio_list,
+            "summary": {
+                "total_portfolios": len(portfolio_list),
+                "total_cash": total_cash,
+                "total_value": sum(p["current_value"] for p in portfolio_list),
+                "total_invested": sum(p["initial_capital"] for p in portfolio_list)
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Get portfolios error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get portfolios")
+
+@app.get("/api/portfolios/{portfolio_id}")
+async def get_portfolio_details(portfolio_id: str, user: User = Depends(require_auth), db: Session = Depends(get_db)):
+    """Get detailed portfolio information including cash balance"""
+    try:
+        portfolio = db.query(Portfolio).filter(
+            Portfolio.id == portfolio_id,
+            Portfolio.user_id == user.id
+        ).first()
+        
+        if not portfolio:
+            raise HTTPException(status_code=404, detail="Portfolio not found")
+        
+        # Get holdings
+        holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio_id).all()
+        holdings_data = []
+        
+        for holding in holdings:
+            holdings_data.append({
+                "symbol": holding.symbol,
+                "quantity": float(holding.quantity),
+                "average_cost": float(holding.average_cost),
+                "current_price": float(holding.current_price or 0),
+                "market_value": float(holding.quantity) * float(holding.current_price or 0),
+                "unrealized_pnl": float(holding.unrealized_pnl or 0)
+            })
+        
+        # Get active grids
+        active_grids = db.query(Grid).filter(
+            Grid.portfolio_id == portfolio_id,
+            Grid.status == GridStatus.active
+        ).all()
+        
+        grids_data = []
+        for grid in active_grids:
+            grids_data.append({
+                "id": grid.id,
+                "name": grid.name,
+                "symbol": grid.symbol,
+                "investment_amount": float(grid.investment_amount),
+                "upper_price": float(grid.upper_price),
+                "lower_price": float(grid.lower_price),
+                "status": grid.status.value
+            })
+        
+        return {
+            "id": portfolio.id,
+            "name": portfolio.name,
+            "description": portfolio.description or "",
+            "strategy_type": portfolio.strategy_type.value if portfolio.strategy_type else "balanced",
+            "initial_capital": float(portfolio.initial_capital),
+            "current_value": float(portfolio.current_value or 0),
+            "cash_balance": float(portfolio.cash_balance or 0),
+            "total_return": float(portfolio.total_return or 0) * 100,
+            "created_at": portfolio.created_at.isoformat(),
+            "updated_at": portfolio.updated_at.isoformat(),
+            "holdings": holdings_data,
+            "active_grids": grids_data,
+            "summary": {
+                "holdings_count": len(holdings_data),
+                "grids_count": len(grids_data),
+                "holdings_value": sum(h["market_value"] for h in holdings_data),
+                "grids_allocation": sum(g["investment_amount"] for g in grids_data)
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Get portfolio details error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get portfolio details")
+
 # Portfolio Management Routes
 @app.get("/portfolios", response_class=HTMLResponse)
 async def portfolios_page(request: Request, db: Session = Depends(get_db)):
