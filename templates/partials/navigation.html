@@ -76,6 +76,13 @@
     Settings
 </a>
 
+<a href="/tokens" 
+   class="group flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200
+          {% if current_path == '/tokens' %}bg-indigo-100 text-indigo-700 border-r-2 border-indigo-700{% else %}text-gray-600 hover:bg-gray-100 hover:text-gray-900{% endif %}">
+    <i class="fas fa-key mr-3 {% if current_path == '/tokens' %}text-indigo-500{% else %}text-gray-400 group-hover:text-gray-500{% endif %}"></i>
+    API Tokens
+</a>
+
 <a href="/help" 
    class="group flex items-center px-3 py-2 text-sm font-medium text-gray-600 rounded-lg hover:bg-gray-100 hover:text-gray-900 transition-colors duration-200">
     <i class="fas fa-question-circle mr-3 text-gray-400 group-hover:text-gray-500"></i>

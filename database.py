@@ -102,6 +102,7 @@ class User(Base):
     portfolios = relationship("Portfolio", back_populates="user")
     alerts = relationship("Alert", back_populates="user")
     oauth_sessions = relationship("OAuthSession", back_populates="user")
+    api_tokens = relationship("ApiToken", back_populates="user")
 
 class UserProfile(Base):
     __tablename__ = "user_profiles"
@@ -259,6 +260,24 @@ class Alert(Base):
     created_at = Column(DateTime, server_default=func.current_timestamp())
 
     user = relationship("User", back_populates="alerts")
+
+class ApiToken(Base):
+    """API tokens for MCP server authentication"""
+    __tablename__ = "api_tokens"
+
+    id = Column(VARCHAR(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(VARCHAR(36), ForeignKey("users.id"), nullable=False)
+    name = Column(String(100), nullable=False)
+    description = Column(Text)
+    token = Column(VARCHAR(64), nullable=False, unique=True)
+    permissions = Column(JSON, default=lambda: ["read", "write"])  # Array of permissions
+    is_active = Column(Boolean, default=True)
+    expires_at = Column(DateTime, nullable=True)  # NULL means no expiration
+    last_used_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, server_default=func.current_timestamp())
+    updated_at = Column(DateTime, server_default=func.current_timestamp(), onupdate=func.current_timestamp())
+
+    user = relationship("User", back_populates="api_tokens")
 
 # Database connection and table creation functions
 async def connect_with_retry(max_retries=5, delay=5):

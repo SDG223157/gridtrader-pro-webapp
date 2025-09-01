@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "gridtrader-pro": {
+      "command": "node",
+      "args": ["/Users/sdg223157/gridsai_webapp/gridtrader-pro-webapp/mcp-server/dist/index.js"],
+      "env": {
+        "GRIDTRADER_API_URL": "http://localhost:3000",
+        "GRIDTRADER_ACCESS_TOKEN": "gridtrader_dev_token_123"
+      }
+    }
+  }
+}
