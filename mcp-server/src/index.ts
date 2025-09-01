@@ -360,6 +360,34 @@ class GridTraderProMCPServer {
               },
               required: ['csv_data']
             }
+          },
+          {
+            name: 'get_us_sector_analysis',
+            description: 'Get US market sector analysis with ETF recommendations',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                lookback_days: {
+                  type: 'number',
+                  description: 'Number of days for analysis (default: 90)',
+                  default: 90
+                }
+              }
+            }
+          },
+          {
+            name: 'get_china_sector_analysis',
+            description: 'Get China market sector analysis with ETF recommendations',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                lookback_days: {
+                  type: 'number',
+                  description: 'Number of days for analysis (default: 90)',
+                  default: 90
+                }
+              }
+            }
           }
         ]
       };
@@ -408,6 +436,12 @@ class GridTraderProMCPServer {
           
           case 'update_china_etfs':
             return await this.handleUpdateChinaETFs(args);
+          
+          case 'get_us_sector_analysis':
+            return await this.handleGetUSSectorAnalysis(args);
+          
+          case 'get_china_sector_analysis':
+            return await this.handleGetChinaSectorAnalysis(args);
           
           default:
             throw new Error(`Unknown tool: ${name}`);
@@ -967,6 +1001,121 @@ class GridTraderProMCPServer {
               `华夏恒生互联网科技业ETF(QDII),513330,0.540,+1.89%,5.37B,11:29:58\n` +
               `\`\`\`\n\n` +
               `Please ensure your CSV data is in the correct format from cn.investing.com`
+          }
+        ]
+      };
+    }
+  }
+
+  private async handleGetUSSectorAnalysis(args: any) {
+    try {
+      const lookbackDays = args.lookback_days || 90;
+      const data = await this.makeApiCall(`/api/sector-analysis?market=US&lookback_days=${lookbackDays}`);
+      
+      if (data.success) {
+        const topSectors = data.top_sectors.slice(0, 10).map((sector: any, index: number) => 
+          `${index + 1}. **${sector.symbol}**: ${sector.sector.substring(0, 35)}...\n` +
+          `   Conviction: ${sector.conviction_score.toFixed(2)} | Weight: ${sector.recommended_weight.toFixed(1)}% | Risk Adj: ${sector.risk_adjustment.toFixed(3)}\n` +
+          `   Recommendation: ${sector.recommendation}`
+        ).join('\n\n');
+        
+        const summary = data.summary || {};
+        
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `🇺🇸 **US Market Sector Analysis**\n\n` +
+                `**Market**: United States\n` +
+                `**Benchmark**: S&P 500 (SPY)\n` +
+                `**Market Regime**: ${data.market_regime?.replace('_', ' ').toUpperCase() || 'Unknown'}\n` +
+                `**Analysis Period**: ${lookbackDays} days\n` +
+                `**Sectors Analyzed**: ${data.sectors_analyzed || 0}\n\n` +
+                `📊 **Top 10 US Sector ETFs:**\n\n${topSectors}\n\n` +
+                `🏆 **Key Highlights:**\n` +
+                `• Strongest Momentum: ${summary.strongest_momentum?.symbol || 'N/A'}\n` +
+                `• Best Value: ${summary.best_value?.symbol || 'N/A'}\n` +
+                `• Highest Conviction: ${summary.highest_conviction?.symbol || 'N/A'}\n\n` +
+                `💡 **Investment Ideas:**\n` +
+                `• Consider overweighting sectors with conviction > 1.2\n` +
+                `• Monitor risk adjustment for position sizing\n` +
+                `• Focus on BUY recommendations for new positions\n\n` +
+                `🔄 **Updated**: ${new Date(data.analysis_date).toLocaleString()}`
+            }
+          ]
+        };
+      } else {
+        throw new Error(data.message || 'Analysis failed');
+      }
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `❌ **US Sector Analysis Failed**\n\n` +
+              `Error: ${error.response?.data?.detail || error.message}\n\n` +
+              `💡 **Try asking:**\n` +
+              `• "Show me US sector analysis"\n` +
+              `• "What are the best US sector ETFs?"\n` +
+              `• "Run US market sector analysis for 60 days"`
+          }
+        ]
+      };
+    }
+  }
+
+  private async handleGetChinaSectorAnalysis(args: any) {
+    try {
+      const lookbackDays = args.lookback_days || 90;
+      const data = await this.makeApiCall(`/api/sector-analysis?market=China&lookback_days=${lookbackDays}`);
+      
+      if (data.success) {
+        const topSectors = data.top_sectors.slice(0, 10).map((sector: any, index: number) => 
+          `${index + 1}. **${sector.symbol}**: ${sector.sector.substring(0, 35)}...\n` +
+          `   Conviction: ${sector.conviction_score.toFixed(2)} | Weight: ${sector.recommended_weight.toFixed(1)}% | Risk Adj: ${sector.risk_adjustment.toFixed(3)}\n` +
+          `   Recommendation: ${sector.recommendation}`
+        ).join('\n\n');
+        
+        const summary = data.summary || {};
+        
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `🇨🇳 **China Market Sector Analysis**\n\n` +
+                `**Market**: China\n` +
+                `**Benchmark**: CSI 300 Index (000300.SS)\n` +
+                `**Market Regime**: ${data.market_regime?.replace('_', ' ').toUpperCase() || 'Unknown'}\n` +
+                `**Analysis Period**: ${lookbackDays} days\n` +
+                `**Sectors Analyzed**: ${data.sectors_analyzed || 0}\n\n` +
+                `📊 **Top 10 China Sector ETFs:**\n\n${topSectors}\n\n` +
+                `🏆 **Key Highlights:**\n` +
+                `• Strongest Momentum: ${summary.strongest_momentum?.symbol || 'N/A'}\n` +
+                `• Best Value: ${summary.best_value?.symbol || 'N/A'}\n` +
+                `• Highest Conviction: ${summary.highest_conviction?.symbol || 'N/A'}\n\n` +
+                `💡 **Investment Ideas:**\n` +
+                `• Focus on high-conviction healthcare and tech ETFs\n` +
+                `• Consider Hong Kong exposure for diversification\n` +
+                `• Monitor military/defense sectors for geopolitical plays\n\n` +
+                `🔄 **Updated**: ${new Date(data.analysis_date).toLocaleString()}`
+            }
+          ]
+        };
+      } else {
+        throw new Error(data.message || 'Analysis failed');
+      }
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `❌ **China Sector Analysis Failed**\n\n` +
+              `Error: ${error.response?.data?.detail || error.message}\n\n` +
+              `💡 **Try asking:**\n` +
+              `• "Show me China sector analysis"\n` +
+              `• "What are the best China sector ETFs?"\n` +
+              `• "Run China market sector analysis for 60 days"\n` +
+              `• "Analyze Chinese healthcare and tech ETFs"`
           }
         ]
       };
