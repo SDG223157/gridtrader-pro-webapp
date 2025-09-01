@@ -77,6 +77,11 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> Optiona
 
 def require_auth(request: Request, db: Session = Depends(get_db)) -> User:
     """Require authentication, raise 401 if not authenticated"""
+    # First check if user is set by API token middleware
+    if hasattr(request.state, 'user') and request.state.user:
+        return request.state.user
+    
+    # Fallback to session-based authentication
     user = get_current_user(request, db)
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required")
