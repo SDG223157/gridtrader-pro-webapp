@@ -42,8 +42,34 @@
             </div>
         </div>
 
+        <!-- Setup Required Notice (if database not ready) -->
+        {% if setup_required %}
+        <div class="bg-red-50 border border-red-200 rounded-lg p-6 mb-8">
+            <div class="flex">
+                <div class="flex-shrink-0">
+                    <i class="fas fa-exclamation-triangle text-red-600 text-xl"></i>
+                </div>
+                <div class="ml-4">
+                    <h3 class="text-lg font-medium text-red-900">Database Setup Required</h3>
+                    <p class="text-red-700 mt-1">{{ error_message }}</p>
+                    <div class="mt-4 space-y-2">
+                        <p class="text-sm text-red-600"><strong>For Coolify Users:</strong></p>
+                        <ol class="text-sm text-red-600 list-decimal list-inside space-y-1 ml-4">
+                            <li>Go to your Coolify dashboard</li>
+                            <li>Find your GridTrader Pro service</li>
+                            <li>Click "Restart" to apply database changes</li>
+                            <li>Wait for the restart to complete</li>
+                            <li>Refresh this page</li>
+                        </ol>
+                        <p class="text-sm text-red-600 mt-2"><strong>Alternative:</strong> Visit <a href="/debug/test-tokens" class="underline">debug endpoint</a> to check table status</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
         <!-- Create Token Section -->
-        <div class="bg-white rounded-lg shadow-md p-6 mb-8" x-data="tokenManager()">
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8" x-data="tokenManager()" {% if setup_required %}style="opacity: 0.5; pointer-events: none;"{% endif %}>
             <h2 class="text-xl font-semibold text-gray-900 mb-4">
                 <i class="fas fa-plus text-green-600 mr-2"></i>Create New Token
             </h2>
