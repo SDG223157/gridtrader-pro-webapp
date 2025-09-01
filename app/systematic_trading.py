@@ -544,6 +544,53 @@ class SystematicTradingEngine:
         except Exception as e:
             logger.error(f"❌ Error detecting market regime: {e}")
             return MarketRegime.SIDEWAYS_MEAN_REVERSION
+    
+    def update_china_etfs(self, new_etfs_dict: Dict[str, str]) -> bool:
+        """
+        Update China ETFs dictionary dynamically
+        
+        Args:
+            new_etfs_dict: Dictionary of {symbol: name} pairs
+            
+        Returns:
+            bool: True if update successful
+        """
+        try:
+            # Validate the new ETFs dictionary
+            if not isinstance(new_etfs_dict, dict):
+                logger.error("❌ Invalid ETFs data: must be a dictionary")
+                return False
+            
+            if len(new_etfs_dict) == 0:
+                logger.error("❌ Invalid ETFs data: dictionary is empty")
+                return False
+            
+            # Validate symbol formats
+            invalid_symbols = []
+            for symbol in new_etfs_dict.keys():
+                if not isinstance(symbol, str) or not symbol.endswith(('.SS', '.SZ')):
+                    invalid_symbols.append(symbol)
+            
+            if invalid_symbols:
+                logger.error(f"❌ Invalid symbol formats: {invalid_symbols}")
+                return False
+            
+            # Backup current ETFs
+            old_etfs = self.china_sector_etfs.copy()
+            old_count = len(old_etfs)
+            
+            # Update the ETFs dictionary
+            self.china_sector_etfs = new_etfs_dict.copy()
+            new_count = len(self.china_sector_etfs)
+            
+            logger.info(f"🇨🇳 China ETFs updated successfully: {old_count} → {new_count} ETFs")
+            logger.info(f"📊 New ETFs include: {list(new_etfs_dict.keys())[:5]}...")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Error updating China ETFs: {e}")
+            return False
 
 # Global instance
 systematic_trading_engine = SystematicTradingEngine()

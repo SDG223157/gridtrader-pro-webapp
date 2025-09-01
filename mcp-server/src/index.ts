@@ -969,18 +969,26 @@ class GridTraderProMCPServer {
           content: [
             {
               type: 'text',
-              text: `🇨🇳 **China ETFs Update Successful!**\n\n` +
-                `✅ Processed **${data.etfs_processed} ETFs** from cn.investing.com\n\n` +
+              text: `🇨🇳 **China ETFs Auto-Updated Successfully!**\n\n` +
+                `✅ Processed **${data.etfs_processed} ETFs** from cn.investing.com\n` +
+                `🚀 **${data.etfs_updated_in_engine || data.etfs_processed} ETFs automatically updated** in the app!\n\n` +
+                `${data.auto_update_status || ''}\n\n` +
                 `📊 **Top 10 by Volume:**\n${topETFs}\n\n` +
                 `📈 **Sector Breakdown:**\n${sectorBreakdown}\n\n` +
-                `🔧 **Generated Code:**\n` +
+                `🎯 **Immediate Effects:**\n` +
+                `• ✅ Sector analysis now uses updated ETFs\n` +
+                `• ✅ New ETFs available for grid trading\n` +
+                `• ✅ Updated conviction scores and recommendations\n` +
+                `• ✅ Changes active immediately (no restart needed)\n\n` +
+                `🧪 **Test the Updates:**\n` +
+                `• Ask: "Show me China sector analysis"\n` +
+                `• Ask: "What are the top China ETFs now?"\n` +
+                `• Ask: "Create a grid for the top China tech ETF"\n\n` +
+                `💾 **For Permanent Storage:**\n` +
+                `The changes are active immediately but will reset on app restart.\n` +
+                `For permanent updates, copy this code to app/systematic_trading.py:\n\n` +
                 `\`\`\`python\n${data.generated_code}\`\`\`\n\n` +
-                `📋 **Next Steps:**\n` +
-                `1. Copy the generated code above\n` +
-                `2. Replace china_sector_etfs in app/systematic_trading.py\n` +
-                `3. Test: python scripts/validate_china_etfs.py\n` +
-                `4. Deploy: git commit and push\n\n` +
-                `🎯 **Ready to update your systematic trading engine with the latest China ETFs!**`
+                `🎉 **Your China ETF universe is now updated and ready for trading!**`
             }
           ]
         };
