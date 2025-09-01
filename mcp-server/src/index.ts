@@ -448,6 +448,28 @@ class GridTraderProMCPServer {
               },
               required: ['portfolio_id', 'symbol', 'quantity']
             }
+          },
+          {
+            name: 'update_balance',
+            description: 'Update the cash balance of a portfolio to a specific amount',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                portfolio_id: {
+                  type: 'string',
+                  description: 'Portfolio ID to update the cash balance for'
+                },
+                new_cash_balance: {
+                  type: 'number',
+                  description: 'New cash balance amount to set'
+                },
+                notes: {
+                  type: 'string',
+                  description: 'Optional notes explaining the balance update (e.g., "Interest earned", "Bank deposit")'
+                }
+              },
+              required: ['portfolio_id', 'new_cash_balance']
+            }
           }
         ]
       };
@@ -508,6 +530,9 @@ class GridTraderProMCPServer {
           
           case 'sell_stock':
             return await this.handleSellStock(args);
+          
+          case 'update_balance':
+            return await this.handleUpdateBalance(args);
           
           default:
             throw new Error(`Unknown tool: ${name}`);
@@ -1365,6 +1390,74 @@ class GridTraderProMCPServer {
               `• "Show me my portfolios" to check holdings\n` +
               `• "Show me portfolio details" to see current positions\n` +
               `• "Search for [company] symbol" to verify symbol`
+          }
+        ]
+      };
+    }
+  }
+
+  private async handleUpdateBalance(args: any) {
+    try {
+      const updateData = {
+        new_cash_balance: args.new_cash_balance,
+        notes: args.notes || `MCP balance update - Set to $${args.new_cash_balance.toLocaleString()}`
+      };
+
+      const result = await this.makeApiCall(`/api/portfolios/${args.portfolio_id}/update-cash`, 'POST', updateData);
+      
+      if (result.success) {
+        const adjustment = result.adjustment;
+        const adjustmentText = adjustment > 0 ? 
+          `increased by $${Math.abs(adjustment).toLocaleString()}` : 
+          adjustment < 0 ? 
+            `decreased by $${Math.abs(adjustment).toLocaleString()}` : 
+            `unchanged (no adjustment needed)`;
+        
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `✅ **Cash Balance Updated Successfully!**\n\n` +
+                `**Balance Update Details:**\n` +
+                `• Portfolio ID: ${args.portfolio_id}\n` +
+                `• Previous Balance: **$${result.old_balance.toLocaleString()}**\n` +
+                `• New Balance: **$${result.new_balance.toLocaleString()}**\n` +
+                `• Balance Change: **${adjustmentText}**\n` +
+                `• New Total Portfolio Value: **$${result.new_total_value.toLocaleString()}**\n` +
+                `• Notes: ${args.notes || 'Balance update via MCP'}\n\n` +
+                `💰 **Impact:**\n` +
+                `• Cash balance ${adjustmentText}\n` +
+                `• Portfolio total value updated\n` +
+                `• Audit trail transaction created\n\n` +
+                `📋 **Next Steps:**\n` +
+                `• View updated portfolio: "Show me portfolio details"\n` +
+                `• Check all balances: "Show me all my portfolios"\n` +
+                `• Review transaction history: "Show me recent transactions"\n\n` +
+                `🎉 **Balance update completed successfully!**`
+            }
+          ]
+        };
+      } else {
+        throw new Error(result.message || result.detail || 'Balance update failed');
+      }
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `❌ **Balance Update Failed**\n\n` +
+              `Error: ${error.response?.data?.detail || error.message}\n\n` +
+              `💡 **Common Issues:**\n` +
+              `• Invalid portfolio ID\n` +
+              `• Negative balance amount\n` +
+              `• Authentication error\n` +
+              `• Database connection issue\n\n` +
+              `🔧 **Try:**\n` +
+              `• "Show me all my portfolios" to verify portfolio ID\n` +
+              `• Check that the balance amount is positive\n` +
+              `• Try again in a few moments\n\n` +
+              `💰 **Example Usage:**\n` +
+              `"Update my portfolio balance to $50000 with note 'Bank deposit'"`
           }
         ]
       };
