@@ -272,6 +272,7 @@ function showSectorAnalysisModal(data) {
                             <th class="px-3 py-2 text-left">Symbol</th>
                             <th class="px-3 py-2 text-left">Conviction</th>
                             <th class="px-3 py-2 text-left">Weight</th>
+                            <th class="px-3 py-2 text-left">Risk Adjustment</th>
                             <th class="px-3 py-2 text-left">Recommendation</th>
                         </tr>
                     </thead>
@@ -282,6 +283,14 @@ function showSectorAnalysisModal(data) {
                                 <td class="px-3 py-2 text-blue-600 font-mono">${sector.symbol}</td>
                                 <td class="px-3 py-2">${sector.conviction_score.toFixed(2)}</td>
                                 <td class="px-3 py-2">${sector.recommended_weight.toFixed(1)}%</td>
+                                <td class="px-3 py-2">
+                                    <span class="px-2 py-1 text-xs rounded font-mono ${
+                                        sector.risk_adjustment >= 1.1 ? 'bg-green-100 text-green-800' :
+                                        sector.risk_adjustment >= 1.0 ? 'bg-blue-100 text-blue-800' :
+                                        sector.risk_adjustment >= 0.9 ? 'bg-yellow-100 text-yellow-800' :
+                                        'bg-red-100 text-red-800'
+                                    }">${sector.risk_adjustment.toFixed(3)}</span>
+                                </td>
                                 <td class="px-3 py-2">
                                     <span class="px-2 py-1 text-xs rounded ${
                                         sector.recommendation === 'STRONG_BUY' ? 'bg-green-100 text-green-800' :
