@@ -1418,12 +1418,12 @@ async def create_transaction(request: CreateTransactionRequest, user: User = Dep
 @app.post("/api/portfolios/{portfolio_id}/update-cash")
 async def update_portfolio_cash_balance(
     portfolio_id: str,
-    cash_adjustment: float = Body(..., embed=True),
+    new_cash_balance: float = Body(..., embed=True),
     notes: str = Body("", embed=True),
     user: User = Depends(require_auth), 
     db: Session = Depends(get_db)
 ):
-    """Update portfolio cash balance manually (e.g., for interest, dividends, deposits)"""
+    """Set portfolio cash balance to a specific amount"""
     try:
         # Verify portfolio ownership
         portfolio = db.query(Portfolio).filter(
@@ -1435,30 +1435,32 @@ async def update_portfolio_cash_balance(
             raise HTTPException(status_code=404, detail="Portfolio not found")
         
         # Convert to Decimal for precision
-        adjustment_decimal = Decimal(str(cash_adjustment))
-        
-        # Update cash balance
-        old_balance = portfolio.cash_balance or Decimal('0')
-        new_balance = old_balance + adjustment_decimal
+        new_balance_decimal = Decimal(str(new_cash_balance))
         
         # Prevent negative cash balance
-        if new_balance < 0:
+        if new_balance_decimal < 0:
             raise HTTPException(status_code=400, detail="Cash balance cannot be negative")
         
-        portfolio.cash_balance = new_balance
+        # Calculate the adjustment for audit trail
+        old_balance = portfolio.cash_balance or Decimal('0')
+        adjustment = new_balance_decimal - old_balance
+        
+        # Update cash balance
+        portfolio.cash_balance = new_balance_decimal
         
         # Create a transaction record for audit trail
-        transaction = Transaction(
-            portfolio_id=portfolio_id,
-            transaction_type=TransactionType.buy if cash_adjustment > 0 else TransactionType.sell,
-            symbol="CASH",  # Special symbol for cash adjustments
-            quantity=Decimal('1'),
-            price=abs(adjustment_decimal),
-            total_amount=abs(adjustment_decimal),
-            fees=Decimal('0'),
-            notes=notes or f"Manual cash balance adjustment: {'deposit' if cash_adjustment > 0 else 'withdrawal'}"
-        )
-        db.add(transaction)
+        if adjustment != 0:
+            transaction = Transaction(
+                portfolio_id=portfolio_id,
+                transaction_type=TransactionType.buy if adjustment > 0 else TransactionType.sell,
+                symbol="CASH",  # Special symbol for cash balance updates
+                quantity=Decimal('1'),
+                price=abs(adjustment),
+                total_amount=abs(adjustment),
+                fees=Decimal('0'),
+                notes=notes or f"Cash balance updated to ${new_balance_decimal:.2f}"
+            )
+            db.add(transaction)
         
         # Update portfolio current value
         portfolio.current_value = calculate_portfolio_value(portfolio, db)
@@ -1469,19 +1471,19 @@ async def update_portfolio_cash_balance(
         
         db.commit()
         
-        logger.info(f"💰 Portfolio {portfolio.name} cash balance updated: ${old_balance} → ${new_balance} (adjustment: ${adjustment_decimal})")
+        logger.info(f"💰 Portfolio {portfolio.name} cash balance set to: ${new_balance_decimal} (was ${old_balance})")
         
         return {
             "success": True,
             "old_balance": float(old_balance),
-            "new_balance": float(new_balance),
-            "adjustment": float(adjustment_decimal),
+            "new_balance": float(new_balance_decimal),
+            "adjustment": float(adjustment),
             "new_total_value": float(portfolio.current_value),
-            "message": f"Cash balance updated successfully"
+            "message": f"Cash balance set to ${new_balance_decimal:.2f}"
         }
         
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=f"Invalid cash adjustment amount: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Invalid cash balance amount: {str(e)}")
     except Exception as e:
         logger.error(f"❌ Cash balance update error: {e}")
         db.rollback()

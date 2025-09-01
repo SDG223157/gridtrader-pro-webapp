@@ -319,12 +319,13 @@ async function refreshPrices(portfolioId) {
 }
 
 function openCashUpdateModal() {
+    const currentBalance = {{ portfolio.cash_balance or 0 }};
     const modal = document.createElement('div');
     modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
     modal.innerHTML = `
         <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
             <div class="flex justify-between items-center mb-4">
-                <h3 class="text-lg font-bold text-gray-900">Update Cash Balance</h3>
+                <h3 class="text-lg font-bold text-gray-900">Set Cash Balance</h3>
                 <button onclick="this.closest('.fixed').remove()" class="text-gray-500 hover:text-gray-700">
                     <i class="fas fa-times"></i>
                 </button>
@@ -332,28 +333,32 @@ function openCashUpdateModal() {
             
             <div class="mb-4">
                 <p class="text-sm text-gray-600 mb-2">Current Cash Balance: <span class="font-semibold">\${{ "{:,.2f}".format(portfolio.cash_balance or 0) }}</span></p>
-                <p class="text-xs text-gray-500">Add positive amount for deposits/interest, negative for withdrawals</p>
+                <p class="text-xs text-gray-500">Enter the actual current cash balance (including any interest earned)</p>
             </div>
             
             <form onsubmit="updateCashBalance(event)">
                 <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Cash Adjustment Amount</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">New Cash Balance</label>
                     <div class="relative">
                         <span class="absolute left-3 top-3 text-gray-500">$</span>
                         <input type="number" 
-                               id="cashAdjustment" 
+                               id="newCashBalance" 
                                step="0.01" 
+                               min="0"
                                required 
+                               value="${currentBalance.toFixed(2)}"
                                placeholder="0.00"
                                class="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
                     </div>
                     <div class="mt-2 flex space-x-2">
-                        <button type="button" onclick="document.getElementById('cashAdjustment').value = '100.00'" 
+                        <button type="button" onclick="addToBalance(100)" 
                                 class="px-2 py-1 text-xs bg-green-100 text-green-800 rounded hover:bg-green-200">+$100</button>
-                        <button type="button" onclick="document.getElementById('cashAdjustment').value = '50.00'" 
+                        <button type="button" onclick="addToBalance(50)" 
                                 class="px-2 py-1 text-xs bg-green-100 text-green-800 rounded hover:bg-green-200">+$50</button>
-                        <button type="button" onclick="document.getElementById('cashAdjustment').value = '-50.00'" 
-                                class="px-2 py-1 text-xs bg-red-100 text-red-800 rounded hover:bg-red-200">-$50</button>
+                        <button type="button" onclick="addToBalance(10)" 
+                                class="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded hover:bg-blue-200">+$10</button>
+                        <button type="button" onclick="document.getElementById('newCashBalance').value = '${currentBalance.toFixed(2)}'" 
+                                class="px-2 py-1 text-xs bg-gray-100 text-gray-800 rounded hover:bg-gray-200">Reset</button>
                     </div>
                 </div>
                 
@@ -361,7 +366,7 @@ function openCashUpdateModal() {
                     <label class="block text-sm font-medium text-gray-700 mb-2">Notes (Optional)</label>
                     <input type="text" 
                            id="cashNotes" 
-                           placeholder="e.g., Interest earned, Dividend payment, Deposit"
+                           placeholder="e.g., Updated with interest earned, Current bank balance"
                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
                 </div>
                 
@@ -373,7 +378,7 @@ function openCashUpdateModal() {
                     </button>
                     <button type="submit" 
                             class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
-                        Update Balance
+                        Set Balance
                     </button>
                 </div>
             </form>
@@ -382,14 +387,20 @@ function openCashUpdateModal() {
     document.body.appendChild(modal);
 }
 
+function addToBalance(amount) {
+    const input = document.getElementById('newCashBalance');
+    const currentValue = parseFloat(input.value) || 0;
+    input.value = (currentValue + amount).toFixed(2);
+}
+
 async function updateCashBalance(event) {
     event.preventDefault();
     
-    const adjustment = parseFloat(document.getElementById('cashAdjustment').value);
+    const newBalance = parseFloat(document.getElementById('newCashBalance').value);
     const notes = document.getElementById('cashNotes').value;
     
-    if (isNaN(adjustment)) {
-        alert('Please enter a valid amount');
+    if (isNaN(newBalance) || newBalance < 0) {
+        alert('Please enter a valid positive amount');
         return;
     }
     
@@ -400,7 +411,7 @@ async function updateCashBalance(event) {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                cash_adjustment: adjustment,
+                new_cash_balance: newBalance,
                 notes: notes
             })
         });
@@ -408,20 +419,21 @@ async function updateCashBalance(event) {
         const result = await response.json();
         
         if (result.success) {
-            alert(`✅ Cash balance updated successfully!\\n\\n` +
+            const adjustment = result.adjustment;
+            alert(`✅ Cash balance set successfully!\\n\\n` +
                   `Previous Balance: $${result.old_balance.toFixed(2)}\\n` +
-                  `Adjustment: ${adjustment >= 0 ? '+' : ''}$${adjustment.toFixed(2)}\\n` +
                   `New Balance: $${result.new_balance.toFixed(2)}\\n` +
+                  `${adjustment !== 0 ? 'Change: ' + (adjustment >= 0 ? '+' : '') + '$' + adjustment.toFixed(2) + '\\n' : ''}` +
                   `New Total Portfolio Value: $${result.new_total_value.toFixed(2)}`);
             
             // Close modal and reload page
             document.querySelector('.fixed').remove();
             window.location.reload();
         } else {
-            alert(`❌ Failed to update cash balance: ${result.detail || 'Unknown error'}`);
+            alert(`❌ Failed to set cash balance: ${result.detail || 'Unknown error'}`);
         }
     } catch (error) {
-        alert('❌ Failed to update cash balance. Please try again.');
+        alert('❌ Failed to set cash balance. Please try again.');
         console.error('Cash update error:', error);
     }
 }
