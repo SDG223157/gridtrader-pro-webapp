@@ -805,11 +805,20 @@ async def tokens_page(request: Request, db: Session = Depends(get_db)):
     if not context["is_authenticated"]:
         return RedirectResponse(url="/login", status_code=302)
     
-    # Get user's tokens
-    tokens = db.query(ApiToken).filter(ApiToken.user_id == context["user"].id).all()
-    context["tokens"] = tokens
-    
-    return templates.TemplateResponse("tokens.html", {"request": request, **context})
+    try:
+        # Get user's tokens
+        tokens = db.query(ApiToken).filter(ApiToken.user_id == context["user"].id).all()
+        context["tokens"] = tokens
+        
+        return templates.TemplateResponse("tokens.html", {"request": request, **context})
+    except Exception as e:
+        logger.error(f"Error loading tokens page: {e}")
+        # If ApiToken table doesn't exist, show setup instructions
+        context["tokens"] = []
+        context["setup_required"] = True
+        context["error_message"] = "API tokens feature requires database setup. Please restart the application."
+        
+        return templates.TemplateResponse("tokens.html", {"request": request, **context})
 
 @app.post("/api/tokens")
 async def create_api_token(request: CreateApiTokenRequest, user: User = Depends(require_auth), db: Session = Depends(get_db)):
@@ -1159,8 +1168,26 @@ async def debug_logout_test(request: Request, db: Session = Depends(get_db)):
     return HTMLResponse(content=html_content)
 
 @app.get("/debug/test-tokens")
-async def debug_test_tokens(db: Session = Depends(get_db)):
-    """Debug API tokens functionality"""
+async def debug_test_tokens():
+    """Debug API tokens functionality - simple version"""
+    try:
+        from datetime import datetime
+        return {
+            "status": "✅ Route working",
+            "timestamp": datetime.now().isoformat(),
+            "message": "If you see this, the route is registered correctly",
+            "next_step": "Check database connection and table creation",
+            "restart_instruction": "Restart your Coolify service to create the api_tokens table"
+        }
+    except Exception as e:
+        return {
+            "status": "❌ Error",
+            "error": str(e)
+        }
+
+@app.get("/debug/test-tokens-db")
+async def debug_test_tokens_db(db: Session = Depends(get_db)):
+    """Debug API tokens database functionality"""
     try:
         # Check if api_tokens table exists
         result = db.execute(text("SHOW TABLES LIKE 'api_tokens'"))
@@ -1169,8 +1196,8 @@ async def debug_test_tokens(db: Session = Depends(get_db)):
         if not table_exists:
             return {
                 "api_tokens_table": "❌ Does not exist",
-                "solution": "Run: python add_api_tokens_migration.py",
-                "or": "Restart the application to auto-create tables"
+                "solution": "Restart the application to auto-create tables",
+                "coolify_instruction": "Go to Coolify dashboard and restart your GridTrader Pro service"
             }
         
         # Check table structure
@@ -1197,7 +1224,7 @@ async def debug_test_tokens(db: Session = Depends(get_db)):
         return {
             "api_tokens_table": "❌ Error",
             "error": str(e),
-            "solution": "Check database connection and run migration"
+            "solution": "Check database connection and restart application"
         }
 
 @app.get("/debug/create-test-user")
