@@ -11,6 +11,8 @@ A comprehensive investment management platform featuring grid trading algorithms
 - **Background Data Processing** with Celery for automated updates
 - **Responsive Web Interface** with modern HTML/CSS/JavaScript
 - **Production-Ready Docker Deployment** with single container architecture
+- **🤖 AI Integration** with MCP (Model Context Protocol) for Cursor IDE
+- **Natural Language Trading** - Control your portfolios with plain English commands
 
 ## 📋 Tech Stack
 
@@ -291,6 +293,34 @@ docker run -d \
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
+## 🤖 AI Integration (MCP)
+
+GridTrader Pro supports AI-powered portfolio management through Cursor IDE:
+
+### Quick Setup
+```bash
+# Install MCP server globally
+./install-mcp-global.sh
+
+# Or manually:
+npm install -g gridtrader-pro-mcp
+```
+
+### Configuration
+1. Create API token at: `https://your-domain.com/tokens`
+2. Add MCP config to Cursor settings
+3. Restart Cursor
+4. Use natural language: "Show me my portfolios"
+
+**📖 Complete Guide**: See [GLOBAL_MCP_SETUP_GUIDE.md](./GLOBAL_MCP_SETUP_GUIDE.md)
+
+### Example AI Commands
+- "Show me my cash balances"
+- "Create a growth portfolio with $25,000"
+- "Set up a grid for AAPL between $150-200"
+- "What's my portfolio performance?"
+- "Update my cash balance to reflect interest earned"
+
 ## 🆘 Support
 
 For deployment issues:
@@ -300,6 +330,12 @@ For deployment issues:
 3. Test the **health endpoint**: `/health`
 4. Ensure **database and Redis connectivity**
 5. Review **Docker container logs**
+
+For MCP integration issues:
+1. Check **API token validity**: `/tokens` page
+2. Verify **MCP server installation**: `gridtrader-pro-mcp --version`
+3. Test **API connectivity**: `curl -H "Authorization: Bearer TOKEN" https://your-domain.com/api/portfolios`
+4. Review **Cursor MCP logs**: Cursor Developer Tools
 
 ## 🎯 Roadmap
 
