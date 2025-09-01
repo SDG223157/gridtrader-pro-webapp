@@ -1653,7 +1653,8 @@ async def update_portfolio_cash_balance(
                 price=abs(adjustment),
                 total_amount=abs(adjustment),
                 fees=Decimal('0'),
-                notes=notes or f"Cash balance updated to ${new_balance_decimal:.2f}"
+                notes=notes or f"Cash balance updated to ${new_balance_decimal:.2f}",
+                executed_at=datetime.utcnow()
             )
             db.add(transaction)
         
