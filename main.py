@@ -1158,6 +1158,48 @@ async def debug_logout_test(request: Request, db: Session = Depends(get_db)):
     
     return HTMLResponse(content=html_content)
 
+@app.get("/debug/test-tokens")
+async def debug_test_tokens(db: Session = Depends(get_db)):
+    """Debug API tokens functionality"""
+    try:
+        # Check if api_tokens table exists
+        result = db.execute(text("SHOW TABLES LIKE 'api_tokens'"))
+        table_exists = result.fetchone() is not None
+        
+        if not table_exists:
+            return {
+                "api_tokens_table": "❌ Does not exist",
+                "solution": "Run: python add_api_tokens_migration.py",
+                "or": "Restart the application to auto-create tables"
+            }
+        
+        # Check table structure
+        result = db.execute(text("DESCRIBE api_tokens"))
+        columns = [row[0] for row in result.fetchall()]
+        
+        # Check if ApiToken model can be imported
+        try:
+            token_count = db.query(ApiToken).count()
+            return {
+                "api_tokens_table": "✅ Exists",
+                "columns": columns,
+                "token_count": token_count,
+                "model_import": "✅ Working"
+            }
+        except Exception as model_error:
+            return {
+                "api_tokens_table": "✅ Exists", 
+                "columns": columns,
+                "model_import": f"❌ Error: {model_error}"
+            }
+            
+    except Exception as e:
+        return {
+            "api_tokens_table": "❌ Error",
+            "error": str(e),
+            "solution": "Check database connection and run migration"
+        }
+
 @app.get("/debug/create-test-user")
 async def debug_create_user(db: Session = Depends(get_db)):
     """Debug user creation"""
@@ -1222,8 +1264,13 @@ async def debug_create_user(db: Session = Depends(get_db)):
 async def startup_event():
     """Initialize database connection and tables on startup"""
     logger.info("🚀 Starting GridTrader Pro...")
-    # Skip database initialization since it's already done by init_database.py
-    # This prevents startup crashes due to database connection issues
+    try:
+        # Ensure all tables exist, including new ApiToken table
+        create_tables()
+        logger.info("✅ Database tables verified/created")
+    except Exception as e:
+        logger.warning(f"⚠️ Database initialization skipped: {e}")
+        # Don't crash on database issues, but log the warning
     logger.info("✅ GridTrader Pro startup completed")
 
 if __name__ == "__main__":
