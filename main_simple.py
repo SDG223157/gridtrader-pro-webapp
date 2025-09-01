@@ -2451,22 +2451,78 @@ async def analyze_stock(symbol: str, request: Request, db: Session = Depends(get
 # Market Data API for charts
 @app.get("/api/market/{symbol}")
 async def get_market_data(symbol: str, period: str = "1d"):
-    """Simple market data endpoint"""
+    """Real market data endpoint using yfinance"""
     try:
-        # Mock data for now - can be enhanced with real yfinance integration
-        mock_data = {
-            "symbol": symbol,
-            "period": period,
-            "data": [
-                {"date": "2025-01-01", "open": 150.0, "high": 155.0, "low": 148.0, "close": 153.0, "volume": 1000000},
-                {"date": "2025-01-02", "open": 153.0, "high": 158.0, "low": 151.0, "close": 156.0, "volume": 1200000},
-                {"date": "2025-01-03", "open": 156.0, "high": 160.0, "low": 154.0, "close": 159.0, "volume": 900000}
-            ]
-        }
-        return mock_data
+        # Use the real price function for current data
+        if period == "current":
+            current_price = get_current_stock_price_trendwise_pattern(symbol)
+            return {
+                "symbol": symbol,
+                "period": period,
+                "price": current_price,
+                "current_price": current_price,
+                "last_updated": datetime.now().isoformat()
+            }
+        
+        # For historical data, use yfinance
+        import yfinance as yf
+        ticker = yf.Ticker(symbol)
+        
+        # Get historical data
+        hist_data = ticker.history(period=period)
+        
+        if not hist_data.empty:
+            # Convert to list of dictionaries
+            data_records = []
+            for date, row in hist_data.iterrows():
+                data_records.append({
+                    "date": date.strftime("%Y-%m-%d"),
+                    "open": float(row['Open']),
+                    "high": float(row['High']),
+                    "low": float(row['Low']),
+                    "close": float(row['Close']),
+                    "volume": int(row['Volume'])
+                })
+            
+            # Get current price
+            current_price = get_current_stock_price_trendwise_pattern(symbol)
+            
+            return {
+                "symbol": symbol,
+                "period": period,
+                "current_price": current_price,
+                "price": current_price,  # For compatibility
+                "data": data_records,
+                "last_updated": datetime.now().isoformat()
+            }
+        else:
+            # Fallback for symbols without data
+            current_price = get_current_stock_price_trendwise_pattern(symbol)
+            return {
+                "symbol": symbol,
+                "period": period,
+                "current_price": current_price,
+                "price": current_price,
+                "data": [],
+                "last_updated": datetime.now().isoformat(),
+                "note": "Limited historical data available"
+            }
+            
     except Exception as e:
         logger.error(f"Error fetching market data for {symbol}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch market data")
+        # Return current price at minimum
+        try:
+            current_price = get_current_stock_price_trendwise_pattern(symbol)
+            return {
+                "symbol": symbol,
+                "period": period,
+                "current_price": current_price,
+                "price": current_price,
+                "error": str(e),
+                "last_updated": datetime.now().isoformat()
+            }
+        except:
+            raise HTTPException(status_code=500, detail="Failed to fetch market data")
 
 # Health check
 @app.get("/health")
