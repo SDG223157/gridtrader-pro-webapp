@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "gridtrader-pro": {
+      "command": "gridtrader-pro-mcp",
+      "env": {
+        "GRIDTRADER_API_URL": "https://gridsai.app",
+        "GRIDTRADER_ACCESS_TOKEN": "your_api_token_here"
+      }
+    }
+  }
+}

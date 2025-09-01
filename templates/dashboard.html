@@ -11,6 +11,25 @@
             Welcome back, {{ user.profile.display_name or user.email.split('@')[0] }}!
         </h1>
         <p class="text-gray-600 mt-2">Here's what's happening with your investments today.</p>
+        
+        <!-- AI Integration Banner -->
+        <div class="mt-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4">
+            <div class="flex items-center">
+                <div class="flex-shrink-0">
+                    <i class="fas fa-robot text-2xl text-blue-600"></i>
+                </div>
+                <div class="ml-4 flex-1">
+                    <h4 class="text-sm font-medium text-blue-900">🚀 New: AI Integration Available!</h4>
+                    <p class="text-sm text-blue-700 mt-1">Connect GridTrader Pro with Cursor AI for intelligent trading assistance.</p>
+                </div>
+                <div class="ml-4">
+                    <a href="/tokens" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors">
+                        <i class="fas fa-key mr-2"></i>
+                        Create API Token
+                    </a>
+                </div>
+            </div>
+        </div>
     </div>
     
     <!-- Portfolio Summary Cards -->
@@ -221,6 +240,23 @@
                         <div class="ml-3">
                             <p class="text-sm font-medium text-gray-900">View Analytics</p>
                             <p class="text-xs text-gray-600">Performance insights</p>
+                        </div>
+                    </a>
+                    
+                    <a href="/tokens" class="flex items-center p-3 bg-gradient-to-r from-orange-50 to-yellow-50 rounded-lg hover:from-orange-100 hover:to-yellow-100 transition-colors group border-2 border-orange-200">
+                        <div class="flex-shrink-0">
+                            <div class="w-10 h-10 bg-gradient-to-r from-orange-500 to-yellow-600 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform">
+                                <i class="fas fa-key text-white"></i>
+                            </div>
+                        </div>
+                        <div class="ml-3">
+                            <p class="text-sm font-medium text-gray-900">API Tokens</p>
+                            <p class="text-xs text-gray-600">Connect with Cursor AI</p>
+                        </div>
+                        <div class="ml-auto">
+                            <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                                AI
+                            </span>
                         </div>
                     </a>
                 </div>
