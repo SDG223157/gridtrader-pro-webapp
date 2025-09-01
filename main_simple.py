@@ -349,24 +349,40 @@ def run_database_migrations():
             """))
             
             current_type = result.fetchone()
-            if current_type and "decimal(10,4)" in current_type[0].lower():
-                logger.info("🔄 Migrating price column from DECIMAL(10,4) to DECIMAL(15,4)...")
+            if current_type:
+                logger.info(f"📊 Current price column type: {current_type[0]}")
                 
-                # Start transaction
-                trans = conn.begin()
-                try:
-                    conn.execute(text("""
-                        ALTER TABLE transactions 
-                        MODIFY COLUMN price DECIMAL(15,4) NOT NULL
-                    """))
-                    trans.commit()
-                    logger.info("✅ Price column migration completed successfully!")
-                except Exception as e:
-                    trans.rollback()
-                    logger.error(f"❌ Price column migration failed: {e}")
-                    raise e
+                if "decimal(10,4)" in current_type[0].lower():
+                    logger.info("🔄 Migrating price column from DECIMAL(10,4) to DECIMAL(15,4)...")
+                    
+                    # Use autocommit for DDL operations
+                    conn.execute(text("SET autocommit = 1"))
+                    
+                    try:
+                        conn.execute(text("""
+                            ALTER TABLE transactions 
+                            MODIFY COLUMN price DECIMAL(15,4) NOT NULL
+                        """))
+                        logger.info("✅ Price column migration completed successfully!")
+                        
+                        # Verify the change
+                        verify_result = conn.execute(text("""
+                            SELECT COLUMN_TYPE 
+                            FROM INFORMATION_SCHEMA.COLUMNS 
+                            WHERE TABLE_SCHEMA = DATABASE() 
+                            AND TABLE_NAME = 'transactions' 
+                            AND COLUMN_NAME = 'price'
+                        """))
+                        new_type = verify_result.fetchone()
+                        logger.info(f"📊 New price column type: {new_type[0]}")
+                        
+                    except Exception as e:
+                        logger.error(f"❌ Price column migration failed: {e}")
+                        raise e
+                else:
+                    logger.info("✅ Price column already has correct size")
             else:
-                logger.info("✅ Price column already has correct size")
+                logger.error("❌ Price column not found in transactions table!")
                 
     except Exception as e:
         logger.error(f"❌ Database migration error: {e}")
