@@ -70,6 +70,10 @@
 
         <!-- Create Token Section -->
         <div class="bg-white rounded-lg shadow-md p-6 mb-8" x-data="tokenManager()" {% if setup_required %}style="opacity: 0.5; pointer-events: none;"{% endif %}>
+            <!-- Debug info (remove in production) -->
+            <div class="text-xs text-gray-500 mb-2" x-show="false">
+                Debug: createdToken = <span x-text="JSON.stringify(createdToken)"></span>
+            </div>
             <h2 class="text-xl font-semibold text-gray-900 mb-4">
                 <i class="fas fa-plus text-green-600 mr-2"></i>Create New Token
             </h2>
@@ -130,10 +134,9 @@
                     <span x-text="loading ? 'Creating...' : 'Create Token'"></span>
                 </button>
             </form>
-        </div>
-
-        <!-- Token Created Success Banner (following prombank_backup pattern) -->
-        <div x-show="createdToken" class="bg-green-50 border border-green-200 rounded-lg p-6 mb-6">
+            
+            <!-- Token Created Success Banner (following prombank_backup pattern) -->
+            <div x-show="createdToken && createdToken.success" x-cloak style="display: none;" class="bg-green-50 border border-green-200 rounded-lg p-6 mt-6">
             <div class="flex items-start">
                 <div class="flex-shrink-0">
                     <i class="fas fa-check-circle text-green-400 text-xl"></i>
@@ -188,6 +191,7 @@
                         <i class="fas fa-times mr-1"></i>Dismiss
                     </button>
                 </div>
+            </div>
             </div>
         </div>
 
