@@ -2429,6 +2429,47 @@ async def tokens_page(request: Request, db: Session = Depends(get_db)):
         
         return templates.TemplateResponse("tokens.html", context)
 
+@app.get("/settings", response_class=HTMLResponse)
+async def settings_page(request: Request, db: Session = Depends(get_db)):
+    """User settings page"""
+    context = get_user_context(request, db)
+    if not context["is_authenticated"]:
+        return RedirectResponse(url="/login", status_code=302)
+    
+    return templates.TemplateResponse("settings.html", {"request": request, **context})
+
+@app.post("/api/settings/profile")
+async def update_profile_settings(
+    display_name: str = Form(...),
+    timezone: str = Form("UTC"),
+    user: User = Depends(require_auth),
+    db: Session = Depends(get_db)
+):
+    """Update user profile settings"""
+    try:
+        # Get or create user profile
+        profile = db.query(UserProfile).filter(UserProfile.user_id == user.id).first()
+        
+        if not profile:
+            profile = UserProfile(
+                user_id=user.id,
+                display_name=display_name,
+                timezone=timezone
+            )
+            db.add(profile)
+        else:
+            profile.display_name = display_name
+            profile.timezone = timezone
+        
+        db.commit()
+        
+        return {"success": True, "message": "Profile updated successfully"}
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating profile: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update profile")
+
 @app.post("/api/tokens")
 async def create_api_token(request: CreateApiTokenRequest, db: Session = Depends(get_db)):
     """Create a new API token"""
