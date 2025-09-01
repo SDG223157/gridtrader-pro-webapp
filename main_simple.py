@@ -12,7 +12,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from database import get_db, create_tables, User, UserProfile, Portfolio, Grid, Holding, Alert, Transaction, TransactionType, GridStatus, GridOrder, OrderStatus, ApiToken, SessionLocal
+from database import get_db, create_tables, User, UserProfile, Portfolio, Grid, Holding, Alert, Transaction, TransactionType, GridStatus, GridOrder, OrderStatus, ApiToken, SessionLocal, engine
 from auth_simple import (
     setup_oauth, create_access_token, get_current_user, require_auth, 
     create_user, authenticate_user, create_or_update_user_from_google
@@ -332,6 +332,46 @@ class EnhancedTickerSearch:
 
 # Global instance for use in routes
 enhanced_ticker_search = EnhancedTickerSearch()
+
+def run_database_migrations():
+    """Run necessary database migrations"""
+    try:
+        with engine.connect() as conn:
+            logger.info("🔄 Checking for database migrations...")
+            
+            # Check current price column type
+            result = conn.execute(text("""
+                SELECT COLUMN_TYPE 
+                FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_SCHEMA = DATABASE() 
+                AND TABLE_NAME = 'transactions' 
+                AND COLUMN_NAME = 'price'
+            """))
+            
+            current_type = result.fetchone()
+            if current_type and "decimal(10,4)" in current_type[0].lower():
+                logger.info("🔄 Migrating price column from DECIMAL(10,4) to DECIMAL(15,4)...")
+                
+                # Start transaction
+                trans = conn.begin()
+                try:
+                    conn.execute(text("""
+                        ALTER TABLE transactions 
+                        MODIFY COLUMN price DECIMAL(15,4) NOT NULL
+                    """))
+                    trans.commit()
+                    logger.info("✅ Price column migration completed successfully!")
+                except Exception as e:
+                    trans.rollback()
+                    logger.error(f"❌ Price column migration failed: {e}")
+                    raise e
+            else:
+                logger.info("✅ Price column already has correct size")
+                
+    except Exception as e:
+        logger.error(f"❌ Database migration error: {e}")
+        # Don't fail startup for migration errors, just log them
+        pass
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -3320,6 +3360,10 @@ async def startup_event():
         # Ensure all tables exist, including new ApiToken table
         create_tables()
         logger.info("✅ Database tables verified/created")
+        
+        # Run database migrations
+        run_database_migrations()
+        
     except Exception as e:
         logger.warning(f"⚠️ Database initialization skipped: {e}")
         # Don't crash on database issues, but log the warning

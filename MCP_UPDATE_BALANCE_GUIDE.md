@@ -79,3 +79,4 @@ Show me portfolio details for my updated portfolio
 ---
 
 🚀 **Ready to use!** Just restart your MCP server and start updating balances with natural language commands.
+
