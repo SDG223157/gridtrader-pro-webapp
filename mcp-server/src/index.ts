@@ -388,6 +388,66 @@ class GridTraderProMCPServer {
                 }
               }
             }
+          },
+          {
+            name: 'buy_stock',
+            description: 'Execute a buy transaction for stocks or ETFs',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                portfolio_id: {
+                  type: 'string',
+                  description: 'Portfolio ID to execute the trade in'
+                },
+                symbol: {
+                  type: 'string',
+                  description: 'Stock or ETF symbol to buy (e.g., AAPL, SPY, 513130.SS)'
+                },
+                quantity: {
+                  type: 'number',
+                  description: 'Number of shares to buy'
+                },
+                price: {
+                  type: 'number',
+                  description: 'Price per share (use current market price if not specified)'
+                },
+                notes: {
+                  type: 'string',
+                  description: 'Optional notes for the transaction'
+                }
+              },
+              required: ['portfolio_id', 'symbol', 'quantity']
+            }
+          },
+          {
+            name: 'sell_stock',
+            description: 'Execute a sell transaction for stocks or ETFs',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                portfolio_id: {
+                  type: 'string',
+                  description: 'Portfolio ID to execute the trade in'
+                },
+                symbol: {
+                  type: 'string',
+                  description: 'Stock or ETF symbol to sell (e.g., AAPL, SPY, 513130.SS)'
+                },
+                quantity: {
+                  type: 'number',
+                  description: 'Number of shares to sell'
+                },
+                price: {
+                  type: 'number',
+                  description: 'Price per share (use current market price if not specified)'
+                },
+                notes: {
+                  type: 'string',
+                  description: 'Optional notes for the transaction'
+                }
+              },
+              required: ['portfolio_id', 'symbol', 'quantity']
+            }
           }
         ]
       };
@@ -442,6 +502,12 @@ class GridTraderProMCPServer {
           
           case 'get_china_sector_analysis':
             return await this.handleGetChinaSectorAnalysis(args);
+          
+          case 'buy_stock':
+            return await this.handleBuyStock(args);
+          
+          case 'sell_stock':
+            return await this.handleSellStock(args);
           
           default:
             throw new Error(`Unknown tool: ${name}`);
@@ -1124,6 +1190,181 @@ class GridTraderProMCPServer {
               `• "What are the best China sector ETFs?"\n` +
               `• "Run China market sector analysis for 60 days"\n` +
               `• "Analyze Chinese healthcare and tech ETFs"`
+          }
+        ]
+      };
+    }
+  }
+
+  private async handleBuyStock(args: any) {
+    try {
+      // Get current price if not provided
+      let price = args.price;
+      if (!price) {
+        try {
+          const marketData = await this.makeApiCall(`/api/market/${args.symbol}?period=current`);
+          price = marketData.price || marketData.current_price;
+        } catch (priceError) {
+          // If we can't get current price, require user to specify
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `❌ **Price Required**\n\n` +
+                  `Could not get current market price for ${args.symbol}.\n` +
+                  `Please specify the price per share in your command.\n\n` +
+                  `Example: "Buy 10 shares of ${args.symbol} at $150.00 in my growth portfolio"`
+              }
+            ]
+          };
+        }
+      }
+
+      const transactionData = {
+        portfolio_id: args.portfolio_id,
+        symbol: args.symbol.toUpperCase(),
+        transaction_type: 'buy',
+        quantity: args.quantity,
+        price: price,
+        fees: 0, // Default to 0 fees
+        notes: args.notes || `MCP buy transaction - ${args.quantity} shares at $${price}`
+      };
+
+      const result = await this.makeApiCall('/api/transactions', 'POST', transactionData);
+      
+      if (result.success) {
+        const totalCost = args.quantity * price;
+        
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `✅ **Buy Transaction Successful!**\n\n` +
+                `**Trade Details:**\n` +
+                `• Symbol: **${args.symbol.toUpperCase()}**\n` +
+                `• Quantity: **${args.quantity} shares**\n` +
+                `• Price: **$${price.toFixed(2)} per share**\n` +
+                `• Total Cost: **$${totalCost.toFixed(2)}**\n` +
+                `• Portfolio: ${args.portfolio_id}\n` +
+                `• Transaction ID: ${result.transaction_id}\n\n` +
+                `💰 **Portfolio Impact:**\n` +
+                `• Cash reduced by $${totalCost.toFixed(2)}\n` +
+                `• Added ${args.quantity} shares of ${args.symbol}\n` +
+                `• Position value: $${totalCost.toFixed(2)}\n\n` +
+                `📋 **Next Steps:**\n` +
+                `• Check updated portfolio: "Show me portfolio details"\n` +
+                `• Monitor position: "What's the current price of ${args.symbol}?"\n` +
+                `• Set up grid trading: "Create a grid for ${args.symbol}"\n\n` +
+                `🎉 **Trade executed successfully!**`
+            }
+          ]
+        };
+      } else {
+        throw new Error(result.message || 'Transaction failed');
+      }
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `❌ **Buy Transaction Failed**\n\n` +
+              `Error: ${error.response?.data?.detail || error.message}\n\n` +
+              `💡 **Common Issues:**\n` +
+              `• Insufficient cash balance in portfolio\n` +
+              `• Invalid stock symbol\n` +
+              `• Portfolio not found\n` +
+              `• Price not specified for illiquid stocks\n\n` +
+              `🔧 **Try:**\n` +
+              `• "Show me my cash balances" to check available funds\n` +
+              `• "Search for [company] symbol" to verify symbol\n` +
+              `• "Show me my portfolios" to get portfolio ID`
+          }
+        ]
+      };
+    }
+  }
+
+  private async handleSellStock(args: any) {
+    try {
+      // Get current price if not provided
+      let price = args.price;
+      if (!price) {
+        try {
+          const marketData = await this.makeApiCall(`/api/market/${args.symbol}?period=current`);
+          price = marketData.price || marketData.current_price;
+        } catch (priceError) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `❌ **Price Required**\n\n` +
+                  `Could not get current market price for ${args.symbol}.\n` +
+                  `Please specify the price per share in your command.\n\n` +
+                  `Example: "Sell 10 shares of ${args.symbol} at $150.00 from my growth portfolio"`
+              }
+            ]
+          };
+        }
+      }
+
+      const transactionData = {
+        portfolio_id: args.portfolio_id,
+        symbol: args.symbol.toUpperCase(),
+        transaction_type: 'sell',
+        quantity: args.quantity,
+        price: price,
+        fees: 0,
+        notes: args.notes || `MCP sell transaction - ${args.quantity} shares at $${price}`
+      };
+
+      const result = await this.makeApiCall('/api/transactions', 'POST', transactionData);
+      
+      if (result.success) {
+        const totalProceeds = args.quantity * price;
+        
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `✅ **Sell Transaction Successful!**\n\n` +
+                `**Trade Details:**\n` +
+                `• Symbol: **${args.symbol.toUpperCase()}**\n` +
+                `• Quantity: **${args.quantity} shares**\n` +
+                `• Price: **$${price.toFixed(2)} per share**\n` +
+                `• Total Proceeds: **$${totalProceeds.toFixed(2)}**\n` +
+                `• Portfolio: ${args.portfolio_id}\n` +
+                `• Transaction ID: ${result.transaction_id}\n\n` +
+                `💰 **Portfolio Impact:**\n` +
+                `• Cash increased by $${totalProceeds.toFixed(2)}\n` +
+                `• Reduced ${args.quantity} shares of ${args.symbol}\n` +
+                `• Realized P&L will be calculated\n\n` +
+                `📋 **Next Steps:**\n` +
+                `• Check updated portfolio: "Show me portfolio details"\n` +
+                `• Review cash balance: "Show me my cash balances"\n` +
+                `• Monitor remaining position: "What holdings do I have?"\n\n` +
+                `🎉 **Trade executed successfully!**`
+            }
+          ]
+        };
+      } else {
+        throw new Error(result.message || 'Transaction failed');
+      }
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `❌ **Sell Transaction Failed**\n\n` +
+              `Error: ${error.response?.data?.detail || error.message}\n\n` +
+              `💡 **Common Issues:**\n` +
+              `• Insufficient shares to sell\n` +
+              `• Invalid stock symbol\n` +
+              `• Portfolio not found\n` +
+              `• Stock not owned in portfolio\n\n` +
+              `🔧 **Try:**\n` +
+              `• "Show me my portfolios" to check holdings\n` +
+              `• "Show me portfolio details" to see current positions\n` +
+              `• "Search for [company] symbol" to verify symbol`
           }
         ]
       };

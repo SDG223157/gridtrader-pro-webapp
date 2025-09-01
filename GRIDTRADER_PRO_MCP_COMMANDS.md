@@ -53,6 +53,57 @@ Make a balanced portfolio named "Retirement Fund" with $75,000
 
 ---
 
+## 💰 Trading & Transactions Commands
+
+### Buy Transactions
+```
+Buy 10 shares of AAPL in my growth portfolio
+```
+
+```
+Purchase 50 shares of SPY at $450 in portfolio [portfolio-id]
+```
+
+```
+Buy $5,000 worth of QQQ in my tech portfolio
+```
+
+```
+Purchase 20 shares of Tesla for my aggressive portfolio
+```
+
+### Sell Transactions
+```
+Sell 10 shares of AAPL from my growth portfolio
+```
+
+```
+Sell 25 shares of SPY at $455 from portfolio [portfolio-id]
+```
+
+```
+Sell half my Tesla position from my tech portfolio
+```
+
+```
+Liquidate 100 shares of Microsoft from my conservative portfolio
+```
+
+### Transaction with Specific Prices
+```
+Buy 15 shares of NVDA at $800 in my growth portfolio
+```
+
+```
+Sell 20 shares of TSLA at $250 from my tech portfolio
+```
+
+```
+Purchase 100 shares of VTI at $220 with note "Monthly DCA"
+```
+
+---
+
 ## 💰 Cash Balance & Financial Commands
 
 ### View Cash Balances
