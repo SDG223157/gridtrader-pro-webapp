@@ -12,7 +12,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from database import get_db, create_tables, User, UserProfile, Portfolio, Grid, Holding, Alert, Transaction, TransactionType, GridStatus, GridOrder, OrderStatus, ApiToken
+from database import get_db, create_tables, User, UserProfile, Portfolio, Grid, Holding, Alert, Transaction, TransactionType, GridStatus, GridOrder, OrderStatus, ApiToken, SessionLocal
 from auth_simple import (
     setup_oauth, create_access_token, get_current_user, require_auth, 
     create_user, authenticate_user, create_or_update_user_from_google
@@ -355,6 +355,75 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# API Token Authentication middleware for API endpoints
+@app.middleware("http")
+async def api_auth_middleware(request: Request, call_next):
+    """Authentication middleware for API endpoints with Bearer token support"""
+    # Skip authentication for certain endpoints
+    skip_auth_paths = [
+        "/api/auth/login", "/api/auth/register", "/api/auth/google", "/api/auth/google/callback",
+        "/health", "/debug/test-tokens", "/debug/test-tokens-db", "/api/market/"
+    ]
+    
+    # Only apply to API endpoints
+    if request.url.path.startswith("/api/") and not any(request.url.path.startswith(path) for path in skip_auth_paths):
+        auth_header = request.headers.get("authorization")
+        
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.replace("Bearer ", "")
+            
+            # Try to find API token in database
+            db = SessionLocal()
+            try:
+                api_token = db.query(ApiToken).filter(
+                    ApiToken.token == token,
+                    ApiToken.is_active == True
+                ).first()
+                
+                if api_token:
+                    # Check if token is expired
+                    if api_token.expires_at and datetime.utcnow() > api_token.expires_at:
+                        return JSONResponse({"error": "Token expired"}, status_code=401)
+                    
+                    # Update last used timestamp
+                    api_token.last_used_at = datetime.utcnow()
+                    db.commit()
+                    
+                    # Get user and store in request state
+                    user = db.query(User).filter(User.id == api_token.user_id).first()
+                    if user:
+                        request.state.user = user
+                        logger.info(f"✅ API token authentication successful for user: {user.email}")
+                    else:
+                        logger.error("❌ User not found for valid API token")
+                        return JSONResponse({"error": "User not found"}, status_code=401)
+                else:
+                    logger.error(f"❌ Invalid API token: {token[:10]}...")
+                    return JSONResponse({"error": "Invalid API token"}, status_code=401)
+            except Exception as e:
+                logger.error(f"❌ API token authentication error: {e}")
+                return JSONResponse({"error": "Authentication failed"}, status_code=401)
+            finally:
+                db.close()
+        else:
+            # Check if this is a session-based request (for web interface)
+            user_id = request.session.get("user_id")
+            if user_id:
+                db = SessionLocal()
+                try:
+                    user = db.query(User).filter(User.id == user_id).first()
+                    if user:
+                        request.state.user = user
+                    else:
+                        return JSONResponse({"error": "Session invalid"}, status_code=401)
+                finally:
+                    db.close()
+            else:
+                return JSONResponse({"error": "Authorization header required"}, status_code=401)
+    
+    response = await call_next(request)
+    return response
 
 # Mount static files
 static_dir = "static"
