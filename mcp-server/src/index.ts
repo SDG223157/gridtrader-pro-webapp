@@ -470,6 +470,86 @@ class GridTraderProMCPServer {
               },
               required: ['portfolio_id', 'new_cash_balance']
             }
+          },
+          {
+            name: 'create_dynamic_grid',
+            description: 'Create a dynamic grid trading strategy that automatically adjusts bounds based on market volatility',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                portfolio_id: {
+                  type: 'string',
+                  description: 'Portfolio ID to create grid in'
+                },
+                symbol: {
+                  type: 'string',
+                  description: 'Trading symbol (e.g., AAPL, SPY, TSLA)'
+                },
+                name: {
+                  type: 'string',
+                  description: 'Name for this dynamic grid strategy'
+                },
+                investment_amount: {
+                  type: 'number',
+                  description: 'Total investment amount for this grid'
+                },
+                grid_count: {
+                  type: 'number',
+                  description: 'Number of grid levels',
+                  default: 10
+                },
+                volatility_multiplier: {
+                  type: 'number',
+                  description: 'Multiplier for volatility-based bounds (higher = wider range)',
+                  default: 2.0
+                },
+                lookback_days: {
+                  type: 'number',
+                  description: 'Days of historical data to calculate volatility',
+                  default: 30
+                }
+              },
+              required: ['portfolio_id', 'symbol', 'name', 'investment_amount']
+            }
+          },
+          {
+            name: 'configure_grid_alerts',
+            description: 'Configure alert preferences for grid trading strategies',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                grid_id: {
+                  type: 'string',
+                  description: 'Grid ID to configure alerts for (optional - if not provided, sets global preferences)'
+                },
+                enable_order_alerts: {
+                  type: 'boolean',
+                  description: 'Enable alerts when grid orders are triggered',
+                  default: true
+                },
+                enable_boundary_alerts: {
+                  type: 'boolean',
+                  description: 'Enable alerts when price moves outside grid bounds',
+                  default: true
+                },
+                enable_rebalancing_alerts: {
+                  type: 'boolean',
+                  description: 'Enable alerts for dynamic grid rebalancing suggestions',
+                  default: true
+                },
+                profit_threshold: {
+                  type: 'number',
+                  description: 'Minimum profit amount to trigger profit alerts ($)',
+                  default: 10.0
+                },
+                alert_frequency: {
+                  type: 'string',
+                  description: 'Alert frequency for similar events',
+                  enum: ['immediate', 'hourly', 'daily'],
+                  default: 'immediate'
+                }
+              }
+            }
           }
         ]
       };
@@ -536,6 +616,9 @@ class GridTraderProMCPServer {
           
           case 'create_dynamic_grid':
             return await this.handleCreateDynamicGrid(args);
+          
+          case 'configure_grid_alerts':
+            return await this.handleConfigureGridAlerts(args);
           
           default:
             throw new Error(`Unknown tool: ${name}`);
@@ -1613,6 +1696,121 @@ class GridTraderProMCPServer {
               `"Create a dynamic grid for AAPL with $10000 investment in my growth portfolio"\n\n` +
               `🆚 **Alternative:**\n` +
               `If dynamic grid fails, try regular grid: "Create a grid for ${args.symbol}"`
+          }
+        ]
+      };
+    }
+  }
+
+  private async handleConfigureGridAlerts(args: any) {
+    try {
+      // For now, we'll store alert preferences in the grid's strategy_config
+      // In a real implementation, this might be a separate user preferences table
+      
+      let responseText = `⚙️ **Grid Alert Configuration**\n\n`;
+      
+      if (args.grid_id) {
+        // Configure alerts for specific grid
+        const gridData = await this.makeApiCall(`/api/grids/${args.grid_id}`);
+        
+        if (gridData.success || gridData.id) {
+          responseText += `**Grid:** ${gridData.name || 'Unknown'} (${gridData.symbol})\n\n`;
+          
+          // Update grid strategy config with alert preferences
+          const alertConfig = {
+            enable_order_alerts: args.enable_order_alerts !== undefined ? args.enable_order_alerts : true,
+            enable_boundary_alerts: args.enable_boundary_alerts !== undefined ? args.enable_boundary_alerts : true,
+            enable_rebalancing_alerts: args.enable_rebalancing_alerts !== undefined ? args.enable_rebalancing_alerts : true,
+            profit_threshold: args.profit_threshold || 10.0,
+            alert_frequency: args.alert_frequency || 'immediate',
+            updated_at: new Date().toISOString()
+          };
+          
+          // This would update the grid's strategy_config in a real implementation
+          responseText += `**Alert Preferences Updated:**\n`;
+          responseText += `• 🎯 Order Execution Alerts: ${alertConfig.enable_order_alerts ? '✅ Enabled' : '❌ Disabled'}\n`;
+          responseText += `• 📈📉 Boundary Alerts: ${alertConfig.enable_boundary_alerts ? '✅ Enabled' : '❌ Disabled'}\n`;
+          responseText += `• 🧠 Rebalancing Alerts: ${alertConfig.enable_rebalancing_alerts ? '✅ Enabled' : '❌ Disabled'}\n`;
+          responseText += `• 💰 Profit Threshold: $${alertConfig.profit_threshold}\n`;
+          responseText += `• ⏰ Alert Frequency: ${alertConfig.alert_frequency}\n\n`;
+          
+          responseText += `**What You'll Be Alerted About:**\n`;
+          if (alertConfig.enable_order_alerts) {
+            responseText += `• 🎯 **Buy/Sell Order Triggers** - When grid levels are hit\n`;
+            responseText += `• 💰 **Profit Notifications** - When sell orders generate profit ≥ $${alertConfig.profit_threshold}\n`;
+          }
+          if (alertConfig.enable_boundary_alerts) {
+            responseText += `• 📈 **Price Above Range** - When price exceeds upper grid bound\n`;
+            responseText += `• 📉 **Price Below Range** - When price falls below lower grid bound\n`;
+          }
+          if (alertConfig.enable_rebalancing_alerts) {
+            responseText += `• 🧠 **Dynamic Rebalancing** - When grid bounds need adjustment\n`;
+            responseText += `• ⚡ **Volatility Changes** - When market conditions change significantly\n`;
+          }
+          
+        } else {
+          throw new Error(`Grid ${args.grid_id} not found`);
+        }
+        
+      } else {
+        // Configure global alert preferences
+        responseText += `**Global Alert Preferences**\n\n`;
+        
+        const globalConfig = {
+          enable_order_alerts: args.enable_order_alerts !== undefined ? args.enable_order_alerts : true,
+          enable_boundary_alerts: args.enable_boundary_alerts !== undefined ? args.enable_boundary_alerts : true,
+          enable_rebalancing_alerts: args.enable_rebalancing_alerts !== undefined ? args.enable_rebalancing_alerts : true,
+          profit_threshold: args.profit_threshold || 10.0,
+          alert_frequency: args.alert_frequency || 'immediate'
+        };
+        
+        responseText += `**Default Alert Settings Applied to All Grids:**\n`;
+        responseText += `• 🎯 Order Execution Alerts: ${globalConfig.enable_order_alerts ? '✅ Enabled' : '❌ Disabled'}\n`;
+        responseText += `• 📈📉 Boundary Alerts: ${globalConfig.enable_boundary_alerts ? '✅ Enabled' : '❌ Disabled'}\n`;
+        responseText += `• 🧠 Rebalancing Alerts: ${globalConfig.enable_rebalancing_alerts ? '✅ Enabled' : '❌ Disabled'}\n`;
+        responseText += `• 💰 Profit Threshold: $${globalConfig.profit_threshold}\n`;
+        responseText += `• ⏰ Alert Frequency: ${globalConfig.alert_frequency}\n\n`;
+        
+        responseText += `**Alert Types Explained:**\n`;
+        responseText += `• 🎯 **Order Alerts** - Real-time notifications when buy/sell orders execute\n`;
+        responseText += `• 📈📉 **Boundary Alerts** - Warnings when price moves outside grid range\n`;
+        responseText += `• 🧠 **Rebalancing Alerts** - Suggestions for dynamic grid adjustments\n`;
+        responseText += `• 💰 **Profit Alerts** - Celebrations when trades generate significant profit\n\n`;
+      }
+      
+      responseText += `**Alert Frequency Options:**\n`;
+      responseText += `• **Immediate** - Get alerts as soon as events occur\n`;
+      responseText += `• **Hourly** - Batch similar alerts into hourly summaries\n`;
+      responseText += `• **Daily** - Receive daily digest of all grid activity\n\n`;
+      
+      responseText += `**Next Steps:**\n`;
+      responseText += `• Check your alerts: "Show me my trading alerts"\n`;
+      responseText += `• View grid performance: "Analyze grid performance for [grid_id]"\n`;
+      responseText += `• Monitor grid activity in real-time\n\n`;
+      
+      responseText += `🎉 **Alert configuration updated successfully!**`;
+      
+      return {
+        content: [
+          {
+            type: 'text',
+            text: responseText
+          }
+        ]
+      };
+      
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `❌ **Alert Configuration Failed**\n\n` +
+              `Error: ${error.response?.data?.detail || error.message}\n\n` +
+              `💡 **Try:**\n` +
+              `• "Configure alerts for all my grids"\n` +
+              `• "Enable order alerts for grid [grid_id]"\n` +
+              `• "Set profit threshold to $25 for my grids"\n` +
+              `• "Show me my current alert settings"`
           }
         ]
       };

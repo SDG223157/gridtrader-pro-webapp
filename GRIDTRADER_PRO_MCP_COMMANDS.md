@@ -185,6 +185,55 @@ Show me grid performance analytics
 
 ---
 
+## 🚨 Grid Trading Alerts & Notifications
+
+### Get Trading Alerts
+```bash
+# View all recent trading alerts
+"Show me my trading alerts"
+
+# Get specific alert types
+"Show me grid alerts only"
+"Get my recent price alerts"
+"Show me alerts from the last 24 hours"
+```
+
+**Alert Types:**
+- 🎯 **Grid Order Executions** - When buy/sell orders are triggered
+- 🧠 **Dynamic Grid Updates** - When bounds need adjustment  
+- 📈📉 **Grid Boundary Alerts** - When price moves outside range
+- 💰 **Price Movement Alerts** - When holdings move >5%
+- ⚙️ **System Alerts** - System notifications
+
+### Configure Alert Preferences
+```bash
+# Configure alerts for all grids
+"Configure alerts for all my grids"
+"Enable order alerts for all grids"
+"Set profit threshold to $25 for my grids"
+
+# Configure alerts for specific grid
+"Configure alerts for grid [grid_id]"
+"Enable boundary alerts for my AAPL grid"
+"Set alert frequency to hourly for grid [grid_id]"
+```
+
+**Alert Configuration Options:**
+- `enable_order_alerts`: Get notified when buy/sell orders execute
+- `enable_boundary_alerts`: Alerts when price moves outside grid bounds
+- `enable_rebalancing_alerts`: Notifications for dynamic grid adjustments
+- `profit_threshold`: Minimum profit amount to trigger alerts ($)
+- `alert_frequency`: `immediate`, `hourly`, or `daily`
+
+**What Triggers Alerts:**
+- ✅ **Grid Order Execution** - Real-time notifications when orders fill
+- ✅ **Profit Achievements** - When trades generate significant profit
+- ✅ **Boundary Breaches** - When price moves outside grid range
+- ✅ **Rebalancing Suggestions** - When dynamic grids need adjustment
+- ✅ **Volatility Changes** - When market conditions shift significantly
+
+---
+
 ## 📈 Market Data & Analysis Commands
 
 ### Stock Prices
