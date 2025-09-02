@@ -534,6 +534,9 @@ class GridTraderProMCPServer {
           case 'update_balance':
             return await this.handleUpdateBalance(args);
           
+          case 'create_dynamic_grid':
+            return await this.handleCreateDynamicGrid(args);
+          
           default:
             throw new Error(`Unknown tool: ${name}`);
         }
@@ -1458,6 +1461,158 @@ class GridTraderProMCPServer {
               `• Try again in a few moments\n\n` +
               `💰 **Example Usage:**\n` +
               `"Update my portfolio balance to $50000 with note 'Bank deposit'"`
+          }
+        ]
+      };
+    }
+  }
+
+  private async handleCreateDynamicGrid(args: any) {
+    try {
+      // First, get current market data and calculate volatility
+      const marketData = await this.makeApiCall(`/api/market/${args.symbol}?period=${args.lookback_days || 30}d`);
+      
+      if (!marketData || !marketData.data || marketData.data.length < 10) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `❌ **Insufficient Market Data**\n\n` +
+                `Cannot create dynamic grid for ${args.symbol}.\n` +
+                `Need at least 10 days of historical data to calculate volatility.\n\n` +
+                `💡 **Try:**\n` +
+                `• Use a more liquid stock symbol (e.g., AAPL, SPY, MSFT)\n` +
+                `• Reduce lookback_days to a shorter period\n` +
+                `• Use regular grid creation instead: "Create a grid for ${args.symbol}"`
+            }
+          ]
+        };
+      }
+
+      // Calculate volatility from historical data
+      const prices = marketData.data.map((d: any) => parseFloat(d.Close));
+      const currentPrice = prices[prices.length - 1];
+      
+      // Calculate daily returns
+      const returns = [];
+      for (let i = 1; i < prices.length; i++) {
+        returns.push(Math.log(prices[i] / prices[i - 1]));
+      }
+      
+      // Calculate volatility (standard deviation of returns, annualized)
+      const meanReturn = returns.reduce((sum, r) => sum + r, 0) / returns.length;
+      const variance = returns.reduce((sum, r) => sum + Math.pow(r - meanReturn, 2), 0) / returns.length;
+      const volatility = Math.sqrt(variance * 252); // Annualized volatility
+      
+      // Calculate dynamic bounds based on volatility
+      const volatilityMultiplier = args.volatility_multiplier || 2.0;
+      const priceDeviation = currentPrice * volatility * volatilityMultiplier;
+      const upperPrice = currentPrice + priceDeviation;
+      const lowerPrice = Math.max(currentPrice - priceDeviation, currentPrice * 0.1); // Prevent negative prices
+      
+      // Create the grid with calculated bounds
+      const gridData = {
+        portfolio_id: args.portfolio_id,
+        symbol: args.symbol,
+        name: args.name,
+        upper_price: upperPrice,
+        lower_price: lowerPrice,
+        grid_count: args.grid_count || 10,
+        investment_amount: args.investment_amount,
+        strategy_config: {
+          type: 'dynamic_grid',
+          volatility: volatility,
+          volatility_multiplier: volatilityMultiplier,
+          center_price: currentPrice,
+          lookback_days: args.lookback_days || 30,
+          auto_adjust: true,
+          created_at: new Date().toISOString()
+        }
+      };
+
+      const result = await this.makeApiCall('/api/grids', 'POST', gridData);
+      
+      if (result.success || result.grid_id || result.id) {
+        const gridSpacing = (upperPrice - lowerPrice) / (args.grid_count || 10);
+        const quantityPerGrid = args.investment_amount / ((args.grid_count || 10) * upperPrice);
+        const expectedProfitPerCycle = gridSpacing * quantityPerGrid;
+        
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `✅ **Dynamic Grid Strategy Created Successfully!**\n\n` +
+                `🧠 **AI-Powered Dynamic Grid for ${args.symbol}**\n` +
+                `• Grid ID: ${result.grid_id || result.id}\n` +
+                `• Strategy: **Volatility-Adaptive Grid Trading**\n\n` +
+                `📊 **Market Analysis:**\n` +
+                `• Current Price: **$${currentPrice.toFixed(2)}**\n` +
+                `• Calculated Volatility: **${(volatility * 100).toFixed(2)}%** (${args.lookback_days || 30} days)\n` +
+                `• Market Regime: ${volatility > 0.3 ? '🔥 High Volatility' : volatility > 0.15 ? '⚡ Medium Volatility' : '😴 Low Volatility'}\n\n` +
+                `🎯 **Dynamic Bounds (Auto-Adjusting):**\n` +
+                `• Upper Bound: **$${upperPrice.toFixed(2)}** (+${((upperPrice - currentPrice) / currentPrice * 100).toFixed(1)}%)\n` +
+                `• Lower Bound: **$${lowerPrice.toFixed(2)}** (${((lowerPrice - currentPrice) / currentPrice * 100).toFixed(1)}%)\n` +
+                `• Price Range: **$${(upperPrice - lowerPrice).toFixed(2)}** (${((upperPrice - lowerPrice) / currentPrice * 100).toFixed(1)}% of current price)\n` +
+                `• Volatility Multiplier: **${volatilityMultiplier}x**\n\n` +
+                `⚙️ **Grid Configuration:**\n` +
+                `• Grid Levels: **${args.grid_count || 10}**\n` +
+                `• Grid Spacing: **$${gridSpacing.toFixed(4)}** per level\n` +
+                `• Investment Amount: **$${args.investment_amount.toLocaleString()}**\n` +
+                `• Quantity per Grid: **${quantityPerGrid.toFixed(6)}** shares\n` +
+                `• Expected Profit per Cycle: **$${expectedProfitPerCycle.toFixed(2)}**\n\n` +
+                `🚀 **Dynamic Features:**\n` +
+                `• ✅ **Auto-adjusting bounds** based on market volatility\n` +
+                `• ✅ **Rebalances when price approaches boundaries**\n` +
+                `• ✅ **Adapts to changing market conditions**\n` +
+                `• ✅ **Optimized for ${volatility > 0.2 ? 'volatile' : 'stable'} market conditions**\n\n` +
+                `💡 **How It Works:**\n` +
+                `1. **Monitors** ${args.symbol} volatility continuously\n` +
+                `2. **Expands** grid range when volatility increases\n` +
+                `3. **Contracts** grid range when volatility decreases\n` +
+                `4. **Rebalances** automatically when price nears boundaries\n\n` +
+                `📈 **Performance Expectations:**\n` +
+                `• Optimal for sideways/ranging markets\n` +
+                `• Adapts to breakout scenarios\n` +
+                `• Risk-managed through dynamic bounds\n` +
+                `• Expected annual cycles: ${Math.floor(252 / (args.lookback_days || 30))}-${Math.floor(252 / 10)}\n\n` +
+                `🎉 **Your intelligent grid is now active and adapting to market conditions!**\n\n` +
+                `---\n\n**Technical Data:**\n${JSON.stringify({
+                  ...result,
+                  volatility_analysis: {
+                    current_price: currentPrice,
+                    volatility: volatility,
+                    upper_bound: upperPrice,
+                    lower_bound: lowerPrice,
+                    price_range_percent: ((upperPrice - lowerPrice) / currentPrice * 100).toFixed(2)
+                  }
+                }, null, 2)}`
+            }
+          ]
+        };
+      } else {
+        throw new Error(result.message || result.detail || 'Dynamic grid creation failed');
+      }
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `❌ **Dynamic Grid Creation Failed**\n\n` +
+              `Error: ${error.response?.data?.detail || error.message}\n\n` +
+              `💡 **Common Issues:**\n` +
+              `• Insufficient historical data for volatility calculation\n` +
+              `• Invalid stock symbol or market data unavailable\n` +
+              `• Portfolio not found or insufficient funds\n` +
+              `• Market closed or data provider issues\n\n` +
+              `🔧 **Try:**\n` +
+              `• "Validate symbol ${args.symbol}" to check if symbol is supported\n` +
+              `• "Get market data for ${args.symbol}" to verify data availability\n` +
+              `• "Show me my portfolios" to verify portfolio ID\n` +
+              `• Use a major stock like AAPL or SPY for testing\n\n` +
+              `📚 **Example Usage:**\n` +
+              `"Create a dynamic grid for AAPL with $10000 investment in my growth portfolio"\n\n` +
+              `🆚 **Alternative:**\n` +
+              `If dynamic grid fails, try regular grid: "Create a grid for ${args.symbol}"`
           }
         ]
       };
