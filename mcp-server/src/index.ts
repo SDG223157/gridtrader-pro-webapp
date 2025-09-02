@@ -1757,19 +1757,62 @@ class GridTraderProMCPServer {
     const sectors = [];
     const lines = data.split('\n');
     
-    // Simple parsing logic - look for patterns in Chinese industrial data
+    // Enhanced parsing logic for various Chinese industrial data formats
     for (const line of lines) {
       // Skip headers and empty lines
-      if (!line.trim() || line.includes('行业') || line.includes('营业收入') || line.includes('同比增长')) {
+      if (!line.trim() || line.includes('行业名称') || line.includes('营业收入同比增长') || 
+          line.includes('Growth Sectors') || line.includes('Industrial Data') || 
+          line.includes('Focus') || line.includes('Declining Sectors')) {
         continue;
       }
       
-      // Extract sector name and growth rates using regex
-      const matches = line.match(/([^0-9]+?)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)/);
-      if (matches) {
-        const sectorName = matches[1].trim();
-        const revenueGrowth = parseFloat(matches[4]) || 0; // 4th number is usually revenue growth %
-        const profitGrowth = parseFloat(matches[6]) || 0;  // 6th number is usually profit growth %
+      // Method 1: Parse colon-separated format (new format)
+      // Example: "有色金属冶炼和压延加工业: 营业收入同比增长 13.8%, 利润总额同比增长 6.9%"
+      const colonMatch = line.match(/([^:]+):\s*营业收入同比增长\s*([-\d.]+)%.*?利润总额同比增长\s*([-\d.]+)%/);
+      if (colonMatch) {
+        const sectorName = colonMatch[1].trim();
+        const revenueGrowth = parseFloat(colonMatch[2]);
+        const profitGrowth = parseFloat(colonMatch[3]);
+        
+        if (sectorName && !isNaN(revenueGrowth) && !isNaN(profitGrowth)) {
+          sectors.push({
+            name: sectorName,
+            revenueGrowth,
+            profitGrowth,
+            performance: revenueGrowth > 5 && profitGrowth > 5 ? 'strong' : 
+                        revenueGrowth < 0 || profitGrowth < -5 ? 'weak' : 'mixed'
+          });
+          continue;
+        }
+      }
+      
+      // Method 2: Parse dash-separated format
+      // Example: "有色金属冶炼 - Revenue Growth: +13.8%, Profit Growth: +6.9%"
+      const dashMatch = line.match(/([^-]+)\s*-\s*Revenue Growth:\s*([+-]?[\d.]+)%.*?Profit Growth:\s*([+-]?[\d.]+)%/);
+      if (dashMatch) {
+        const sectorName = dashMatch[1].trim();
+        const revenueGrowth = parseFloat(dashMatch[2]);
+        const profitGrowth = parseFloat(dashMatch[3]);
+        
+        if (sectorName && !isNaN(revenueGrowth) && !isNaN(profitGrowth)) {
+          sectors.push({
+            name: sectorName,
+            revenueGrowth,
+            profitGrowth,
+            performance: revenueGrowth > 5 && profitGrowth > 5 ? 'strong' : 
+                        revenueGrowth < 0 || profitGrowth < -5 ? 'weak' : 'mixed'
+          });
+          continue;
+        }
+      }
+      
+      // Method 3: Parse tabular format (original format)
+      // Example: "有色金属冶炼和压延加工业	13.8	6.9	4.2"
+      const tabMatch = line.match(/([^\t\d]+)\s+([-\d.]+)\s+([-\d.]+)(?:\s+([-\d.]+))?/);
+      if (tabMatch) {
+        const sectorName = tabMatch[1].trim();
+        const revenueGrowth = parseFloat(tabMatch[2]);
+        const profitGrowth = parseFloat(tabMatch[3]);
         
         if (sectorName && !isNaN(revenueGrowth) && !isNaN(profitGrowth)) {
           sectors.push({
