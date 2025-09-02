@@ -2708,6 +2708,18 @@ async def settings_page(request: Request, db: Session = Depends(get_db)):
     
     return templates.TemplateResponse("settings.html", {"request": request, **context})
 
+@app.get("/delete-all-portfolios", response_class=HTMLResponse)
+async def delete_all_portfolios_page(request: Request, db: Session = Depends(get_db)):
+    """Page to delete all portfolios - for admin/development use"""
+    context = get_user_context(request, db)
+    if not context["is_authenticated"]:
+        return RedirectResponse(url="/login", status_code=302)
+    
+    # Serve the static HTML file
+    with open("delete_all_portfolios.html", "r") as f:
+        content = f.read()
+    return HTMLResponse(content=content)
+
 @app.post("/api/settings/profile")
 async def update_profile_settings(
     display_name: str = Form(...),

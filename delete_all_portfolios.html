@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Delete All Portfolios - GridTrader Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center">
+    <div class="bg-white p-8 rounded-lg shadow-lg max-w-md w-full">
+        <h1 class="text-2xl font-bold text-red-600 mb-6 text-center">🗑️ Delete All Portfolios</h1>
+        
+        <div id="portfolioList" class="mb-6">
+            <p class="text-gray-600">Loading portfolios...</p>
+        </div>
+        
+        <div class="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+            <h3 class="font-bold text-red-800 mb-2">⚠️ WARNING</h3>
+            <p class="text-red-700 text-sm">This will permanently delete ALL portfolios and their data including:</p>
+            <ul class="text-red-700 text-sm mt-2 list-disc list-inside">
+                <li>All holdings and positions</li>
+                <li>All transaction history</li>
+                <li>All grid trading strategies</li>
+                <li>All grid orders</li>
+            </ul>
+            <p class="text-red-800 font-bold text-sm mt-2">This action CANNOT be undone!</p>
+        </div>
+        
+        <div class="mb-4">
+            <label class="flex items-center">
+                <input type="checkbox" id="confirmCheckbox" class="mr-2">
+                <span class="text-sm text-gray-700">I understand this will permanently delete all my portfolios</span>
+            </label>
+        </div>
+        
+        <button 
+            id="deleteButton" 
+            onclick="deleteAllPortfolios()" 
+            disabled
+            class="w-full bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white font-bold py-3 px-4 rounded transition-colors"
+        >
+            DELETE ALL PORTFOLIOS
+        </button>
+        
+        <div id="status" class="mt-4 text-center"></div>
+    </div>
+
+    <script>
+        let portfolios = [];
+
+        // Enable/disable delete button based on checkbox
+        document.getElementById('confirmCheckbox').addEventListener('change', function() {
+            document.getElementById('deleteButton').disabled = !this.checked;
+        });
+
+        // Load portfolios on page load
+        async function loadPortfolios() {
+            try {
+                const response = await fetch('/api/portfolios', {
+                    credentials: 'include'
+                });
+                
+                if (response.ok) {
+                    portfolios = await response.json();
+                    displayPortfolios();
+                } else {
+                    document.getElementById('portfolioList').innerHTML = 
+                        '<p class="text-red-600">Failed to load portfolios. Please login first.</p>';
+                }
+            } catch (error) {
+                document.getElementById('portfolioList').innerHTML = 
+                    '<p class="text-red-600">Error loading portfolios: ' + error.message + '</p>';
+            }
+        }
+
+        function displayPortfolios() {
+            const listElement = document.getElementById('portfolioList');
+            
+            if (portfolios.length === 0) {
+                listElement.innerHTML = '<p class="text-gray-600">No portfolios found.</p>';
+                document.getElementById('deleteButton').style.display = 'none';
+                return;
+            }
+
+            let html = '<h3 class="font-bold mb-2">Portfolios to delete:</h3><ul class="text-sm space-y-1">';
+            portfolios.forEach(portfolio => {
+                html += `<li class="flex justify-between">
+                    <span>${portfolio.name}</span>
+                    <span class="text-green-600">$${portfolio.current_value.toLocaleString()}</span>
+                </li>`;
+            });
+            html += '</ul>';
+            
+            listElement.innerHTML = html;
+        }
+
+        async function deleteAllPortfolios() {
+            const statusElement = document.getElementById('status');
+            const deleteButton = document.getElementById('deleteButton');
+            
+            // Final confirmation
+            if (!confirm(`Are you absolutely sure you want to delete ALL ${portfolios.length} portfolios?\n\nThis action CANNOT be undone!`)) {
+                return;
+            }
+
+            deleteButton.disabled = true;
+            statusElement.innerHTML = '<p class="text-blue-600">🔄 Deleting portfolios...</p>';
+
+            let deletedCount = 0;
+            let errors = [];
+
+            for (const portfolio of portfolios) {
+                try {
+                    statusElement.innerHTML = `<p class="text-blue-600">🔄 Deleting ${portfolio.name}...</p>`;
+                    
+                    const response = await fetch(`/api/portfolios/${portfolio.id}`, {
+                        method: 'DELETE',
+                        credentials: 'include',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    });
+
+                    if (response.ok) {
+                        deletedCount++;
+                        statusElement.innerHTML = `<p class="text-green-600">✅ Deleted ${portfolio.name}</p>`;
+                    } else {
+                        const error = await response.text();
+                        errors.push(`${portfolio.name}: ${error}`);
+                        statusElement.innerHTML = `<p class="text-red-600">❌ Failed to delete ${portfolio.name}</p>`;
+                    }
+                } catch (error) {
+                    errors.push(`${portfolio.name}: ${error.message}`);
+                    statusElement.innerHTML = `<p class="text-red-600">❌ Error deleting ${portfolio.name}</p>`;
+                }
+
+                // Small delay between deletions
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+
+            // Show final status
+            if (deletedCount === portfolios.length) {
+                statusElement.innerHTML = `
+                    <div class="text-green-600">
+                        <p class="font-bold">🎉 ALL PORTFOLIOS DELETED!</p>
+                        <p class="text-sm">Successfully deleted ${deletedCount} portfolios</p>
+                    </div>
+                `;
+                
+                // Reload portfolios to show empty list
+                setTimeout(loadPortfolios, 1000);
+            } else {
+                statusElement.innerHTML = `
+                    <div class="text-yellow-600">
+                        <p class="font-bold">⚠️ Partial Success</p>
+                        <p class="text-sm">Deleted ${deletedCount}/${portfolios.length} portfolios</p>
+                        ${errors.length > 0 ? '<p class="text-red-600 text-xs mt-2">Errors: ' + errors.join(', ') + '</p>' : ''}
+                    </div>
+                `;
+            }
+
+            deleteButton.disabled = false;
+        }
+
+        // Load portfolios when page loads
+        window.addEventListener('load', loadPortfolios);
+    </script>
+</body>
+</html>
