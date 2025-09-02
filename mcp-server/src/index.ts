@@ -592,6 +592,12 @@ class GridTraderProMCPServer {
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { name, arguments: args } = request.params;
 
+      // Debug logging for all MCP requests
+      const fs = require('fs');
+      const timestamp = new Date().toISOString();
+      const requestLog = `\n=== MCP REQUEST ${timestamp} ===\nTool: ${name}\nArgs: ${JSON.stringify(args, null, 2)}\n`;
+      fs.appendFileSync('mcp-debug.log', requestLog);
+
       try {
         switch (name) {
           case 'get_portfolio_list':
@@ -1754,25 +1760,34 @@ class GridTraderProMCPServer {
   }
 
   private parseIndustrialData(data: string) {
-    const sectors = [];
-    const lines = data.split('\n');
+    const sectors: any[] = [];
     
-    // Enhanced parsing logic for various Chinese industrial data formats
+    if (!data || typeof data !== 'string') {
+      return sectors;
+    }
+    
+    const lines = data.split(/\r?\n/);
+    
     for (const line of lines) {
-      // Skip headers and empty lines
-      if (!line.trim() || line.includes('行业名称') || line.includes('营业收入同比增长') || 
-          line.includes('Growth Sectors') || line.includes('Industrial Data') || 
-          line.includes('Focus') || line.includes('Declining Sectors')) {
+      const trimmedLine = line.trim();
+      
+      // Skip empty lines and headers
+      if (!trimmedLine || 
+          trimmedLine.includes('行业名称') || 
+          trimmedLine.includes('Growth Sectors') || 
+          trimmedLine.includes('Industrial Data') || 
+          trimmedLine.includes('Focus') || 
+          trimmedLine.includes('Declining Sectors')) {
         continue;
       }
       
-      // Method 1: Parse colon-separated format (new format)
-      // Example: "有色金属冶炼和压延加工业: 营业收入同比增长 13.8%, 利润总额同比增长 6.9%"
-      const colonMatch = line.match(/([^:]+):\s*营业收入同比增长\s*([-\d.]+)%.*?利润总额同比增长\s*([-\d.]+)%/);
-      if (colonMatch) {
-        const sectorName = colonMatch[1].trim();
-        const revenueGrowth = parseFloat(colonMatch[2]);
-        const profitGrowth = parseFloat(colonMatch[3]);
+      // Method 1: Chinese colon format
+      // "有色金属冶炼和压延加工业: 营业收入同比增长 13.8%, 利润总额同比增长 6.9%"
+      let match = trimmedLine.match(/([^:]+):\s*营业收入同比增长\s*([-\d.]+)%.*?利润总额同比增长\s*([-\d.]+)%/);
+      if (match) {
+        const sectorName = match[1].trim();
+        const revenueGrowth = parseFloat(match[2]);
+        const profitGrowth = parseFloat(match[3]);
         
         if (sectorName && !isNaN(revenueGrowth) && !isNaN(profitGrowth)) {
           sectors.push({
@@ -1786,13 +1801,12 @@ class GridTraderProMCPServer {
         }
       }
       
-      // Method 2: Parse dash-separated format
-      // Example: "有色金属冶炼 - Revenue Growth: +13.8%, Profit Growth: +6.9%"
-      const dashMatch = line.match(/([^-]+)\s*-\s*Revenue Growth:\s*([+-]?[\d.]+)%.*?Profit Growth:\s*([+-]?[\d.]+)%/);
-      if (dashMatch) {
-        const sectorName = dashMatch[1].trim();
-        const revenueGrowth = parseFloat(dashMatch[2]);
-        const profitGrowth = parseFloat(dashMatch[3]);
+      // Method 2: English dash format
+      match = trimmedLine.match(/([^-]+)\s*-\s*Revenue Growth:\s*([+-]?[\d.]+)%.*?Profit Growth:\s*([+-]?[\d.]+)%/);
+      if (match) {
+        const sectorName = match[1].trim();
+        const revenueGrowth = parseFloat(match[2]);
+        const profitGrowth = parseFloat(match[3]);
         
         if (sectorName && !isNaN(revenueGrowth) && !isNaN(profitGrowth)) {
           sectors.push({
@@ -1806,13 +1820,12 @@ class GridTraderProMCPServer {
         }
       }
       
-      // Method 3: Parse tabular format (original format)
-      // Example: "有色金属冶炼和压延加工业	13.8	6.9	4.2"
-      const tabMatch = line.match(/([^\t\d]+)\s+([-\d.]+)\s+([-\d.]+)(?:\s+([-\d.]+))?/);
-      if (tabMatch) {
-        const sectorName = tabMatch[1].trim();
-        const revenueGrowth = parseFloat(tabMatch[2]);
-        const profitGrowth = parseFloat(tabMatch[3]);
+      // Method 3: Tabular format
+      match = trimmedLine.match(/^([^\d\t]+?)\s+([-\d.]+)\s+([-\d.]+)/);
+      if (match) {
+        const sectorName = match[1].trim();
+        const revenueGrowth = parseFloat(match[2]);
+        const profitGrowth = parseFloat(match[3]);
         
         if (sectorName && !isNaN(revenueGrowth) && !isNaN(profitGrowth)) {
           sectors.push({
