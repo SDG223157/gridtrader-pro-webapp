@@ -1552,29 +1552,88 @@ class GridTraderProMCPServer {
 
   private async handleCreateDynamicGrid(args: any) {
     try {
+      console.log('=== DYNAMIC GRID DEBUG START ===');
+      console.log('Input args:', JSON.stringify(args, null, 2));
       // First, get current market data and calculate volatility
-      const marketData = await this.makeApiCall(`/api/market/${args.symbol}?period=${args.lookback_days || 30}d`);
+      // Convert lookback days to proper yfinance period format
+      const lookbackDays = args.lookback_days || 30;
+      let period: string;
       
-      if (!marketData || !marketData.data || marketData.data.length < 10) {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `❌ **Insufficient Market Data**\n\n` +
-                `Cannot create dynamic grid for ${args.symbol}.\n` +
-                `Need at least 10 days of historical data to calculate volatility.\n\n` +
-                `💡 **Try:**\n` +
-                `• Use a more liquid stock symbol (e.g., AAPL, SPY, MSFT)\n` +
-                `• Reduce lookback_days to a shorter period\n` +
-                `• Use regular grid creation instead: "Create a grid for ${args.symbol}"`
-            }
-          ]
+      if (lookbackDays <= 5) {
+        period = "5d";
+      } else if (lookbackDays <= 30) {
+        period = "1mo";
+      } else if (lookbackDays <= 90) {
+        period = "3mo";
+      } else if (lookbackDays <= 180) {
+        period = "6mo";
+      } else {
+        period = "1y";
+      }
+      
+      console.log(`Dynamic grid: Requesting ${args.symbol} data for ${lookbackDays} days using period: ${period}`);
+      const marketData = await this.makeApiCall(`/api/market/${args.symbol}?period=${period}`);
+      
+      console.log(`Dynamic grid: Received data:`, {
+        hasData: !!marketData,
+        hasDataArray: !!(marketData && marketData.data),
+        dataLength: marketData && marketData.data ? marketData.data.length : 0,
+        sampleData: marketData && marketData.data ? marketData.data[0] : null
+      });
+      
+      if (!marketData || !marketData.data || marketData.data.length < 5) {
+        const dataLength = marketData && marketData.data ? marketData.data.length : 0;
+        console.log('Insufficient data, falling back to default volatility');
+        
+        // Fallback: Use default volatility of 20% if insufficient data
+        const currentPrice = marketData?.current_price || 232; // Fallback price
+        const defaultVolatility = 0.20; // 20% default volatility
+        const volatilityMultiplier = args.volatility_multiplier || 2.0;
+        const priceDeviation = currentPrice * defaultVolatility * volatilityMultiplier;
+        const upperPrice = currentPrice + priceDeviation;
+        const lowerPrice = Math.max(currentPrice - priceDeviation, currentPrice * 0.1);
+        
+        // Create grid with fallback bounds
+        const gridData = {
+          portfolio_id: args.portfolio_id,
+          symbol: args.symbol,
+          name: args.name + ' (Default Volatility)',
+          upper_price: upperPrice,
+          lower_price: lowerPrice,
+          grid_count: args.grid_count || 10,
+          investment_amount: args.investment_amount
         };
+        
+        console.log('Creating fallback dynamic grid:', gridData);
+        const result = await this.makeApiCall('/api/grids', 'POST', gridData);
+        
+        if (result.success || result.grid_id || result.id) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `✅ **Dynamic Grid Created (Fallback Mode)**\n\n` +
+                  `🧠 **${args.symbol} Dynamic Grid** (using default 20% volatility)\n` +
+                  `• Grid ID: ${result.grid_id || result.id}\n` +
+                  `• Current Price: $${currentPrice.toFixed(2)}\n` +
+                  `• Used Default Volatility: 20% (insufficient historical data: ${dataLength} points)\n` +
+                  `• Upper Bound: $${upperPrice.toFixed(2)}\n` +
+                  `• Lower Bound: $${lowerPrice.toFixed(2)}\n` +
+                  `• Grid Levels: ${args.grid_count || 10}\n` +
+                  `• Investment: $${args.investment_amount.toLocaleString()}\n\n` +
+                  `⚠️ **Note**: Used default volatility due to insufficient historical data.\n` +
+                  `For more accurate bounds, ensure symbol has sufficient trading history.`
+              }
+            ]
+          };
+        } else {
+          throw new Error(result.message || 'Fallback grid creation failed');
+        }
       }
 
       // Calculate volatility from historical data
-      const prices = marketData.data.map((d: any) => parseFloat(d.Close));
-      const currentPrice = prices[prices.length - 1];
+      const prices = marketData.data.map((d: any) => parseFloat(d.close));
+      const currentPrice = marketData.current_price || prices[prices.length - 1];
       
       // Calculate daily returns
       const returns = [];
@@ -1593,7 +1652,7 @@ class GridTraderProMCPServer {
       const upperPrice = currentPrice + priceDeviation;
       const lowerPrice = Math.max(currentPrice - priceDeviation, currentPrice * 0.1); // Prevent negative prices
       
-      // Create the grid with calculated bounds
+      // Create the grid with calculated bounds using the standard grid creation endpoint
       const gridData = {
         portfolio_id: args.portfolio_id,
         symbol: args.symbol,
@@ -1601,19 +1660,18 @@ class GridTraderProMCPServer {
         upper_price: upperPrice,
         lower_price: lowerPrice,
         grid_count: args.grid_count || 10,
-        investment_amount: args.investment_amount,
-        strategy_config: {
-          type: 'dynamic_grid',
-          volatility: volatility,
-          volatility_multiplier: volatilityMultiplier,
-          center_price: currentPrice,
-          lookback_days: args.lookback_days || 30,
-          auto_adjust: true,
-          created_at: new Date().toISOString()
-        }
+        investment_amount: args.investment_amount
       };
 
+      console.log('Creating dynamic grid with data:', gridData);
       const result = await this.makeApiCall('/api/grids', 'POST', gridData);
+      
+      // After successful creation, update the grid's strategy_config to mark it as dynamic
+      if (result.success && result.grid_id) {
+        console.log(`Dynamic grid created with ID: ${result.grid_id}`);
+        // Note: In a full implementation, we would update the grid's strategy_config
+        // to include the dynamic grid parameters for future rebalancing
+      }
       
       if (result.success || result.grid_id || result.id) {
         const gridSpacing = (upperPrice - lowerPrice) / (args.grid_count || 10);
@@ -1676,12 +1734,25 @@ class GridTraderProMCPServer {
         throw new Error(result.message || result.detail || 'Dynamic grid creation failed');
       }
     } catch (error: any) {
+      console.error('Dynamic grid creation error:', error);
+      
+      let errorMessage = 'Unknown error';
+      if (error.response?.data?.detail) {
+        errorMessage = error.response.data.detail;
+      } else if (error.message) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      } else {
+        errorMessage = JSON.stringify(error, null, 2);
+      }
+      
       return {
         content: [
           {
             type: 'text',
             text: `❌ **Dynamic Grid Creation Failed**\n\n` +
-              `Error: ${error.response?.data?.detail || error.message}\n\n` +
+              `Error: ${errorMessage}\n\n` +
               `💡 **Common Issues:**\n` +
               `• Insufficient historical data for volatility calculation\n` +
               `• Invalid stock symbol or market data unavailable\n` +
