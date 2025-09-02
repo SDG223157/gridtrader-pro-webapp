@@ -564,6 +564,26 @@ class GridTraderProMCPServer {
               },
               required: ['portfolio_id']
             }
+          },
+          {
+            name: 'analyze_china_industrial_data',
+            description: 'Analyze Chinese industrial financial data to provide China ETF sector recommendations and risks to avoid',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                industrial_data: {
+                  type: 'string',
+                  description: 'Chinese industrial financial data (can be in Chinese or English, table format with sectors, revenue growth, profit growth)'
+                },
+                analysis_focus: {
+                  type: 'string',
+                  description: 'Focus of analysis (optional)',
+                  enum: ['growth_sectors', 'risk_assessment', 'comprehensive'],
+                  default: 'comprehensive'
+                }
+              },
+              required: ['industrial_data']
+            }
           }
         ]
       };
@@ -630,6 +650,9 @@ class GridTraderProMCPServer {
           
           case 'delete_portfolio':
             return await this.handleDeletePortfolio(args);
+          
+          case 'analyze_china_industrial_data':
+            return await this.handleChinaIndustrialAnalysis(args);
           
           case 'create_dynamic_grid':
             return await this.handleCreateDynamicGrid(args);
@@ -1634,6 +1657,265 @@ class GridTraderProMCPServer {
           }
         ]
       };
+    }
+  }
+
+  private async handleChinaIndustrialAnalysis(args: any) {
+    try {
+      const industrialData = args.industrial_data;
+      const analysisFocus = args.analysis_focus || 'comprehensive';
+      
+      // Parse and analyze the industrial data
+      const analysis = this.analyzeChinaIndustrialData(industrialData, analysisFocus);
+      
+      // Get current China ETF data for recommendations
+      let chinaEtfData;
+      try {
+        chinaEtfData = await this.makeApiCall('/api/analysis/china-sectors?lookback_days=90');
+      } catch (error) {
+        console.log('Could not fetch China ETF data, proceeding with analysis only');
+        chinaEtfData = null;
+      }
+      
+      // Combine industrial analysis with ETF recommendations
+      const recommendations = this.generateEtfRecommendations(analysis, chinaEtfData);
+      
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `🇨🇳 **China ETF Sector Analysis & Recommendations**\n\n` +
+              `📊 **Industrial Data Analysis:**\n${analysis.summary}\n\n` +
+              `🎯 **ETF Sector Recommendations:**\n${recommendations.buy}\n\n` +
+              `⚠️ **Sectors to Avoid:**\n${recommendations.avoid}\n\n` +
+              `💡 **Key Insights:**\n${analysis.insights}\n\n` +
+              `📈 **Investment Strategy:**\n${recommendations.strategy}\n\n` +
+              `⚡ **Risk Management:**\n${recommendations.riskManagement}\n\n` +
+              `🔍 **Data Quality:** ${analysis.dataQuality}\n\n` +
+              `---\n\n**Analysis completed at:** ${new Date().toLocaleString()}`
+          }
+        ]
+      };
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `❌ **China Industrial Data Analysis Failed**\n\n` +
+              `Error: ${error.message}\n\n` +
+              `💡 **How to Use:**\n` +
+              `• Provide Chinese industrial financial data in table format\n` +
+              `• Include sector names, revenue growth, profit growth\n` +
+              `• Data can be in Chinese or English\n` +
+              `• Specify analysis focus: growth_sectors, risk_assessment, or comprehensive\n\n` +
+              `📊 **Example Usage:**\n` +
+              `"Analyze this Chinese industrial data: [paste table with sectors and growth rates]"\n\n` +
+              `🔧 **Supported Data Formats:**\n` +
+              `• Government statistical reports\n` +
+              `• Industry financial summaries\n` +
+              `• Sector performance tables\n` +
+              `• Year-over-year growth data`
+          }
+        ]
+      };
+    }
+  }
+
+  private analyzeChinaIndustrialData(data: string, focus: string) {
+    // Parse the industrial data and extract key metrics
+    const sectors = this.parseIndustrialData(data);
+    
+    // Categorize sectors by performance
+    const strongSectors = sectors.filter(s => s.revenueGrowth > 5 && s.profitGrowth > 5);
+    const weakSectors = sectors.filter(s => s.revenueGrowth < 0 || s.profitGrowth < -5);
+    const mixedSectors = sectors.filter(s => !strongSectors.includes(s) && !weakSectors.includes(s));
+    
+    // Generate insights based on patterns
+    const insights = this.generateIndustrialInsights(strongSectors, weakSectors, mixedSectors);
+    
+    // Create summary based on focus
+    let summary = '';
+    if (focus === 'growth_sectors') {
+      summary = this.createGrowthSectorsSummary(strongSectors);
+    } else if (focus === 'risk_assessment') {
+      summary = this.createRiskAssessmentSummary(weakSectors);
+    } else {
+      summary = this.createComprehensiveSummary(strongSectors, weakSectors, mixedSectors);
+    }
+    
+    return {
+      summary,
+      insights,
+      strongSectors,
+      weakSectors,
+      mixedSectors,
+      dataQuality: this.assessDataQuality(data, sectors)
+    };
+  }
+
+  private parseIndustrialData(data: string) {
+    const sectors = [];
+    const lines = data.split('\n');
+    
+    // Simple parsing logic - look for patterns in Chinese industrial data
+    for (const line of lines) {
+      // Skip headers and empty lines
+      if (!line.trim() || line.includes('行业') || line.includes('营业收入') || line.includes('同比增长')) {
+        continue;
+      }
+      
+      // Extract sector name and growth rates using regex
+      const matches = line.match(/([^0-9]+?)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)/);
+      if (matches) {
+        const sectorName = matches[1].trim();
+        const revenueGrowth = parseFloat(matches[4]) || 0; // 4th number is usually revenue growth %
+        const profitGrowth = parseFloat(matches[6]) || 0;  // 6th number is usually profit growth %
+        
+        if (sectorName && !isNaN(revenueGrowth) && !isNaN(profitGrowth)) {
+          sectors.push({
+            name: sectorName,
+            revenueGrowth,
+            profitGrowth,
+            performance: revenueGrowth > 5 && profitGrowth > 5 ? 'strong' : 
+                        revenueGrowth < 0 || profitGrowth < -5 ? 'weak' : 'mixed'
+          });
+        }
+      }
+    }
+    
+    return sectors;
+  }
+
+  private generateIndustrialInsights(strong: any[], weak: any[], mixed: any[]) {
+    const insights = [];
+    
+    // Technology trends
+    const techSectors = strong.filter(s => 
+      s.name.includes('电子') || s.name.includes('通信') || s.name.includes('计算机') || 
+      s.name.includes('电气') || s.name.includes('设备制造')
+    );
+    if (techSectors.length > 0) {
+      insights.push('🚀 Technology sectors showing strong momentum - China\'s tech manufacturing competitiveness');
+    }
+    
+    // Energy transition
+    const energyTransition = strong.filter(s => s.name.includes('有色金属')) || weak.filter(s => s.name.includes('煤炭') || s.name.includes('石油'));
+    if (energyTransition.length > 0) {
+      insights.push('⚡ Clear energy transition: Non-ferrous metals (green energy materials) rising, fossil fuels declining');
+    }
+    
+    // Manufacturing evolution
+    const traditionalMfg = weak.filter(s => s.name.includes('纺织') || s.name.includes('家具') || s.name.includes('造纸'));
+    if (traditionalMfg.length > 0) {
+      insights.push('🏭 Traditional manufacturing under pressure - structural shift toward high-tech manufacturing');
+    }
+    
+    return insights.join('\n• ');
+  }
+
+  private createComprehensiveSummary(strong: any[], weak: any[], mixed: any[]) {
+    return `**Strong Performers (${strong.length} sectors):**\n` +
+      strong.slice(0, 5).map(s => `• ${s.name}: +${s.revenueGrowth}% revenue, +${s.profitGrowth}% profit`).join('\n') +
+      `\n\n**Weak Performers (${weak.length} sectors):**\n` +
+      weak.slice(0, 5).map(s => `• ${s.name}: ${s.revenueGrowth}% revenue, ${s.profitGrowth}% profit`).join('\n') +
+      (mixed.length > 0 ? `\n\n**Mixed Performance (${mixed.length} sectors):** Showing moderate or mixed signals` : '');
+  }
+
+  private createGrowthSectorsSummary(strong: any[]) {
+    return `**Top Growth Sectors:**\n` +
+      strong.sort((a, b) => (b.revenueGrowth + b.profitGrowth) - (a.revenueGrowth + a.profitGrowth))
+        .slice(0, 8).map(s => `• ${s.name}: +${s.revenueGrowth}% revenue, +${s.profitGrowth}% profit`).join('\n');
+  }
+
+  private createRiskAssessmentSummary(weak: any[]) {
+    return `**High-Risk Sectors to Avoid:**\n` +
+      weak.sort((a, b) => (a.revenueGrowth + a.profitGrowth) - (b.revenueGrowth + b.profitGrowth))
+        .slice(0, 8).map(s => `• ${s.name}: ${s.revenueGrowth}% revenue, ${s.profitGrowth}% profit`).join('\n');
+  }
+
+  private generateEtfRecommendations(analysis: any, etfData: any) {
+    // Map industrial sectors to available ETFs
+    const sectorMapping = {
+      '有色金属': '512400.SS (南方有色金属ETF)',
+      '电子': '515050.SS (5G通信ETF), 512480.SS (半导体ETF)',
+      '电气': '515050.SS (5G通信ETF), 588000.SS (科创50ETF)',
+      '计算机': '512480.SS (半导体ETF), 588000.SS (科创50ETF)',
+      '通信': '515050.SS (5G通信ETF)',
+      '运输设备': '512660.SS (军工ETF)',
+      '航空航天': '512660.SS (军工ETF)',
+      '汽车': 'Auto sector ETFs',
+      '医药': '513060.SS (恒生医疗ETF), 513120.SS (港股医药ETF)'
+    };
+
+    const buyRecommendations = [];
+    const avoidRecommendations = [];
+    
+    // Generate buy recommendations from strong sectors
+    for (const sector of analysis.strongSectors.slice(0, 5)) {
+      for (const [key, etf] of Object.entries(sectorMapping)) {
+        if (sector.name.includes(key)) {
+          buyRecommendations.push(`• **${etf}** - Aligned with ${sector.name} (+${sector.revenueGrowth}% revenue, +${sector.profitGrowth}% profit)`);
+          break;
+        }
+      }
+    }
+    
+    // Generate avoid recommendations from weak sectors
+    for (const sector of analysis.weakSectors.slice(0, 5)) {
+      avoidRecommendations.push(`• Avoid ETFs with heavy ${sector.name} exposure (${sector.revenueGrowth}% revenue, ${sector.profitGrowth}% profit)`);
+    }
+    
+    const strategy = this.generateInvestmentStrategy(analysis);
+    const riskManagement = this.generateRiskManagement(analysis);
+    
+    return {
+      buy: buyRecommendations.length > 0 ? buyRecommendations.join('\n') : 'No specific ETF matches found for strong sectors',
+      avoid: avoidRecommendations.length > 0 ? avoidRecommendations.join('\n') : 'No major sector risks identified',
+      strategy,
+      riskManagement
+    };
+  }
+
+  private generateInvestmentStrategy(analysis: any) {
+    const strongCount = analysis.strongSectors.length;
+    const weakCount = analysis.weakSectors.length;
+    
+    if (strongCount > weakCount) {
+      return '🎯 **Growth Strategy**: Focus on sector-specific ETFs aligned with strong industrial performers\n' +
+             '• Overweight technology and innovation sectors\n' +
+             '• Consider thematic ETFs over broad market exposure';
+    } else if (weakCount > strongCount) {
+      return '🛡️ **Defensive Strategy**: Avoid broad market exposure, focus on quality sectors\n' +
+             '• Underweight traditional industries\n' +
+             '• Emphasize defensive and growth sectors';
+    } else {
+      return '⚖️ **Balanced Strategy**: Mixed signals suggest selective approach\n' +
+             '• Focus on highest conviction sectors\n' +
+             '• Maintain diversification across themes';
+    }
+  }
+
+  private generateRiskManagement(analysis: any) {
+    return '🔒 **Risk Management Guidelines:**\n' +
+           '• Avoid ETFs with >20% exposure to declining sectors\n' +
+           '• Monitor industrial data quarterly for trend changes\n' +
+           '• Use stop-losses on sector-specific positions\n' +
+           '• Diversify across multiple growth themes\n' +
+           '• Consider hedging with defensive sectors';
+  }
+
+  private assessDataQuality(rawData: string, parsedSectors: any[]) {
+    const lineCount = rawData.split('\n').length;
+    const sectorCount = parsedSectors.length;
+    
+    if (sectorCount > 20 && lineCount > 30) {
+      return '✅ High quality - Comprehensive industrial dataset';
+    } else if (sectorCount > 10) {
+      return '⚠️ Moderate quality - Partial industrial coverage';
+    } else if (sectorCount > 0) {
+      return '🔍 Limited quality - Few sectors identified, consider providing more detailed data';
+    } else {
+      return '❌ Poor quality - Unable to parse sector data, please check format';
     }
   }
 
