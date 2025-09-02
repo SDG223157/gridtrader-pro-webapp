@@ -2,7 +2,8 @@ import os
 import asyncio
 from celery import Celery
 from sqlalchemy.orm import sessionmaker
-from database import engine, User, Portfolio, Holding, Grid, MarketData, Alert
+from database import engine, User, Portfolio, Holding, Grid, MarketData, Alert, GridOrder, OrderStatus, TransactionType
+from decimal import Decimal
 from data_provider import YFinanceDataProvider
 from app.algorithms.grid_trading import GridTradingStrategy
 import logging
@@ -225,6 +226,94 @@ def process_grid_orders(self):
     except Exception as e:
         logger.error(f"Error processing grid orders: {e}")
         return {"status": "error", "message": str(e)}
+
+async def create_rebalancing_order(grid: Grid, filled_order: GridOrder, current_price: float, db: Session):
+    """Create a new order to rebalance the grid after an order is filled"""
+    try:
+        if filled_order.order_type == TransactionType.buy:
+            # After buy, create sell order at next grid level
+            new_target_price = current_price + float(grid.grid_spacing)
+            if new_target_price <= float(grid.upper_price):
+                new_order = GridOrder(
+                    grid_id=grid.id,
+                    order_type=TransactionType.sell,
+                    target_price=Decimal(str(new_target_price)),
+                    quantity=filled_order.quantity,
+                    status=OrderStatus.pending
+                )
+                db.add(new_order)
+                grid.active_orders += 1
+                logger.info(f"🔄 Created rebalancing SELL order at ${new_target_price:.2f}")
+                
+        elif filled_order.order_type == TransactionType.sell:
+            # After sell, create buy order at next grid level
+            new_target_price = current_price - float(grid.grid_spacing)
+            if new_target_price >= float(grid.lower_price):
+                new_order = GridOrder(
+                    grid_id=grid.id,
+                    order_type=TransactionType.buy,
+                    target_price=Decimal(str(new_target_price)),
+                    quantity=filled_order.quantity,
+                    status=OrderStatus.pending
+                )
+                db.add(new_order)
+                grid.active_orders += 1
+                logger.info(f"🔄 Created rebalancing BUY order at ${new_target_price:.2f}")
+                
+    except Exception as e:
+        logger.error(f"Error creating rebalancing order: {e}")
+
+async def check_dynamic_grid_rebalancing(grid: Grid, current_price: float, db: Session):
+    """Check if a dynamic grid needs bounds adjustment"""
+    try:
+        strategy_config = grid.strategy_config
+        if not strategy_config or strategy_config.get('type') != 'dynamic_grid':
+            return
+            
+        # Get volatility parameters
+        center_price = strategy_config.get('center_price', current_price)
+        volatility = strategy_config.get('volatility', 0.2)
+        volatility_multiplier = strategy_config.get('volatility_multiplier', 2.0)
+        
+        # Calculate current bounds
+        upper_bound = float(grid.upper_price)
+        lower_bound = float(grid.lower_price)
+        price_range = upper_bound - lower_bound
+        
+        # Check if price is approaching bounds (within 20% of boundary)
+        upper_distance = (upper_bound - current_price) / price_range
+        lower_distance = (current_price - lower_bound) / price_range
+        
+        should_rebalance = False
+        rebalance_reason = ""
+        
+        if upper_distance < 0.2:  # Price within 20% of upper bound
+            should_rebalance = True
+            rebalance_reason = "approaching upper bound"
+        elif lower_distance < 0.2:  # Price within 20% of lower bound
+            should_rebalance = True
+            rebalance_reason = "approaching lower bound"
+        
+        if should_rebalance:
+            # Create alert for dynamic grid rebalancing
+            alert = Alert(
+                user_id=grid.portfolio.user_id,
+                alert_type="grid",
+                title=f"🧠 Dynamic Grid Rebalancing - {grid.name}",
+                message=f"{grid.symbol} price ${current_price:.2f} is {rebalance_reason}. Dynamic grid bounds should be adjusted.",
+                alert_metadata={
+                    "grid_id": grid.id,
+                    "symbol": grid.symbol,
+                    "price": current_price,
+                    "reason": rebalance_reason,
+                    "alert_type": "dynamic_rebalancing_needed"
+                }
+            )
+            db.add(alert)
+            logger.info(f"🧠 Dynamic grid rebalancing alert created for {grid.symbol}")
+            
+    except Exception as e:
+        logger.error(f"Error checking dynamic grid rebalancing: {e}")
 
 @celery_app.task(bind=True, name='tasks.generate_alerts')
 def generate_alerts(self):

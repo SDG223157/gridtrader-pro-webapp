@@ -52,12 +52,28 @@ Search for Tesla stock symbol
 Get market data for SPY
 ```
 
-### 🚨 **Monitoring**
+### 🚨 **Monitoring & Alerts**
 ```
+# View alerts
 Show me my trading alerts
+Get grid alerts only
+Show me recent price alerts
+
+# Configure alerts
+Configure alerts for all my grids
+Enable order alerts for grid [grid_id]
+Set profit threshold to $25 for my grids
+
+# Portfolio monitoring
 Check my portfolio risk
 Calculate portfolio metrics
 ```
+
+**Alert Types:**
+- 🎯 Grid order executions (buy/sell triggers)
+- 🧠 Dynamic grid rebalancing suggestions  
+- 📈📉 Price boundary breaches
+- 💰 Profit achievements & significant moves
 
 ---
 
