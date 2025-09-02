@@ -1834,27 +1834,97 @@ class GridTraderProMCPServer {
   }
 
   private generateEtfRecommendations(analysis: any, etfData: any) {
-    // Map industrial sectors to available ETFs
+    // Real China ETF pool with trading volumes (top actively traded ETFs by sector)
     const sectorMapping = {
-      '有色金属': '512400.SS (南方有色金属ETF)',
-      '电子': '515050.SS (5G通信ETF), 512480.SS (半导体ETF)',
-      '电气': '515050.SS (5G通信ETF), 588000.SS (科创50ETF)',
-      '计算机': '512480.SS (半导体ETF), 588000.SS (科创50ETF)',
-      '通信': '515050.SS (5G通信ETF)',
-      '运输设备': '512660.SS (军工ETF)',
-      '航空航天': '512660.SS (军工ETF)',
-      '汽车': 'Auto sector ETFs',
-      '医药': '513060.SS (恒生医疗ETF), 513120.SS (港股医药ETF)'
+      // Non-ferrous metals / Rare earth materials
+      '有色金属': [
+        { code: '512400', name: '南方中证申万有色金属', volume: '567.63M', sector: 'Non-ferrous metals' },
+        { code: '516150', name: 'Harvest CSI Rare Earth Industry', volume: '368.55M', sector: 'Rare earth' },
+        { code: '516780', name: 'Huatai-PB Rare Earth Industry', volume: '260.89M', sector: 'Rare earth' },
+        { code: '562800', name: 'Harvest CSI Rare Metals Industry', volume: '239.64M', sector: 'Rare metals' }
+      ],
+      
+      // Technology & Electronics
+      '电子': [
+        { code: '512480', name: '国联安中证全指半导体产品与设备', volume: '1.18B', sector: 'Semiconductors' },
+        { code: '588200', name: 'Harvest SSE STAR Chip Index', volume: '1.26B', sector: 'Chip/AI' },
+        { code: '159819', name: '易方达中证人工智能主题ETF', volume: '911.17M', sector: 'AI' },
+        { code: '515880', name: '国泰中证全指通信设备', volume: '833.29M', sector: 'Communications' }
+      ],
+      
+      // Electrical machinery & equipment
+      '电气': [
+        { code: '515050', name: '华夏中证5G通信主题', volume: '193.90M', sector: '5G/Communications' },
+        { code: '588000', name: '华夏科创50场内联接基金', volume: '2.93B', sector: 'Innovation' },
+        { code: '159755', name: '广发国证新能源车电池ETF', volume: '872.92M', sector: 'EV batteries' },
+        { code: '515790', name: 'Huatai-PB CSI Photovoltaic Industry', volume: '874.32M', sector: 'Solar/PV' }
+      ],
+      
+      // Computing & Communications
+      '计算机': [
+        { code: '588000', name: '华夏科创50场内联接基金', volume: '2.93B', sector: 'Innovation' },
+        { code: '159852', name: '嘉实中证软件服务ETF', volume: '453.25M', sector: 'Software' },
+        { code: '515230', name: '国泰中证全指软件ETF', volume: '144.45M', sector: 'Software' },
+        { code: '159851', name: '华宝中证金融科技主题ETF', volume: '1.11B', sector: 'Fintech' }
+      ],
+      
+      // Transportation equipment & Aerospace
+      '运输设备': [
+        { code: '512660', name: '国泰中证军工', volume: '909.67M', sector: 'Military/Defense' },
+        { code: '512710', name: 'Fullgoal CSI National Defense Industry', volume: '1.26B', sector: 'Defense' },
+        { code: '512670', name: '鹏华中证国防', volume: '306.43M', sector: 'Defense' }
+      ],
+      
+      // Automotive
+      '汽车': [
+        { code: '159755', name: '广发国证新能源车电池ETF', volume: '872.92M', sector: 'EV batteries' },
+        { code: '159840', name: '工银瑞信国证新能源车电池ETF', volume: '249.90M', sector: 'EV batteries' },
+        { code: '515030', name: '华夏中证新能源汽车', volume: '77.72M', sector: 'New energy vehicles' }
+      ],
+      
+      // Healthcare & Pharmaceuticals  
+      '医药': [
+        { code: '513120', name: 'GF CSI Hong Kong Brand Name Drug', volume: '5.79B', sector: 'HK Pharma' },
+        { code: '513060', name: '博时恒生医疗保健QDII-ETF', volume: '3.28B', sector: 'Healthcare' },
+        { code: '159892', name: '华夏恒生香港上市生物科技ETF', volume: '1.55B', sector: 'Biotech' },
+        { code: '159992', name: '银华中证创新药产业', volume: '1.08B', sector: 'Innovative drugs' }
+      ],
+      
+      // Energy (traditional - avoid)
+      '煤炭': [
+        { code: '515220', name: '国泰中证煤炭', volume: '287.41M', sector: 'Coal - AVOID' }
+      ],
+      
+      // Textiles (declining - avoid)
+      '纺织': [
+        { code: '515170', name: 'ChinaAMC CSI Food Bev industry', volume: '247.95M', sector: 'Consumer goods' }
+      ]
     };
 
     const buyRecommendations = [];
     const avoidRecommendations = [];
     
     // Generate buy recommendations from strong sectors
-    for (const sector of analysis.strongSectors.slice(0, 5)) {
-      for (const [key, etf] of Object.entries(sectorMapping)) {
-        if (sector.name.includes(key)) {
-          buyRecommendations.push(`• **${etf}** - Aligned with ${sector.name} (+${sector.revenueGrowth}% revenue, +${sector.profitGrowth}% profit)`);
+    for (const sector of analysis.strongSectors.slice(0, 6)) {
+      for (const [key, etfList] of Object.entries(sectorMapping)) {
+        if (sector.name.includes(key) && Array.isArray(etfList)) {
+          // Get the highest volume ETF for this sector
+          const topEtf = etfList[0];
+          if (!topEtf.sector.includes('AVOID')) {
+            buyRecommendations.push(
+              `• **${topEtf.code}** (${topEtf.name}) - Volume: ${topEtf.volume}\n` +
+              `  📊 Sector: ${topEtf.sector} | Industrial data: ${sector.name} (+${sector.revenueGrowth}% revenue, +${sector.profitGrowth}% profit)\n` +
+              `  🎯 Rationale: Strong industrial performance aligns with ${topEtf.sector.toLowerCase()} sector growth`
+            );
+            
+            // Add alternative options if available
+            if (etfList.length > 1) {
+              const altEtf = etfList[1];
+              buyRecommendations.push(
+                `  📈 Alternative: **${altEtf.code}** (${altEtf.name}) - Volume: ${altEtf.volume} | ${altEtf.sector}`
+              );
+            }
+          }
           break;
         }
       }
@@ -1862,7 +1932,25 @@ class GridTraderProMCPServer {
     
     // Generate avoid recommendations from weak sectors
     for (const sector of analysis.weakSectors.slice(0, 5)) {
-      avoidRecommendations.push(`• Avoid ETFs with heavy ${sector.name} exposure (${sector.revenueGrowth}% revenue, ${sector.profitGrowth}% profit)`);
+      // Check if there are specific ETFs to avoid for this sector
+      for (const [key, etfList] of Object.entries(sectorMapping)) {
+        if (sector.name.includes(key) && Array.isArray(etfList)) {
+          const etfToAvoid = etfList[0];
+          avoidRecommendations.push(
+            `• **AVOID ${etfToAvoid.code}** (${etfToAvoid.name}) - Volume: ${etfToAvoid.volume}\n` +
+            `  ⚠️ Industrial data: ${sector.name} (${sector.revenueGrowth}% revenue, ${sector.profitGrowth}% profit)\n` +
+            `  🔻 Risk: Declining sector fundamentals suggest poor ETF performance ahead`
+          );
+          break;
+        }
+      }
+      
+      // Generic avoidance advice for sectors without specific ETFs
+      if (!buyRecommendations.some(rec => rec.includes(sector.name))) {
+        avoidRecommendations.push(
+          `• Avoid ETFs with heavy ${sector.name} exposure (${sector.revenueGrowth}% revenue, ${sector.profitGrowth}% profit)`
+        );
+      }
     }
     
     const strategy = this.generateInvestmentStrategy(analysis);
@@ -1879,19 +1967,59 @@ class GridTraderProMCPServer {
   private generateInvestmentStrategy(analysis: any) {
     const strongCount = analysis.strongSectors.length;
     const weakCount = analysis.weakSectors.length;
+    const totalSectors = strongCount + weakCount + analysis.mixedSectors.length;
+    
+    // Identify key themes from strong sectors
+    const hasNonFerrousMetals = analysis.strongSectors.some((s: any) => s.name.includes('有色金属'));
+    const hasTechnology = analysis.strongSectors.some((s: any) => 
+      s.name.includes('电子') || s.name.includes('计算机') || s.name.includes('通信') || s.name.includes('电气')
+    );
+    const hasTransportation = analysis.strongSectors.some((s: any) => 
+      s.name.includes('运输设备') || s.name.includes('航空航天') || s.name.includes('汽车')
+    );
+    
+    let strategy = '';
+    let allocation = '';
     
     if (strongCount > weakCount) {
-      return '🎯 **Growth Strategy**: Focus on sector-specific ETFs aligned with strong industrial performers\n' +
-             '• Overweight technology and innovation sectors\n' +
-             '• Consider thematic ETFs over broad market exposure';
+      strategy = '🎯 **Growth Strategy**: Focus on sector-specific ETFs aligned with strong industrial performers';
+      
+      // Suggest specific allocation based on strong themes
+      if (hasNonFerrousMetals && hasTechnology && hasTransportation) {
+        allocation = '\n📊 **Suggested Allocation:**\n' +
+                    '• Non-ferrous metals/Rare earth ETFs: 30-35%\n' +
+                    '• Technology/Semiconductor ETFs: 25-30%\n' +
+                    '• Defense/Transportation ETFs: 20-25%\n' +
+                    '• Innovation/AI ETFs: 15-20%\n' +
+                    '• Cash/Hedging: 5%';
+      } else if (hasNonFerrousMetals && hasTechnology) {
+        allocation = '\n📊 **Suggested Allocation:**\n' +
+                    '• Non-ferrous metals ETFs: 40%\n' +
+                    '• Technology/Innovation ETFs: 35%\n' +
+                    '• Healthcare/Biotech ETFs: 15%\n' +
+                    '• Cash/Hedging: 10%';
+      } else {
+        allocation = '\n📊 **Approach:**\n' +
+                    '• Overweight strongest performing sectors\n' +
+                    '• Consider thematic ETFs over broad market exposure\n' +
+                    '• Focus on high-volume, liquid ETFs';
+      }
+      
+      return strategy + allocation;
     } else if (weakCount > strongCount) {
       return '🛡️ **Defensive Strategy**: Avoid broad market exposure, focus on quality sectors\n' +
-             '• Underweight traditional industries\n' +
-             '• Emphasize defensive and growth sectors';
+             '📊 **Approach:**\n' +
+             '• Underweight traditional industries (coal, steel, textiles)\n' +
+             '• Emphasize defensive healthcare and consumer staples\n' +
+             '• Consider international diversification (HK-listed ETFs)\n' +
+             '• Maintain higher cash allocation (15-20%) for opportunities';
     } else {
       return '⚖️ **Balanced Strategy**: Mixed signals suggest selective approach\n' +
-             '• Focus on highest conviction sectors\n' +
-             '• Maintain diversification across themes';
+             '📊 **Approach:**\n' +
+             '• Focus on highest conviction sectors only\n' +
+             '• Equal-weight top 3-4 themes\n' +
+             '• Maintain diversification across growth and defensive themes\n' +
+             '• Regular rebalancing as industrial data updates';
     }
   }
 
