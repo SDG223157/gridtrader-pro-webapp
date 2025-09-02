@@ -550,6 +550,20 @@ class GridTraderProMCPServer {
                 }
               }
             }
+          },
+          {
+            name: 'delete_portfolio',
+            description: 'Delete a portfolio and all associated data (holdings, transactions, grids)',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                portfolio_id: {
+                  type: 'string',
+                  description: 'Portfolio ID to delete'
+                }
+              },
+              required: ['portfolio_id']
+            }
           }
         ]
       };
@@ -613,6 +627,9 @@ class GridTraderProMCPServer {
           
           case 'update_balance':
             return await this.handleUpdateBalance(args);
+          
+          case 'delete_portfolio':
+            return await this.handleDeletePortfolio(args);
           
           case 'create_dynamic_grid':
             return await this.handleCreateDynamicGrid(args);
@@ -1544,6 +1561,76 @@ class GridTraderProMCPServer {
               `• Try again in a few moments\n\n` +
               `💰 **Example Usage:**\n` +
               `"Update my portfolio balance to $50000 with note 'Bank deposit'"`
+          }
+        ]
+      };
+    }
+  }
+
+  private async handleDeletePortfolio(args: any) {
+    try {
+      const result = await this.makeApiCall(`/api/portfolios/${args.portfolio_id}`, 'DELETE');
+      
+      if (result.success) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `✅ **Portfolio Deleted Successfully!**\n\n` +
+                `**Deletion Summary:**\n` +
+                `• Portfolio removed from your account\n` +
+                `• Holdings deleted: ${result.deleted_holdings || 0}\n` +
+                `• Transactions deleted: ${result.deleted_transactions || 0}\n` +
+                `• Grid strategies deleted: ${result.deleted_grids || 0}\n` +
+                `• Grid orders deleted: ${result.deleted_grid_orders || 0}\n\n` +
+                `⚠️ **This action cannot be undone.**\n\n` +
+                `📋 **Next Steps:**\n` +
+                `• View remaining portfolios: "Show me my portfolios"\n` +
+                `• Create a new portfolio: "Create a new portfolio"\n\n` +
+                `🗑️ **Portfolio deletion completed successfully!**`
+            }
+          ]
+        };
+      } else {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `❌ **Portfolio Deletion Failed**\n\n` +
+                `Error: ${result.detail || result.message || 'Unknown error'}\n\n` +
+                `💡 **Common Issues:**\n` +
+                `• Invalid portfolio ID\n` +
+                `• Portfolio not found\n` +
+                `• Authentication error\n` +
+                `• Database connection issue\n\n` +
+                `🔧 **Try:**\n` +
+                `• "Show me my portfolios" to verify portfolio exists\n` +
+                `• Check the portfolio ID is correct\n` +
+                `• Try again in a few moments\n\n` +
+                `💰 **Example Usage:**\n` +
+                `"Delete my Tech Focus portfolio"`
+            }
+          ]
+        };
+      }
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `❌ **Portfolio Deletion Failed**\n\n` +
+              `Error: ${error.response?.data?.detail || error.message}\n\n` +
+              `💡 **Common Issues:**\n` +
+              `• Invalid portfolio ID\n` +
+              `• Portfolio not found\n` +
+              `• Authentication error\n` +
+              `• Database connection issue\n\n` +
+              `🔧 **Try:**\n` +
+              `• "Show me my portfolios" to verify portfolio exists\n` +
+              `• Check the portfolio ID is correct\n` +
+              `• Try again in a few moments\n\n` +
+              `💰 **Example Usage:**\n` +
+              `"Delete my Tech Focus portfolio"`
           }
         ]
       };
