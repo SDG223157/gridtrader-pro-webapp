@@ -19,6 +19,7 @@ from auth_simple import (
 )
 from data_provider import YFinanceDataProvider
 from app.systematic_trading import systematic_trading_engine, AlertLevel, MarketRegime
+from security_middleware import setup_security_middleware, get_security_status
 import httpx
 from datetime import datetime, timedelta
 from typing import List, Dict, Tuple, Optional
@@ -395,6 +396,9 @@ app = FastAPI(
     description="Systematic Investment Management Platform",
     version="1.0.0"
 )
+
+# Security middleware (must be added first)
+setup_security_middleware(app)
 
 # Add session middleware
 app.add_middleware(
@@ -2574,6 +2578,11 @@ async def get_market_data(symbol: str, period: str = "1d"):
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
+
+@app.get("/debug/security-status")
+async def security_status():
+    """Get current security middleware status"""
+    return get_security_status()
 
 @app.get("/debug/session")
 async def debug_session(request: Request):
