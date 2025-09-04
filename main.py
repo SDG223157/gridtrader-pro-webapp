@@ -17,6 +17,7 @@ from auth import (
 )
 from data_provider import YFinanceDataProvider
 from app.algorithms.grid_trading import GridTradingStrategy, DynamicGridStrategy, GridBacktester
+from security_middleware import setup_security_middleware, get_security_status
 import uuid
 import httpx
 import json
@@ -43,6 +44,9 @@ app.add_middleware(
     secret_key=os.getenv("SECRET_KEY", "your_super_secret_key_change_this_in_production"),
     max_age=86400  # 24 hours
 )
+
+# Security middleware (must be added before CORS)
+setup_security_middleware(app)
 
 # CORS middleware
 app.add_middleware(
@@ -1042,6 +1046,12 @@ async def settings_page(request: Request, db: Session = Depends(get_db)):
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
+
+# Security status endpoint
+@app.get("/debug/security-status")
+async def security_status():
+    """Get current security middleware status"""
+    return get_security_status()
 
 # Debug endpoints for authentication issues
 @app.get("/debug/db-test")
