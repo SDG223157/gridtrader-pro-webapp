@@ -801,7 +801,7 @@ async def get_user_info(user: User = Depends(require_auth), db: Session = Depend
         
         # Get API token information
         api_tokens = db.query(ApiToken).filter(ApiToken.user_id == user.id).all()
-        active_api_tokens = [t for t in api_tokens if not t.is_revoked]
+        active_api_tokens = [t for t in api_tokens if t.is_active]
         
         # Find best performing portfolio
         best_portfolio = None
