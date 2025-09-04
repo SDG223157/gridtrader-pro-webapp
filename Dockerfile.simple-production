@@ -62,7 +62,7 @@ python init_database.py\n\
 \n\
 # Start application directly (no supervisord)\n\
 echo "🎬 Starting GridTrader Pro..."\n\
-exec python main_simple.py' > /start-simple.sh && chmod +x /start-simple.sh
+exec python main.py' > /start-simple.sh && chmod +x /start-simple.sh
 
 # Expose port
 EXPOSE 3000

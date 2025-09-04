@@ -698,7 +698,7 @@ async def debug_user_info(request: Request, db: Session = Depends(get_db)):
         if not user:
             return {"error": "No user found", "session": dict(request.session)}
         
-        return {
+    return {
             "user_id": user.id,
             "email": user.email,
             "auth_provider": user.auth_provider.value if user.auth_provider else None,
@@ -721,8 +721,8 @@ async def debug_find_user(email: str, db: Session = Depends(get_db)):
             return {"error": f"User {email} not found"}
         
         profile = db.query(UserProfile).filter(UserProfile.user_id == user.id).first()
-        
-        return {
+    
+    return {
             "user_found": True,
             "user_id": user.id,
             "email": user.email,
@@ -1390,7 +1390,7 @@ async def google_callback(request: Request, code: str, db: Session = Depends(get
         request.session["user_id"] = user.id
         
         return RedirectResponse(url="/dashboard", status_code=302)
-        
+    
     except Exception as e:
         logger.error(f"Google OAuth callback error: {e}")
         return RedirectResponse(url="/login?error=oauth_failed", status_code=302)
@@ -1817,7 +1817,7 @@ async def create_transaction(request: CreateTransactionRequest, user: User = Dep
             else:
                 # Create new holding
                 holding = Holding(
-                    portfolio_id=request.portfolio_id,
+            portfolio_id=request.portfolio_id,
                     symbol=normalized_symbol,
                     quantity=quantity_decimal,
                     average_cost=price_decimal,
@@ -1918,8 +1918,8 @@ async def update_portfolio_cash_balance(
         db.commit()
         
         logger.info(f"💰 Portfolio {portfolio.name} cash balance set to: ${new_balance_decimal} (was ${old_balance})")
-        
-        return {
+            
+            return {
             "success": True,
             "old_balance": float(old_balance),
             "new_balance": float(new_balance_decimal),
@@ -2004,8 +2004,8 @@ async def update_china_etfs(
                     'volume_numeric': volume_numeric,
                     'sector': sector
                 })
-                
-            except Exception as e:
+    
+    except Exception as e:
                 logger.error(f"Error processing ETF row: {e}")
                 continue
         
@@ -2304,7 +2304,7 @@ async def grid_detail(grid_id: str, request: Request, db: Session = Depends(get_
     
     context.update({
         "grid": grid,
-        "current_price": current_price,
+                "current_price": current_price,
         "orders": orders,
         "total_filled_orders": total_filled_orders,
         "total_profit": total_profit,
@@ -2443,7 +2443,7 @@ async def recalculate_portfolio_values_with_grids(user: User = Depends(require_a
             "message": "Portfolio values recalculated with grid allocations",
             "updated_portfolios": updated_portfolios
         }
-        
+    
     except Exception as e:
         db.rollback()
         logger.error(f"❌ Error recalculating portfolio values: {e}")
@@ -2513,7 +2513,7 @@ async def get_sector_analysis(user: User = Depends(require_auth), market: str = 
                                "HOLD" if score.conviction_score > 0.7 else "AVOID"
             })
         
-        return {
+            return {
             "success": True,
             "market": market.upper(),
             "analysis_date": datetime.now().isoformat(),
@@ -2735,7 +2735,7 @@ async def get_market_data(symbol: str, period: str = "1d"):
                 "data": data_records,
                 "last_updated": datetime.now().isoformat()
             }
-        else:
+                                else:
             # Fallback for symbols without data
             current_price = get_current_stock_price_trendwise_pattern(symbol)
             return {
@@ -2761,7 +2761,7 @@ async def get_market_data(symbol: str, period: str = "1d"):
                 "error": str(e),
                 "last_updated": datetime.now().isoformat()
             }
-        except:
+                        except:
             raise HTTPException(status_code=500, detail="Failed to fetch market data")
 
 # Health check
@@ -2861,7 +2861,7 @@ async def debug_test_tokens_db(db: Session = Depends(get_db)):
 @app.get("/tokens", response_class=HTMLResponse)
 async def tokens_page(request: Request, db: Session = Depends(get_db)):
     """Token management page"""
-    # Get user from session (following main_simple pattern)
+    # Get user from session
     user_id = request.session.get("user_id")
     if not user_id:
         return RedirectResponse(url="/login", status_code=302)
@@ -3006,12 +3006,12 @@ async def create_api_token(request: CreateApiTokenRequest, db: Session = Depends
         return {
             "success": True,
             "message": "API token created successfully. Save this token - it won't be shown again!",
-            "id": api_token.id,
-            "name": api_token.name,
-            "description": api_token.description,
+                "id": api_token.id,
+                "name": api_token.name,
+                "description": api_token.description,
             "token": token,  # Direct access like prombank_backup
-            "permissions": api_token.permissions,
-            "expires_at": api_token.expires_at.isoformat() if api_token.expires_at else None,
+                "permissions": api_token.permissions,
+                "expires_at": api_token.expires_at.isoformat() if api_token.expires_at else None,
             "created_at": api_token.created_at.isoformat(),
             "mcp_config": mcp_config,  # Direct access like prombank_backup
             "installation_command": install_command
@@ -3219,7 +3219,7 @@ async def debug_test_transaction(request: Request, db: Session = Depends(get_db)
     except Exception as e:
         db.rollback()
         import traceback
-        return {
+    return {
             "error": str(e),
             "error_type": type(e).__name__,
             "traceback": traceback.format_exc()
@@ -3465,7 +3465,7 @@ async def force_update_aapl(user: User = Depends(require_auth), db: Session = De
         
         db.commit()
         
-        return {
+            return {
             "success": True,
             "message": f"Force updated {len(aapl_holdings)} AAPL holdings",
             "holdings_updated": results
@@ -3510,7 +3510,7 @@ async def debug_yfinance_environment():
                 "status_code": response.status_code,
                 "response_length": len(response.content)
             }
-        except Exception as e:
+    except Exception as e:
             diagnostics["yahoo_domain_test"] = {"status": "failed", "error": str(e)}
         
         # Test Yahoo Finance API endpoint directly
@@ -3607,7 +3607,7 @@ if __name__ == "__main__":
     logger.info(f"🔧 Environment HOST: {os.getenv('HOST', 'Not set')}")
     
     uvicorn.run(
-        "main_simple:app",
+        "main:app",
         host=host,
         port=port,
         log_level="info",
