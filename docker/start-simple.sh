@@ -25,4 +25,4 @@ python init_database.py
 
 # Start application directly (no supervisord)
 echo "🎬 Starting GridTrader Pro..."
-exec python main_simple.py
+exec python main.py

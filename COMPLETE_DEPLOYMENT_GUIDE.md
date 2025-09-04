@@ -16,7 +16,7 @@ Following successful [prombank_backup](https://github.com/SDG223157/prombank_bac
 
 ```
 🌐 GridTrader Pro (Production)
-├── 🚀 main_simple.py (FastAPI application)
+├── 🚀 main.py (FastAPI application)
 ├── 🔐 auth_simple.py (Session-based authentication)  
 ├── 🗄️ database.py (SQLAlchemy models with fixed UUIDs)
 ├── 🎨 base_simple.html (Clean navigation)
@@ -52,7 +52,7 @@ id = Column(VARCHAR(36), primary_key=True, default=lambda: str(uuid.uuid4()))
 
 **New Files:**
 - `auth_simple.py` - Clean session-based authentication
-- `main_simple.py` - Simplified FastAPI application
+- `main.py` - Production FastAPI application
 - `base_simple.html` - Clean navigation without dropdown complexity
 
 **Key Improvements:**
@@ -219,7 +219,7 @@ FRONTEND_URL=https://gridsai.app
 ```
 gridtrader-pro-webapp/
 ├── 🚀 MAIN APPLICATION
-│   ├── main_simple.py              # Simplified FastAPI app (PRODUCTION)
+│   ├── main.py                     # Production FastAPI app
 │   ├── auth_simple.py              # Clean session authentication
 │   ├── database.py                 # SQLAlchemy models (UUID fixed)
 │   ├── data_provider.py            # Market data integration
