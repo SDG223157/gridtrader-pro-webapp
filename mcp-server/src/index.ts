@@ -598,6 +598,66 @@ class GridTraderProMCPServer {
                 }
               }
             }
+          },
+          {
+            name: 'create_api_token',
+            description: 'Create a new API token for MCP server authentication',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                name: {
+                  type: 'string',
+                  description: 'Name for the API token (e.g., "MCP Server Token")'
+                },
+                description: {
+                  type: 'string',
+                  description: 'Optional description of the token usage'
+                }
+              },
+              required: ['name']
+            }
+          },
+          {
+            name: 'get_api_tokens',
+            description: 'List all API tokens for the current user',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                include_revoked: {
+                  type: 'boolean',
+                  description: 'Include revoked tokens in the list',
+                  default: false
+                }
+              }
+            }
+          },
+          {
+            name: 'revoke_api_token',
+            description: 'Revoke an existing API token',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                token_id: {
+                  type: 'string',
+                  description: 'The ID of the token to revoke'
+                }
+              },
+              required: ['token_id']
+            }
+          },
+          {
+            name: 'get_mcp_config',
+            description: 'Get MCP server configuration for a specific token',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                token_id: {
+                  type: 'string',
+                  description: 'The ID of the token to get MCP config for'
+                }
+              },
+              required: ['token_id']
+            }
           }
         ]
       };
@@ -682,6 +742,18 @@ class GridTraderProMCPServer {
           
           case 'get_user_info':
             return await this.handleGetUserInfo(args);
+          
+          case 'create_api_token':
+            return await this.handleCreateApiToken(args);
+          
+          case 'get_api_tokens':
+            return await this.handleGetApiTokens(args);
+          
+          case 'revoke_api_token':
+            return await this.handleRevokeApiToken(args);
+          
+          case 'get_mcp_config':
+            return await this.handleGetMcpConfig(args);
           
           default:
             throw new Error(`Unknown tool: ${name}`);
@@ -2569,6 +2641,274 @@ class GridTraderProMCPServer {
               `• Check your internet connection\n` +
               `• Verify API token is configured\n` +
               `• Try refreshing the MCP connection`
+          }
+        ]
+      };
+    }
+  }
+
+  private async handleCreateApiToken(args: any) {
+    try {
+      const tokenData = {
+        name: args.name,
+        description: args.description || ''
+      };
+
+      const data = await this.makeApiCall('/api/tokens', 'POST', tokenData);
+      
+      if (data.success || data.token_id || data.id) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `✅ **API Token Created Successfully!**\n\n` +
+                `🔑 **Token Details:**\n` +
+                `• Name: **${args.name}**\n` +
+                `• Token ID: ${data.token_id || data.id}\n` +
+                `• Description: ${args.description || 'No description provided'}\n` +
+                `• Status: Active\n` +
+                `• Created: ${new Date().toLocaleString()}\n\n` +
+                `🚨 **IMPORTANT - Save this token now!**\n` +
+                `**Token Value:** \`${data.token || data.access_token}\`\n\n` +
+                `⚠️ **Security Notice:**\n` +
+                `• This token will only be shown once\n` +
+                `• Store it securely (password manager recommended)\n` +
+                `• Never share it publicly or commit to version control\n` +
+                `• Use it to authenticate MCP server requests\n\n` +
+                `🔧 **Next Steps:**\n` +
+                `• Update your MCP configuration with this token\n` +
+                `• Test the token: "List my API tokens"\n` +
+                `• Get MCP config: "Get MCP config for this token"\n\n` +
+                `🎉 **Your API token is ready for use!**`
+            }
+          ]
+        };
+      } else {
+        throw new Error(data.message || data.detail || 'Token creation failed');
+      }
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `❌ **API Token Creation Failed**\n\n` +
+              `Error: ${error.response?.data?.detail || error.message}\n\n` +
+              `💡 **Common Issues:**\n` +
+              `• Authentication required (login to GridTrader Pro first)\n` +
+              `• Token name already exists\n` +
+              `• Account doesn't have token creation permissions\n` +
+              `• Server connection issue\n\n` +
+              `🔧 **Try:**\n` +
+              `• Use a unique token name\n` +
+              `• Check your account status\n` +
+              `• Verify you're logged into GridTrader Pro\n\n` +
+              `📚 **Example Usage:**\n` +
+              `"Create API token named 'MCP Server Token' for cursor integration"`
+          }
+        ]
+      };
+    }
+  }
+
+  private async handleGetApiTokens(args: any) {
+    try {
+      const data = await this.makeApiCall('/api/tokens');
+      
+      if (data.success || Array.isArray(data) || data.tokens) {
+        const tokens = Array.isArray(data) ? data : data.tokens || [];
+        
+        let responseText = `🔑 **Your API Tokens**\n\n`;
+        
+        if (tokens.length === 0) {
+          responseText += `No API tokens found.\n\n` +
+            `🚀 **Get Started:**\n` +
+            `• Create your first token: "Create API token named 'MCP Server'"\n` +
+            `• Use tokens to authenticate MCP server requests\n` +
+            `• Manage tokens securely for different applications`;
+        } else {
+          responseText += `Found ${tokens.length} API token${tokens.length > 1 ? 's' : ''}:\n\n`;
+          
+          tokens.forEach((token: any, index: number) => {
+            const isActive = !token.is_revoked && !token.revoked;
+            const statusIcon = isActive ? '✅' : '❌';
+            const statusText = isActive ? 'Active' : 'Revoked';
+            
+            responseText += `**${index + 1}. ${token.name}**\n` +
+              `   • ID: ${token.id}\n` +
+              `   • Status: ${statusIcon} ${statusText}\n` +
+              `   • Created: ${new Date(token.created_at).toLocaleDateString()}\n` +
+              `   • Last Used: ${token.last_used_at ? new Date(token.last_used_at).toLocaleDateString() : 'Never'}\n` +
+              `   • Description: ${token.description || 'No description'}\n`;
+            
+            if (isActive) {
+              responseText += `   • Actions: Revoke with "Revoke API token ${token.id}"\n`;
+            }
+            responseText += '\n';
+          });
+          
+          const activeTokens = tokens.filter((t: any) => !t.is_revoked && !t.revoked);
+          responseText += `📊 **Summary:**\n` +
+            `• Active Tokens: ${activeTokens.length}\n` +
+            `• Revoked Tokens: ${tokens.length - activeTokens.length}\n\n` +
+            `🔧 **Management:**\n` +
+            `• Create new token: "Create API token named [name]"\n` +
+            `• Revoke token: "Revoke API token [token_id]"\n` +
+            `• Get MCP config: "Get MCP config for [token_id]"`;
+        }
+        
+        responseText += `\n\n---\n\n**Raw Data:**\n${JSON.stringify(tokens, null, 2)}`;
+        
+        return {
+          content: [
+            {
+              type: 'text',
+              text: responseText
+            }
+          ]
+        };
+      } else {
+        throw new Error(data.message || data.detail || 'Failed to get tokens');
+      }
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `❌ **Failed to Get API Tokens**\n\n` +
+              `Error: ${error.response?.data?.detail || error.message}\n\n` +
+              `💡 **Common Issues:**\n` +
+              `• Authentication required\n` +
+              `• Account access issue\n` +
+              `• Server connection problem\n\n` +
+              `🔧 **Try:**\n` +
+              `• Verify you're logged into GridTrader Pro\n` +
+              `• Check your internet connection\n` +
+              `• Create your first token if none exist`
+          }
+        ]
+      };
+    }
+  }
+
+  private async handleRevokeApiToken(args: any) {
+    try {
+      const data = await this.makeApiCall(`/api/tokens/${args.token_id}`, 'DELETE');
+      
+      if (data.success) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `✅ **API Token Revoked Successfully!**\n\n` +
+                `🔑 **Token Details:**\n` +
+                `• Token ID: ${args.token_id}\n` +
+                `• Name: ${data.token_name || 'Unknown'}\n` +
+                `• Status: Revoked\n` +
+                `• Revoked: ${new Date().toLocaleString()}\n\n` +
+                `⚠️ **Important:**\n` +
+                `• This token can no longer be used for authentication\n` +
+                `• Any applications using this token will lose access\n` +
+                `• Update MCP configurations that used this token\n\n` +
+                `🔧 **Next Steps:**\n` +
+                `• Create a new token if needed: "Create API token"\n` +
+                `• Update MCP server configuration with new token\n` +
+                `• Check remaining tokens: "List my API tokens"\n\n` +
+                `🎉 **Token successfully revoked!**`
+            }
+          ]
+        };
+      } else {
+        throw new Error(data.message || data.detail || 'Token revocation failed');
+      }
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `❌ **API Token Revocation Failed**\n\n` +
+              `Error: ${error.response?.data?.detail || error.message}\n\n` +
+              `💡 **Common Issues:**\n` +
+              `• Token ID not found\n` +
+              `• Token already revoked\n` +
+              `• Authentication required\n` +
+              `• Permission denied\n\n` +
+              `🔧 **Try:**\n` +
+              `• Verify the token ID: "List my API tokens"\n` +
+              `• Check you own this token\n` +
+              `• Ensure you're logged in\n\n` +
+              `📚 **Example Usage:**\n` +
+              `"Revoke API token abc123-def456-ghi789"`
+          }
+        ]
+      };
+    }
+  }
+
+  private async handleGetMcpConfig(args: any) {
+    try {
+      const data = await this.makeApiCall(`/api/tokens/${args.token_id}/mcp-config`);
+      
+      if (data.success || data.config) {
+        const config = data.config || data;
+        
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `⚙️ **MCP Server Configuration**\n\n` +
+                `🔑 **Token ID:** ${args.token_id}\n` +
+                `🏷️ **Token Name:** ${config.token_name || 'Unknown'}\n\n` +
+                `📋 **Cursor MCP Configuration:**\n` +
+                `\`\`\`json\n${JSON.stringify(config.cursor_config || {
+                  "mcpServers": {
+                    "gridtrader-pro": {
+                      "command": "node",
+                      "args": ["/path/to/gridtrader-pro-webapp/mcp-server/dist/index.js"],
+                      "env": {
+                        "GRIDTRADER_API_URL": "https://gridsai.app",
+                        "GRIDTRADER_ACCESS_TOKEN": config.token_value || "[TOKEN_VALUE]"
+                      }
+                    }
+                  }
+                }, null, 2)}\`\`\`\n\n` +
+                `🛠️ **Setup Instructions:**\n` +
+                `1. **Save configuration** to your Cursor settings\n` +
+                `2. **Update the path** to your MCP server location\n` +
+                `3. **Restart Cursor** to load the new configuration\n` +
+                `4. **Test connection** with "Check my GridTrader user info"\n\n` +
+                `🔐 **Security Notes:**\n` +
+                `• Keep your token secure and private\n` +
+                `• Don't share this configuration publicly\n` +
+                `• Regenerate token if compromised\n\n` +
+                `🌐 **Server Details:**\n` +
+                `• API URL: ${config.api_url || 'https://gridsai.app'}\n` +
+                `• Token Status: ${config.token_status || 'Active'}\n` +
+                `• Created: ${config.created_at ? new Date(config.created_at).toLocaleDateString() : 'Unknown'}\n\n` +
+                `✅ **Ready to use with Cursor MCP!**`
+            }
+          ]
+        };
+      } else {
+        throw new Error(data.message || data.detail || 'Failed to get MCP config');
+      }
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `❌ **Failed to Get MCP Configuration**\n\n` +
+              `Error: ${error.response?.data?.detail || error.message}\n\n` +
+              `💡 **Common Issues:**\n` +
+              `• Token ID not found\n` +
+              `• Token is revoked\n` +
+              `• Authentication required\n` +
+              `• Permission denied\n\n` +
+              `🔧 **Try:**\n` +
+              `• Verify token exists: "List my API tokens"\n` +
+              `• Use an active token ID\n` +
+              `• Create new token if needed\n\n` +
+              `📚 **Example Usage:**\n` +
+              `"Get MCP config for token abc123-def456-ghi789"`
           }
         ]
       };
