@@ -2893,7 +2893,7 @@ async def debug_test_tokens_db(db: Session = Depends(get_db)):
 @app.get("/tokens", response_class=HTMLResponse)
 async def tokens_page(request: Request, db: Session = Depends(get_db)):
     """Token management page"""
-    # Get user from session (following main_simple pattern)
+    # Get user from session
     user_id = request.session.get("user_id")
     if not user_id:
         return RedirectResponse(url="/login", status_code=302)
@@ -3639,7 +3639,7 @@ if __name__ == "__main__":
     logger.info(f"🔧 Environment HOST: {os.getenv('HOST', 'Not set')}")
     
     uvicorn.run(
-        "main_simple:app",
+        "main:app",
         host=host,
         port=port,
         log_level="info",
