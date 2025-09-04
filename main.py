@@ -902,6 +902,41 @@ async def get_user_info(request: Request, db: Session = Depends(get_db)):
         logger.error(f"Error getting user info: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get user information: {str(e)}")
 
+@app.post("/admin/update-user-email")
+async def admin_update_user_email(request: Request, db: Session = Depends(get_db)):
+    """Admin tool to update user email - fixes OAuth mismatch issues"""
+    try:
+        # Find the debug user with your profile data
+        debug_user = db.query(User).filter(User.email == "debug@test.com").first()
+        if not debug_user:
+            return {"error": "Debug user not found"}
+        
+        # Check if isky999@gmail.com already exists
+        existing_user = db.query(User).filter(User.email == "isky999@gmail.com").first()
+        if existing_user:
+            return {"error": "User isky999@gmail.com already exists"}
+        
+        # Update the debug user's email to your real email
+        debug_user.email = "isky999@gmail.com"
+        debug_user.auth_provider = "google"
+        debug_user.is_email_verified = True
+        
+        db.commit()
+        db.refresh(debug_user)
+        
+        return {
+            "success": True,
+            "message": "User email updated successfully",
+            "old_email": "debug@test.com", 
+            "new_email": "isky999@gmail.com",
+            "user_id": debug_user.id,
+            "display_name": debug_user.profile.display_name if debug_user.profile else None
+        }
+        
+    except Exception as e:
+        db.rollback()
+        return {"error": str(e)}
+
 @app.post("/admin/fix-user-display-name")
 async def fix_user_display_name(request: Request, db: Session = Depends(get_db)):
     """Fix user display name from Debug User to actual name"""
