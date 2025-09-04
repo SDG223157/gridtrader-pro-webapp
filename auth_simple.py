@@ -149,10 +149,19 @@ async def create_or_update_user_from_google(google_user_info: dict, db: Session)
     last_name = google_user_info.get('family_name', '')
     profile_picture = google_user_info.get('picture', '')
     
-    # Check if user exists
-    existing_user = db.query(User).filter(
-        (User.google_id == google_id) | (User.email == email)
-    ).first()
+    # Check if user exists - prioritize email over Google ID to prevent OAuth confusion
+    existing_user = db.query(User).filter(User.email == email).first()
+    
+    # If no user with this email, check by Google ID (but only if email doesn't exist)
+    if not existing_user:
+        existing_user = db.query(User).filter(User.google_id == google_id).first()
+        
+        # If found by Google ID but different email, this is an OAuth mismatch
+        if existing_user and existing_user.email != email:
+            logger.warning(f"🔄 OAuth mismatch detected: Google ID exists for {existing_user.email}, but logging in with {email}")
+            # Update the existing user's email to the current Google email
+            existing_user.email = email
+            existing_user.is_email_verified = True
     
     if existing_user:
         # Update existing user with Google info
