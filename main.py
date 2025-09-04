@@ -760,12 +760,9 @@ async def debug_set_session(user_id: str, request: Request, db: Session = Depend
         return {"error": str(e)}
 
 @app.get("/api/user/info")
-async def get_user_info(request: Request, db: Session = Depends(get_db)):
+async def get_user_info(user: User = Depends(require_auth), db: Session = Depends(get_db)):
     """Get comprehensive user information and statistics"""
     try:
-        user = get_current_user(request, db)
-        if not user:
-            raise HTTPException(status_code=401, detail="Authentication required")
         
         # Get user profile
         profile = db.query(UserProfile).filter(UserProfile.user_id == user.id).first()
