@@ -698,7 +698,7 @@ async def debug_user_info(request: Request, db: Session = Depends(get_db)):
         if not user:
             return {"error": "No user found", "session": dict(request.session)}
         
-    return {
+        return {
             "user_id": user.id,
             "email": user.email,
             "auth_provider": user.auth_provider.value if user.auth_provider else None,
@@ -722,7 +722,7 @@ async def debug_find_user(email: str, db: Session = Depends(get_db)):
         
         profile = db.query(UserProfile).filter(UserProfile.user_id == user.id).first()
     
-    return {
+        return {
             "user_found": True,
             "user_id": user.id,
             "email": user.email,
@@ -948,7 +948,7 @@ def get_user_context(request: Request, db: Session) -> dict:
             # Use part before @ as display name (e.g., john@gmail.com → john)
             display_name = user.email.split('@')[0].title()
         
-    return {
+        return {
         "user": user,
         "display_name": display_name,
         "is_authenticated": user is not None
@@ -2767,7 +2767,7 @@ async def get_market_data(symbol: str, period: str = "1d"):
 # Health check
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
+        return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
 
 @app.get("/debug/security-status")
 async def security_status():
@@ -3156,7 +3156,7 @@ async def delete_api_token(token_id: str, db: Session = Depends(get_db)):
 @app.get("/debug/port-info")
 async def port_info():
     """Debug port configuration"""
-    return {
+        return {
         "PORT_env": os.getenv('PORT', 'Not set'),
         "APP_PORT_env": os.getenv('APP_PORT', 'Not set'),
         "HOST_env": os.getenv('HOST', 'Not set'),
@@ -3171,7 +3171,7 @@ async def oauth_info():
     from auth_simple import setup_oauth
     
     google_client = setup_oauth()
-    return {
+        return {
         "google_client_configured": google_client is not None,
         "GOOGLE_CLIENT_ID": "Set" if os.getenv('GOOGLE_CLIENT_ID') else "Not set",
         "GOOGLE_CLIENT_SECRET": "Set" if os.getenv('GOOGLE_CLIENT_SECRET') else "Not set",
@@ -3219,7 +3219,7 @@ async def debug_test_transaction(request: Request, db: Session = Depends(get_db)
     except Exception as e:
         db.rollback()
         import traceback
-    return {
+        return {
             "error": str(e),
             "error_type": type(e).__name__,
             "traceback": traceback.format_exc()
