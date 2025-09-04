@@ -240,14 +240,14 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             request.url.scheme == 'https'):
             response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
         
-        # Basic CSP (Content Security Policy)
+        # Basic CSP (Content Security Policy) - Permissive for CDNs while maintaining security
         csp_policy = (
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://unpkg.com https://cdnjs.cloudflare.com; "
-            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com https://cdnjs.cloudflare.com; "
-            "img-src 'self' data: https:; "
-            "font-src 'self' https://cdn.jsdelivr.net https://unpkg.com https://cdnjs.cloudflare.com; "
-            "connect-src 'self' https:; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https: http:; "
+            "style-src 'self' 'unsafe-inline' https: http:; "
+            "img-src 'self' data: https: http:; "
+            "font-src 'self' https: http: data:; "
+            "connect-src 'self' https: http:; "
             "frame-ancestors 'none';"
         )
         response.headers['Content-Security-Policy'] = csp_policy
