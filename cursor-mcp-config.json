@@ -5,7 +5,7 @@
       "args": ["/Users/sdg223157/gridsai_webapp/gridtrader-pro-webapp/mcp-server/dist/index.js"],
       "env": {
         "GRIDTRADER_API_URL": "https://gridsai.app",
-        "GRIDTRADER_ACCESS_TOKEN": "gridtrader_dev_token_123"
+        "GRIDTRADER_ACCESS_TOKEN": "VLS0AwY-9C9cGZadxnHFZwD_-wSAc24xIwWTRRlZJSo"
       }
     }
   }
