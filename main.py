@@ -1374,6 +1374,53 @@ async def debug_test_tokens_db(db: Session = Depends(get_db)):
             "solution": "Check database connection and restart application"
         }
 
+@app.get("/debug/find-user/{email}")
+async def debug_find_user(email: str, db: Session = Depends(get_db)):
+    """Find user by email for debugging"""
+    try:
+        user = db.query(User).filter(User.email == email).first()
+        if not user:
+            return {"error": f"User {email} not found"}
+        
+        profile = db.query(UserProfile).filter(UserProfile.user_id == user.id).first()
+        
+        return {
+            "user_found": True,
+            "user_id": user.id,
+            "email": user.email,
+            "auth_provider": user.auth_provider.value if user.auth_provider else None,
+            "is_email_verified": user.is_email_verified,
+            "created_at": user.created_at.isoformat() if user.created_at else None,
+            "profile": {
+                "display_name": profile.display_name if profile else None,
+                "first_name": profile.first_name if profile else None,
+                "last_name": profile.last_name if profile else None,
+                "avatar_url": profile.avatar_url if profile else None
+            } if profile else None
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.post("/debug/set-session/{user_id}")
+async def debug_set_session(user_id: str, request: Request, db: Session = Depends(get_db)):
+    """Debug session setting for user"""
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            return {"error": f"User {user_id} not found"}
+        
+        # Set session
+        request.session["user_id"] = user.id
+        
+        return {
+            "success": True,
+            "message": f"Session set for user {user.email}",
+            "user_id": user.id,
+            "session_data": dict(request.session)
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
 @app.get("/debug/create-test-user")
 async def debug_create_user(db: Session = Depends(get_db)):
     """Debug user creation"""
