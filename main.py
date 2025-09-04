@@ -10,7 +10,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import text, func, desc
-from database import get_db, connect_with_retry, create_tables, User, UserProfile, Portfolio, Holding, Grid, MarketData, Alert, ApiToken
+from database import get_db, connect_with_retry, create_tables, User, UserProfile, Portfolio, Holding, Grid, MarketData, Alert, ApiToken, Transaction, GridStatus
 from auth import (
     create_access_token, get_current_user, require_auth, create_user, authenticate_user,
     setup_google_oauth, create_or_update_user_from_google, get_current_user_from_session
@@ -1023,6 +1023,143 @@ async def delete_api_token(token_id: str, user: User = Depends(require_auth), db
         db.rollback()
         logger.error(f"Error deleting API token: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete API token")
+
+@app.get("/api/user/info")
+async def get_user_info(user: User = Depends(require_auth), db: Session = Depends(get_db)):
+    """Get comprehensive user information and statistics"""
+    try:
+        # Get user profile
+        profile = db.query(UserProfile).filter(UserProfile.user_id == user.id).first()
+        
+        # Get portfolio statistics
+        portfolios = db.query(Portfolio).filter(Portfolio.user_id == user.id).all()
+        portfolio_count = len(portfolios)
+        total_initial_capital = sum(float(p.initial_capital or 0) for p in portfolios)
+        total_current_value = sum(float(p.current_value or 0) for p in portfolios)
+        total_cash_balance = sum(float(p.cash_balance or 0) for p in portfolios)
+        
+        # Calculate total return percentage
+        total_return_percent = 0.0
+        if total_initial_capital > 0:
+            total_return_percent = ((total_current_value - total_initial_capital) / total_initial_capital) * 100
+        
+        # Get grid statistics
+        active_grids = db.query(Grid).filter(
+            Grid.portfolio_id.in_([p.id for p in portfolios]),
+            Grid.status == GridStatus.active
+        ).count()
+        
+        total_grids = db.query(Grid).filter(
+            Grid.portfolio_id.in_([p.id for p in portfolios])
+        ).count()
+        
+        # Get transaction statistics
+        transaction_count = db.query(Transaction).filter(
+            Transaction.portfolio_id.in_([p.id for p in portfolios])
+        ).count()
+        
+        # Get recent transactions for activity
+        recent_transactions = db.query(Transaction).filter(
+            Transaction.portfolio_id.in_([p.id for p in portfolios])
+        ).order_by(desc(Transaction.created_at)).limit(5).all()
+        
+        # Get API token information
+        api_tokens = db.query(ApiToken).filter(ApiToken.user_id == user.id).all()
+        active_api_tokens = [t for t in api_tokens if not t.is_revoked]
+        
+        # Find best performing portfolio
+        best_portfolio = None
+        best_return = float('-inf')
+        for portfolio in portfolios:
+            if portfolio.initial_capital and portfolio.initial_capital > 0:
+                portfolio_return = ((float(portfolio.current_value or 0) - float(portfolio.initial_capital)) / float(portfolio.initial_capital)) * 100
+                if portfolio_return > best_return:
+                    best_return = portfolio_return
+                    best_portfolio = portfolio.name
+        
+        # Get recent alerts
+        recent_alerts = db.query(Alert).filter(Alert.user_id == user.id).order_by(desc(Alert.created_at)).limit(3).all()
+        
+        # Determine user activity level
+        last_transaction_date = None
+        if recent_transactions:
+            last_transaction_date = recent_transactions[0].created_at
+        
+        # Build response
+        user_info = {
+            "success": True,
+            "user": {
+                "id": user.id,
+                "email": user.email,
+                "username": profile.display_name if profile else user.email.split('@')[0],
+                "first_name": profile.first_name if profile else "",
+                "last_name": profile.last_name if profile else "",
+                "avatar_url": profile.avatar_url if profile else None,
+                "status": "active",  # You can add more sophisticated status logic
+                "created_at": user.created_at.isoformat() if user.created_at else None,
+                "subscription_tier": user.subscription_tier or "free",
+                "auth_provider": user.auth_provider.value if user.auth_provider else "local",
+                "is_email_verified": user.is_email_verified,
+                "last_login": user.updated_at.isoformat() if user.updated_at else None,  # Using updated_at as proxy for last activity
+            },
+            "profile": {
+                "risk_tolerance": profile.risk_tolerance.value if profile and profile.risk_tolerance else "moderate",
+                "investment_experience": profile.investment_experience if profile else "beginner",
+                "preferred_currency": profile.preferred_currency if profile else "USD",
+                "timezone": profile.timezone if profile else "UTC",
+                "locale": profile.locale if profile else "en"
+            } if profile else None,
+            "statistics": {
+                "portfolio_count": portfolio_count,
+                "active_grids": active_grids,
+                "total_grids": total_grids,
+                "transaction_count": transaction_count,
+                "total_value": float(total_current_value),
+                "total_cash": float(total_cash_balance),
+                "total_invested": float(total_initial_capital),
+                "total_return_percent": round(total_return_percent, 2),
+                "last_transaction_date": last_transaction_date.isoformat() if last_transaction_date else None,
+                "recent_activity": len(recent_transactions) > 0
+            },
+            "performance": {
+                "total_return_percent": round(total_return_percent, 2),
+                "best_portfolio": best_portfolio,
+                "best_return_percent": round(best_return, 2) if best_portfolio else 0.0,
+                "total_portfolios": portfolio_count,
+                "profitable_portfolios": len([p for p in portfolios if float(p.current_value or 0) > float(p.initial_capital or 0)])
+            },
+            "api_access": {
+                "has_api_token": len(active_api_tokens) > 0,
+                "total_tokens": len(api_tokens),
+                "active_tokens": len(active_api_tokens),
+                "last_api_call": None,  # This would need to be tracked separately
+                "mcp_server_compatible": True
+            },
+            "recent_activity": {
+                "recent_transactions": [
+                    {
+                        "symbol": t.symbol,
+                        "type": t.transaction_type.value,
+                        "quantity": float(t.quantity),
+                        "price": float(t.price),
+                        "date": t.created_at.isoformat()
+                    } for t in recent_transactions
+                ],
+                "recent_alerts": [
+                    {
+                        "type": a.alert_type.value,
+                        "message": a.message,
+                        "date": a.created_at.isoformat()
+                    } for a in recent_alerts
+                ]
+            }
+        }
+        
+        return user_info
+        
+    except Exception as e:
+        logger.error(f"Error getting user info: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get user information: {str(e)}")
 
 # Analytics
 @app.get("/analytics", response_class=HTMLResponse)
