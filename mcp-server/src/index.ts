@@ -584,6 +584,20 @@ class GridTraderProMCPServer {
               },
               required: ['industrial_data']
             }
+          },
+          {
+            name: 'get_user_info',
+            description: 'Get current user information, profile, and statistics',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                include_stats: {
+                  type: 'boolean',
+                  description: 'Include user statistics (prompt counts, etc.)',
+                  default: true
+                }
+              }
+            }
           }
         ]
       };
@@ -665,6 +679,9 @@ class GridTraderProMCPServer {
           
           case 'configure_grid_alerts':
             return await this.handleConfigureGridAlerts(args);
+          
+          case 'get_user_info':
+            return await this.handleGetUserInfo(args);
           
           default:
             throw new Error(`Unknown tool: ${name}`);
@@ -1782,8 +1799,8 @@ class GridTraderProMCPServer {
       }
       
       // Method 1: Chinese colon format
-      // "有色金属冶炼和压延加工业: 营业收入同比增长 13.8%, 利润总额同比增长 6.9%"
-      let match = trimmedLine.match(/([^:]+):\s*营业收入同比增长\s*([-\d.]+)%.*?利润总额同比增长\s*([-\d.]+)%/);
+      // "有色金属冶炼和压延加工业：营业收入同比增长 13.8%，利润总额同比增长 6.9%"
+      let match = trimmedLine.match(/([^：]+)：\s*营业收入同比增长\s*([-\d.]+)%.*?利润总额同比增长\s*([-\d.]+)%/);
       if (match) {
         const sectorName = match[1].trim();
         const revenueGrowth = parseFloat(match[2]);
@@ -2435,6 +2452,123 @@ class GridTraderProMCPServer {
               `• "Enable order alerts for grid [grid_id]"\n` +
               `• "Set profit threshold to $25 for my grids"\n` +
               `• "Show me my current alert settings"`
+          }
+        ]
+      };
+    }
+  }
+
+  private async handleGetUserInfo(args: any) {
+    try {
+      // Get user info from the API
+      const data = await this.makeApiCall('/api/user/info');
+      
+      if (data.success || data.user || data.username) {
+        const user = data.user || data;
+        
+        let responseText = `👤 **GridTrader Pro User Information**\n\n`;
+        
+        // Basic user info
+        responseText += `**Account Details:**\n`;
+        responseText += `• Username: ${user.username || 'Not specified'}\n`;
+        responseText += `• Email: ${user.email || 'Not specified'}\n`;
+        responseText += `• User ID: ${user.id || user.user_id || 'Not available'}\n`;
+        responseText += `• Account Status: ${user.status || 'Active'}\n`;
+        responseText += `• Member Since: ${user.created_at ? new Date(user.created_at).toLocaleDateString() : 'Not available'}\n`;
+        responseText += `• Last Login: ${user.last_login ? new Date(user.last_login).toLocaleDateString() : 'Not available'}\n\n`;
+        
+        // Include statistics if requested
+        if (args.include_stats !== false) {
+          responseText += `**Account Statistics:**\n`;
+          responseText += `• Total Portfolios: ${user.portfolio_count || data.portfolio_count || 0}\n`;
+          responseText += `• Active Grids: ${user.active_grids || data.active_grids || 0}\n`;
+          responseText += `• Total Transactions: ${user.transaction_count || data.transaction_count || 0}\n`;
+          responseText += `• Total Investment Value: $${(user.total_value || data.total_value || 0).toLocaleString()}\n`;
+          responseText += `• Total Cash Balance: $${(user.total_cash || data.total_cash || 0).toLocaleString()}\n`;
+          
+          if (user.performance || data.performance) {
+            const perf = user.performance || data.performance;
+            responseText += `• Overall Return: ${perf.total_return_percent ? perf.total_return_percent.toFixed(2) + '%' : 'N/A'}\n`;
+            responseText += `• Best Performing Portfolio: ${perf.best_portfolio || 'N/A'}\n`;
+          }
+          
+          responseText += `\n`;
+        }
+        
+        // API access info
+        if (user.api_access || data.api_access) {
+          responseText += `**API Access:**\n`;
+          responseText += `• MCP Server: ✅ Connected\n`;
+          responseText += `• API Token: ${user.has_api_token ? '✅ Active' : '❌ Not configured'}\n`;
+          responseText += `• Last API Call: ${user.last_api_call ? new Date(user.last_api_call).toLocaleString() : 'Never'}\n\n`;
+        }
+        
+        // Subscription/plan info if available
+        if (user.plan || data.plan) {
+          responseText += `**Subscription:**\n`;
+          responseText += `• Plan: ${user.plan || data.plan}\n`;
+          responseText += `• Features: ${user.features ? user.features.join(', ') : 'Standard trading features'}\n\n`;
+        }
+        
+        responseText += `**Quick Actions:**\n`;
+        responseText += `• View portfolios: "Show me my portfolios"\n`;
+        responseText += `• Check performance: "Get dashboard summary"\n`;
+        responseText += `• Create new portfolio: "Create a new portfolio"\n`;
+        responseText += `• View recent alerts: "Show me my trading alerts"\n\n`;
+        
+        responseText += `---\n\n**Raw Data:**\n${JSON.stringify(data, null, 2)}`;
+        
+        return {
+          content: [
+            {
+              type: 'text',
+              text: responseText
+            }
+          ]
+        };
+      } else {
+        throw new Error(data.message || data.detail || 'Failed to get user info');
+      }
+    } catch (error: any) {
+      // If the API endpoint doesn't exist, provide a helpful fallback response
+      if (error.response?.status === 404) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `📋 **User Information (Limited)**\n\n` +
+                `**Status:** GridTrader Pro MCP Server Connected ✅\n\n` +
+                `**Available Information:**\n` +
+                `• MCP Connection: Active\n` +
+                `• API Access: Working\n` +
+                `• Server: ${this.apiUrl}\n\n` +
+                `**To get complete user information:**\n` +
+                `• Check your dashboard: "Get dashboard summary"\n` +
+                `• View your portfolios: "Show me my portfolios"\n` +
+                `• Check account settings in the web interface\n\n` +
+                `⚠️ **Note:** User info endpoint not yet implemented in the backend.\n` +
+                `The MCP server is working correctly, but detailed user information\n` +
+                `requires additional backend API development.`
+            }
+          ]
+        };
+      }
+      
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `❌ **Failed to Get User Information**\n\n` +
+              `Error: ${error.response?.data?.detail || error.message}\n\n` +
+              `💡 **Alternative Ways to Check Your Info:**\n` +
+              `• "Get dashboard summary" - View account overview\n` +
+              `• "Show me my portfolios" - See all your portfolios\n` +
+              `• "Show me my trading alerts" - Check recent activity\n` +
+              `• Visit the web interface for account settings\n\n` +
+              `🔧 **If this persists:**\n` +
+              `• Check your internet connection\n` +
+              `• Verify API token is configured\n` +
+              `• Try refreshing the MCP connection`
           }
         ]
       };
