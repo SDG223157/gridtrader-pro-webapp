@@ -149,13 +149,16 @@
                     {% endfor %}
                 </div>
                 
-                <!-- TradingView AAPL Chart -->
+                <!-- Market Chart - Fallback to Chart.js if TradingView fails -->
                 <div class="mt-6">
                     <div id="dashboard_tradingview_aapl" style="height: 400px; width: 100%;"></div>
+                    <div id="dashboard_chartjs_fallback" style="height: 400px; width: 100%; display: none;">
+                        <canvas id="aaplChart"></canvas>
+                    </div>
                     <div class="mt-2 text-center">
-                        <a href="https://www.tradingview.com/" rel="noopener nofollow" target="_blank" class="text-xs text-gray-500">
+                        <span id="chart_attribution" class="text-xs text-gray-500">
                             AAPL powered by TradingView
-                        </a>
+                        </span>
                     </div>
                 </div>
             </div>
@@ -335,61 +338,181 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function showFallbackChart() {
-        console.log('📊 Showing fallback chart interface...');
-        const container = document.getElementById('dashboard_tradingview_aapl');
-        if (container) {
-            container.innerHTML = `
-                <div class="flex items-center justify-center h-full bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-                    <div class="text-center p-6">
-                        <i class="fas fa-chart-line text-4xl text-gray-400 mb-4"></i>
-                        <h3 class="text-lg font-medium text-gray-900 mb-2">Market Chart</h3>
-                        <p class="text-gray-500 mb-4">Interactive chart temporarily unavailable</p>
-                        <div class="space-y-2 text-sm text-gray-600">
-                            <div class="flex justify-between items-center">
-                                <span>AAPL Current Price:</span>
-                                <span class="font-semibold text-green-600" data-symbol="AAPL" data-field="price">Loading...</span>
-                            </div>
-                            <div class="flex justify-between items-center">
-                                <span>Market Status:</span>
-                                <span class="text-blue-600">Live</span>
-                            </div>
-                        </div>
-                        <button onclick="window.location.reload()" 
-                                class="mt-4 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium">
-                            <i class="fas fa-refresh mr-2"></i>Retry Chart
-                        </button>
-                        <a href="https://finance.yahoo.com/quote/AAPL" target="_blank" 
-                           class="ml-2 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md text-sm font-medium">
-                            <i class="fas fa-external-link-alt mr-2"></i>View on Yahoo Finance
-                        </a>
-                    </div>
-                </div>
-            `;
+        console.log('📊 Showing Chart.js fallback chart...');
+        
+        // Hide TradingView container and show Chart.js fallback
+        const tradingViewContainer = document.getElementById('dashboard_tradingview_aapl');
+        const chartJsContainer = document.getElementById('dashboard_chartjs_fallback');
+        const attribution = document.getElementById('chart_attribution');
+        
+        if (tradingViewContainer) {
+            tradingViewContainer.style.display = 'none';
+        }
+        
+        if (chartJsContainer) {
+            chartJsContainer.style.display = 'block';
+        }
+        
+        if (attribution) {
+            attribution.textContent = 'AAPL Market Data';
+        }
+        
+        // Load AAPL historical data and create Chart.js chart
+        loadAAPLChartJsChart();
+    }
+    
+    async function loadAAPLChartJsChart() {
+        try {
+            console.log('📈 Loading AAPL data for Chart.js fallback...');
             
-            // Try to load current AAPL price for fallback display
-            fetch('/api/market/AAPL?period=current')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.price) {
-                        const priceElement = container.querySelector('[data-symbol="AAPL"][data-field="price"]');
-                        if (priceElement) {
-                            priceElement.textContent = `$${data.price.toFixed(2)}`;
+            // Show loading state
+            const canvas = document.getElementById('aaplChart');
+            if (!canvas) {
+                console.error('Chart canvas not found');
+                return;
+            }
+            
+            const ctx = canvas.getContext('2d');
+            
+            // Show loading message
+            ctx.fillStyle = '#6b7280';
+            ctx.font = '16px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('Loading AAPL chart data...', canvas.width / 2, canvas.height / 2);
+            
+            // Fetch AAPL historical data
+            const response = await fetch('/api/market/AAPL?period=1mo');
+            const data = await response.json();
+            
+            if (!data.data || !Array.isArray(data.data)) {
+                throw new Error('Invalid chart data received');
+            }
+            
+            // Prepare data for Chart.js
+            const chartData = data.data.slice(-30);
+            const labels = chartData.map(item => {
+                const date = new Date(item.Date || item.date);
+                return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            });
+            const prices = chartData.map(item => parseFloat(item.Close || item.close || item.price));
+            
+            // Create Chart.js chart
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'AAPL Price',
+                        data: prices,
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'AAPL - Apple Inc. (30 Day Chart)',
+                            font: {
+                                size: 16,
+                                weight: 'bold'
+                            }
+                        },
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return 'Price: $' + context.parsed.y.toFixed(2);
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Date'
+                            },
+                            ticks: {
+                                maxTicksLimit: 8
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Price ($)'
+                            },
+                            ticks: {
+                                callback: function(value) {
+                                    return '$' + value.toFixed(2);
+                                }
+                            }
+                        }
+                    },
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    elements: {
+                        point: {
+                            radius: 3,
+                            hoverRadius: 6
                         }
                     }
-                })
-                .catch(error => {
-                    console.error('Failed to load AAPL price for fallback:', error);
-                    const priceElement = container.querySelector('[data-symbol="AAPL"][data-field="price"]');
-                    if (priceElement) {
-                        priceElement.textContent = 'Unavailable';
-                        priceElement.classList.remove('text-green-600');
-                        priceElement.classList.add('text-gray-500');
-                    }
-                });
+                }
+            });
+            
+            console.log('✅ Chart.js fallback chart created successfully');
+            
+        } catch (error) {
+            console.error('❌ Failed to create Chart.js fallback:', error);
+            
+            // Show error message in canvas
+            const canvas = document.getElementById('aaplChart');
+            if (canvas) {
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                // Error state
+                ctx.fillStyle = '#ef4444';
+                ctx.font = 'bold 18px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('📊 Chart Unavailable', canvas.width / 2, canvas.height / 2 - 20);
+                
+                ctx.fillStyle = '#6b7280';
+                ctx.font = '14px sans-serif';
+                ctx.fillText('Unable to load market data', canvas.width / 2, canvas.height / 2 + 10);
+                
+                ctx.fillStyle = '#3b82f6';
+                ctx.font = '12px sans-serif';
+                ctx.fillText('Click here to view on Yahoo Finance', canvas.width / 2, canvas.height / 2 + 40);
+                
+                // Make canvas clickable
+                canvas.style.cursor = 'pointer';
+                canvas.onclick = () => {
+                    window.open('https://finance.yahoo.com/quote/AAPL', '_blank');
+                };
+            }
         }
     }
     
-    // Start loading TradingView script
+    // Start loading TradingView script, but also prepare fallback immediately
+    // Show fallback after 3 seconds if TradingView hasn't loaded
+    setTimeout(() => {
+        if (typeof TradingView === 'undefined') {
+            console.log('⏰ TradingView taking too long, showing fallback immediately');
+            showFallbackChart();
+        }
+    }, 3000);
+    
+    // Try to load TradingView, but don't block the user experience
     loadTradingViewScript('https://s3.tradingview.com/tv.js');
 });
 
