@@ -240,14 +240,56 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             request.url.scheme == 'https'):
             response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
         
-        # Basic CSP (Content Security Policy) - Permissive for CDNs while maintaining security
+        # Enhanced CSP (Content Security Policy) - Supports TradingView widgets and CDNs
+        # TradingView widgets require:
+        # - script-src: for widget JavaScript from s3.tradingview.com and s.tradingview.com
+        # - frame-src/child-src: for widget iframes that display charts
+        # - connect-src: for real-time data connections including WebSocket (wss://)
+        # - img-src: for chart images and icons
+        # - worker-src: for background processing in widgets
         csp_policy = (
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https: http:; "
-            "style-src 'self' 'unsafe-inline' https: http:; "
-            "img-src 'self' data: https: http:; "
-            "font-src 'self' https: http: data:; "
-            "connect-src 'self' https: http:; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' "
+                "https://s3.tradingview.com "
+                "https://s.tradingview.com "
+                "https://cdn.jsdelivr.net "
+                "https://cdnjs.cloudflare.com "
+                "https://cdn.tailwindcss.com "
+                "https://cdn.plot.ly "
+                "https://cdn.jsdelivr.net "
+                "https:; "
+            "style-src 'self' 'unsafe-inline' "
+                "https://cdnjs.cloudflare.com "
+                "https://fonts.googleapis.com "
+                "https:; "
+            "img-src 'self' data: blob: "
+                "https://s3.tradingview.com "
+                "https://s.tradingview.com "
+                "https://ui-avatars.com "
+                "https:; "
+            "font-src 'self' "
+                "https://cdnjs.cloudflare.com "
+                "https://fonts.gstatic.com "
+                "https: data:; "
+            "connect-src 'self' "
+                "https://s3.tradingview.com "
+                "https://s.tradingview.com "
+                "https://prodata.tradingview.com "
+                "https://symbol-search.tradingview.com "
+                "wss://data.tradingview.com "
+                "wss://prodata.tradingview.com "
+                "https:; "
+            "frame-src "
+                "https://s.tradingview.com "
+                "https://www.tradingview.com "
+                "https://charting-library.tradingview.com "
+                "https://embed.tradingview.com; "
+            "child-src "
+                "https://s.tradingview.com "
+                "https://www.tradingview.com "
+                "https://charting-library.tradingview.com "
+                "https://embed.tradingview.com; "
+            "worker-src 'self' blob:; "
             "frame-ancestors 'none';"
         )
         response.headers['Content-Security-Policy'] = csp_policy
