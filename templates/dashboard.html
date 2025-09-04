@@ -274,26 +274,123 @@ document.addEventListener('DOMContentLoaded', function() {
         startPriceUpdates(marketSymbols);
     }
     
-    // Load TradingView script and initialize AAPL widget
+    // Load TradingView script and initialize AAPL widget with improved error handling
     console.log('📊 Loading TradingView for Dashboard AAPL widget...');
     
-    const script = document.createElement('script');
-    script.src = 'https://s3.tradingview.com/tv.js';
-    script.onload = function() {
-        console.log('✅ TradingView script loaded for Dashboard, initializing AAPL widget...');
-        // Initialize widget after script loads
+    // Check if TradingView script is already loaded
+    if (typeof TradingView !== 'undefined') {
+        console.log('✅ TradingView already loaded, initializing widget...');
         setTimeout(() => {
             initDashboardAAPLWidget();
-        }, 1000);
-    };
-    script.onerror = function() {
-        console.error('❌ Failed to load TradingView script for Dashboard');
+        }, 100);
+        return;
+    }
+    
+    // Load TradingView script with multiple fallback options
+    function loadTradingViewScript(scriptUrl, isRetry = false) {
+        const script = document.createElement('script');
+        script.src = scriptUrl;
+        script.async = true;
+        script.crossOrigin = 'anonymous';
+        
+        script.onload = function() {
+            console.log('✅ TradingView script loaded from:', scriptUrl);
+            // Wait a bit longer for the API to be fully available
+            setTimeout(() => {
+                if (typeof TradingView !== 'undefined') {
+                    initDashboardAAPLWidget();
+                } else {
+                    console.warn('⚠️ TradingView object not available after script load');
+                    showFallbackChart();
+                }
+            }, 1500);
+        };
+        
+        script.onerror = function() {
+            console.error('❌ Failed to load TradingView script from:', scriptUrl);
+            
+            // Try alternative CDN if this is the first attempt
+            if (!isRetry && scriptUrl.includes('s3.tradingview.com')) {
+                console.log('🔄 Trying alternative TradingView CDN...');
+                loadTradingViewScript('https://s.tradingview.com/tv.js', true);
+            } else {
+                // All attempts failed, show fallback
+                showFallbackChart();
+            }
+        };
+        
+        // Set timeout for script loading
+        setTimeout(() => {
+            if (typeof TradingView === 'undefined') {
+                console.warn('⏰ TradingView script loading timeout');
+                if (!isRetry) {
+                    loadTradingViewScript('https://s.tradingview.com/tv.js', true);
+                } else {
+                    showFallbackChart();
+                }
+            }
+        }, 10000); // 10 second timeout
+        
+        document.head.appendChild(script);
+    }
+    
+    function showFallbackChart() {
+        console.log('📊 Showing fallback chart interface...');
         const container = document.getElementById('dashboard_tradingview_aapl');
         if (container) {
-            container.innerHTML = '<div class="flex items-center justify-center h-full text-gray-500"><div class="text-center"><i class="fas fa-exclamation-triangle text-4xl mb-4"></i><p>Unable to load market chart</p></div></div>';
+            container.innerHTML = `
+                <div class="flex items-center justify-center h-full bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+                    <div class="text-center p-6">
+                        <i class="fas fa-chart-line text-4xl text-gray-400 mb-4"></i>
+                        <h3 class="text-lg font-medium text-gray-900 mb-2">Market Chart</h3>
+                        <p class="text-gray-500 mb-4">Interactive chart temporarily unavailable</p>
+                        <div class="space-y-2 text-sm text-gray-600">
+                            <div class="flex justify-between items-center">
+                                <span>AAPL Current Price:</span>
+                                <span class="font-semibold text-green-600" data-symbol="AAPL" data-field="price">Loading...</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span>Market Status:</span>
+                                <span class="text-blue-600">Live</span>
+                            </div>
+                        </div>
+                        <button onclick="window.location.reload()" 
+                                class="mt-4 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium">
+                            <i class="fas fa-refresh mr-2"></i>Retry Chart
+                        </button>
+                        <a href="https://finance.yahoo.com/quote/AAPL" target="_blank" 
+                           class="ml-2 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md text-sm font-medium">
+                            <i class="fas fa-external-link-alt mr-2"></i>View on Yahoo Finance
+                        </a>
+                    </div>
+                </div>
+            `;
+            
+            // Try to load current AAPL price for fallback display
+            fetch('/api/market/AAPL?period=current')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.price) {
+                        const priceElement = container.querySelector('[data-symbol="AAPL"][data-field="price"]');
+                        if (priceElement) {
+                            priceElement.textContent = `$${data.price.toFixed(2)}`;
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Failed to load AAPL price for fallback:', error);
+                    const priceElement = container.querySelector('[data-symbol="AAPL"][data-field="price"]');
+                    if (priceElement) {
+                        priceElement.textContent = 'Unavailable';
+                        priceElement.classList.remove('text-green-600');
+                        priceElement.classList.add('text-gray-500');
+                    }
+                });
         }
-    };
-    document.head.appendChild(script);
+    }
+    
+    // Start loading TradingView script
+    loadTradingViewScript('https://s3.tradingview.com/tv.js');
 });
 
 async function refreshMarketData() {
@@ -322,12 +419,26 @@ async function refreshMarketData() {
     }
 }
 
-// Initialize TradingView AAPL Widget for Dashboard
+// Initialize TradingView AAPL Widget for Dashboard with enhanced error handling
 function initDashboardAAPLWidget() {
     try {
         console.log('🍎 Initializing Dashboard AAPL TradingView widget...');
         
-        new TradingView.widget({
+        // Double-check TradingView is available
+        if (typeof TradingView === 'undefined' || !TradingView.widget) {
+            throw new Error('TradingView widget constructor not available');
+        }
+        
+        const container = document.getElementById('dashboard_tradingview_aapl');
+        if (!container) {
+            throw new Error('TradingView container not found');
+        }
+        
+        // Clear container first
+        container.innerHTML = '<div class="flex items-center justify-center h-full"><div class="text-center"><i class="fas fa-spinner fa-spin text-2xl text-blue-600 mb-2"></i><p class="text-sm text-gray-600">Loading chart...</p></div></div>';
+        
+        // Initialize widget with error callback
+        const widget = new TradingView.widget({
             "autosize": true,
             "symbol": "NASDAQ:AAPL",
             "interval": "D",
@@ -347,19 +458,29 @@ function initDashboardAAPLWidget() {
             "popup_width": "1000",
             "popup_height": "650",
             "details": true,
-            "calendar": false
+            "calendar": false,
+            "loading_screen": {
+                "backgroundColor": "#ffffff",
+                "foregroundColor": "#6366f1"
+            }
         });
         
-        console.log('✅ Dashboard AAPL TradingView widget initialized successfully');
+        // Set timeout to check if widget loaded successfully
+        setTimeout(() => {
+            const widgetContainer = document.getElementById('dashboard_tradingview_aapl');
+            if (widgetContainer && widgetContainer.innerHTML.includes('Loading chart...')) {
+                console.warn('⚠️ TradingView widget may have failed to load, showing fallback');
+                showFallbackChart();
+            } else {
+                console.log('✅ Dashboard AAPL TradingView widget loaded successfully');
+            }
+        }, 15000); // 15 second timeout
+        
+        console.log('✅ Dashboard AAPL TradingView widget initialization started');
         
     } catch (error) {
         console.error('❌ Error initializing Dashboard AAPL widget:', error);
-        
-        // Fallback: show error message
-        const container = document.getElementById('dashboard_tradingview_aapl');
-        if (container) {
-            container.innerHTML = '<div class="flex items-center justify-center h-full text-gray-500"><div class="text-center"><i class="fas fa-chart-line text-4xl mb-4"></i><p>Chart temporarily unavailable</p><button onclick="window.location.reload()" class="mt-2 bg-blue-600 text-white px-4 py-2 rounded">Retry</button></div></div>';
-        }
+        showFallbackChart();
     }
 }
 
