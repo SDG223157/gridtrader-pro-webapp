@@ -1763,12 +1763,31 @@ async def portfolio_detail(portfolio_id: str, request: Request, db: Session = De
     # Get holdings, transactions, and grid allocations for display
     holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio_id).all()
     
-    # Get transaction limit from query params (default: show all, but allow limiting for performance)
-    transaction_limit = request.query_params.get("limit")
-    if transaction_limit and transaction_limit.isdigit():
-        transactions = db.query(Transaction).filter(Transaction.portfolio_id == portfolio_id).order_by(Transaction.executed_at.desc()).limit(int(transaction_limit)).all()
-    else:
-        transactions = db.query(Transaction).filter(Transaction.portfolio_id == portfolio_id).order_by(Transaction.executed_at.desc()).all()
+    # Pagination for transactions
+    page = int(request.query_params.get("page", 1))
+    per_page = int(request.query_params.get("per_page", 20))  # Default 20 transactions per page
+    offset = (page - 1) * per_page
+    
+    # Get total transaction count for pagination
+    total_transactions = db.query(Transaction).filter(Transaction.portfolio_id == portfolio_id).count()
+    total_pages = (total_transactions + per_page - 1) // per_page
+    
+    # Get paginated transactions
+    transactions = db.query(Transaction).filter(
+        Transaction.portfolio_id == portfolio_id
+    ).order_by(Transaction.executed_at.desc()).offset(offset).limit(per_page).all()
+    
+    # Pagination info
+    pagination_info = {
+        "current_page": page,
+        "per_page": per_page,
+        "total_transactions": total_transactions,
+        "total_pages": total_pages,
+        "has_prev": page > 1,
+        "has_next": page < total_pages,
+        "prev_page": page - 1 if page > 1 else None,
+        "next_page": page + 1 if page < total_pages else None
+    }
     
     # Calculate grid allocations total
     active_grids = db.query(Grid).filter(
@@ -1782,6 +1801,7 @@ async def portfolio_detail(portfolio_id: str, request: Request, db: Session = De
         "portfolio": portfolio,
         "holdings": holdings,
         "transactions": transactions,
+        "pagination": pagination_info,
         "grid_allocations": grid_allocations,
         "active_grids": active_grids,
         "grid_count": len(active_grids)
@@ -1813,12 +1833,31 @@ async def portfolio_detail_fast(portfolio_id: str, request: Request, db: Session
     # Get holdings, transactions, and grid allocations for display
     holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio_id).all()
     
-    # Get transaction limit from query params (default: show all for fast view)
-    transaction_limit = request.query_params.get("limit")
-    if transaction_limit and transaction_limit.isdigit():
-        transactions = db.query(Transaction).filter(Transaction.portfolio_id == portfolio_id).order_by(desc(Transaction.created_at)).limit(int(transaction_limit)).all()
-    else:
-        transactions = db.query(Transaction).filter(Transaction.portfolio_id == portfolio_id).order_by(desc(Transaction.created_at)).all()
+    # Pagination for transactions (fast view)
+    page = int(request.query_params.get("page", 1))
+    per_page = int(request.query_params.get("per_page", 20))  # Default 20 transactions per page
+    offset = (page - 1) * per_page
+    
+    # Get total transaction count for pagination
+    total_transactions = db.query(Transaction).filter(Transaction.portfolio_id == portfolio_id).count()
+    total_pages = (total_transactions + per_page - 1) // per_page
+    
+    # Get paginated transactions
+    transactions = db.query(Transaction).filter(
+        Transaction.portfolio_id == portfolio_id
+    ).order_by(desc(Transaction.created_at)).offset(offset).limit(per_page).all()
+    
+    # Pagination info
+    pagination_info = {
+        "current_page": page,
+        "per_page": per_page,
+        "total_transactions": total_transactions,
+        "total_pages": total_pages,
+        "has_prev": page > 1,
+        "has_next": page < total_pages,
+        "prev_page": page - 1 if page > 1 else None,
+        "next_page": page + 1 if page < total_pages else None
+    }
     
     # Get grid allocations
     active_grids = db.query(Grid).filter(
@@ -1832,6 +1871,7 @@ async def portfolio_detail_fast(portfolio_id: str, request: Request, db: Session
         "portfolio": portfolio,
         "holdings": holdings,
         "transactions": transactions,
+        "pagination": pagination_info,
         "grid_allocations": grid_allocations,
         "active_grids": active_grids,
         "grid_count": len(active_grids),
@@ -1857,6 +1897,69 @@ async def add_transaction_page(portfolio_id: str, request: Request, db: Session 
     
     context["portfolio"] = portfolio
     return templates.TemplateResponse("add_transaction.html", {"request": request, **context})
+
+@app.get("/api/portfolios/{portfolio_id}/transactions")
+async def get_portfolio_transactions(
+    portfolio_id: str, 
+    page: int = 1, 
+    per_page: int = 20,
+    user: User = Depends(require_auth), 
+    db: Session = Depends(get_db)
+):
+    """Get paginated transactions for a portfolio"""
+    try:
+        # Verify portfolio ownership
+        portfolio = db.query(Portfolio).filter(
+            Portfolio.id == portfolio_id,
+            Portfolio.user_id == user.id
+        ).first()
+        
+        if not portfolio:
+            raise HTTPException(status_code=404, detail="Portfolio not found")
+        
+        # Pagination logic
+        offset = (page - 1) * per_page
+        total_transactions = db.query(Transaction).filter(Transaction.portfolio_id == portfolio_id).count()
+        total_pages = (total_transactions + per_page - 1) // per_page
+        
+        # Get paginated transactions
+        transactions = db.query(Transaction).filter(
+            Transaction.portfolio_id == portfolio_id
+        ).order_by(Transaction.executed_at.desc()).offset(offset).limit(per_page).all()
+        
+        # Format transaction data
+        transaction_data = []
+        for transaction in transactions:
+            transaction_data.append({
+                "id": transaction.id,
+                "symbol": transaction.symbol,
+                "transaction_type": transaction.transaction_type.value,
+                "quantity": float(transaction.quantity),
+                "price": float(transaction.price),
+                "total_amount": float(transaction.total_amount),
+                "fees": float(transaction.fees or 0),
+                "notes": transaction.notes or "",
+                "executed_at": transaction.executed_at.isoformat(),
+                "created_at": transaction.created_at.isoformat()
+            })
+        
+        return {
+            "transactions": transaction_data,
+            "pagination": {
+                "current_page": page,
+                "per_page": per_page,
+                "total_transactions": total_transactions,
+                "total_pages": total_pages,
+                "has_prev": page > 1,
+                "has_next": page < total_pages
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Get portfolio transactions error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get transactions")
 
 @app.post("/api/transactions")
 async def create_transaction(request: CreateTransactionRequest, user: User = Depends(require_auth), db: Session = Depends(get_db)):
