@@ -1760,19 +1760,50 @@ async def portfolio_detail(portfolio_id: str, request: Request, db: Session = De
     
     db.commit()
     
-    # Pagination for holdings
+    # Pagination and sorting for holdings
     holdings_page = int(request.query_params.get("holdings_page", 1))
     holdings_per_page = int(request.query_params.get("holdings_per_page", 20))  # Default 20 holdings per page
     holdings_offset = (holdings_page - 1) * holdings_per_page
+    
+    # Sorting parameters
+    sort_by = request.query_params.get("sort_by", "symbol")  # Default sort by symbol
+    sort_order = request.query_params.get("sort_order", "asc")  # Default ascending
     
     # Get total holdings count for pagination
     total_holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio_id).count()
     holdings_total_pages = (total_holdings + holdings_per_page - 1) // holdings_per_page
     
-    # Get paginated holdings
-    holdings = db.query(Holding).filter(
-        Holding.portfolio_id == portfolio_id
-    ).order_by(Holding.symbol).offset(holdings_offset).limit(holdings_per_page).all()
+    # Build query with sorting
+    holdings_query = db.query(Holding).filter(Holding.portfolio_id == portfolio_id)
+    
+    # Apply sorting
+    if sort_by == "symbol":
+        holdings_query = holdings_query.order_by(Holding.symbol.desc() if sort_order == "desc" else Holding.symbol.asc())
+    elif sort_by == "quantity":
+        holdings_query = holdings_query.order_by(Holding.quantity.desc() if sort_order == "desc" else Holding.quantity.asc())
+    elif sort_by == "average_cost":
+        holdings_query = holdings_query.order_by(Holding.average_cost.desc() if sort_order == "desc" else Holding.average_cost.asc())
+    elif sort_by == "current_price":
+        holdings_query = holdings_query.order_by(Holding.current_price.desc() if sort_order == "desc" else Holding.current_price.asc())
+    elif sort_by == "market_value":
+        # Sort by calculated market value (quantity * current_price)
+        holdings_query = holdings_query.order_by(
+            (Holding.quantity * Holding.current_price).desc() if sort_order == "desc" 
+            else (Holding.quantity * Holding.current_price).asc()
+        )
+    elif sort_by == "pnl":
+        # Sort by calculated P&L ((quantity * current_price) - (quantity * average_cost))
+        holdings_query = holdings_query.order_by(
+            ((Holding.quantity * Holding.current_price) - (Holding.quantity * Holding.average_cost)).desc() 
+            if sort_order == "desc" 
+            else ((Holding.quantity * Holding.current_price) - (Holding.quantity * Holding.average_cost)).asc()
+        )
+    else:
+        # Default to symbol sorting
+        holdings_query = holdings_query.order_by(Holding.symbol.asc())
+    
+    # Get paginated holdings with sorting
+    holdings = holdings_query.offset(holdings_offset).limit(holdings_per_page).all()
     
     # Holdings pagination info
     holdings_pagination_info = {
@@ -1783,7 +1814,9 @@ async def portfolio_detail(portfolio_id: str, request: Request, db: Session = De
         "has_prev": holdings_page > 1,
         "has_next": holdings_page < holdings_total_pages,
         "prev_page": holdings_page - 1 if holdings_page > 1 else None,
-        "next_page": holdings_page + 1 if holdings_page < holdings_total_pages else None
+        "next_page": holdings_page + 1 if holdings_page < holdings_total_pages else None,
+        "sort_by": sort_by,
+        "sort_order": sort_order
     }
     
     # Pagination for transactions
@@ -1854,19 +1887,50 @@ async def portfolio_detail_fast(portfolio_id: str, request: Request, db: Session
     portfolio.current_value = calculate_portfolio_value(portfolio, db)
     db.commit()
     
-    # Pagination for holdings (fast view)
+    # Pagination and sorting for holdings (fast view)
     holdings_page = int(request.query_params.get("holdings_page", 1))
     holdings_per_page = int(request.query_params.get("holdings_per_page", 20))  # Default 20 holdings per page
     holdings_offset = (holdings_page - 1) * holdings_per_page
+    
+    # Sorting parameters
+    sort_by = request.query_params.get("sort_by", "symbol")  # Default sort by symbol
+    sort_order = request.query_params.get("sort_order", "asc")  # Default ascending
     
     # Get total holdings count for pagination
     total_holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio_id).count()
     holdings_total_pages = (total_holdings + holdings_per_page - 1) // holdings_per_page
     
-    # Get paginated holdings
-    holdings = db.query(Holding).filter(
-        Holding.portfolio_id == portfolio_id
-    ).order_by(Holding.symbol).offset(holdings_offset).limit(holdings_per_page).all()
+    # Build query with sorting
+    holdings_query = db.query(Holding).filter(Holding.portfolio_id == portfolio_id)
+    
+    # Apply sorting
+    if sort_by == "symbol":
+        holdings_query = holdings_query.order_by(Holding.symbol.desc() if sort_order == "desc" else Holding.symbol.asc())
+    elif sort_by == "quantity":
+        holdings_query = holdings_query.order_by(Holding.quantity.desc() if sort_order == "desc" else Holding.quantity.asc())
+    elif sort_by == "average_cost":
+        holdings_query = holdings_query.order_by(Holding.average_cost.desc() if sort_order == "desc" else Holding.average_cost.asc())
+    elif sort_by == "current_price":
+        holdings_query = holdings_query.order_by(Holding.current_price.desc() if sort_order == "desc" else Holding.current_price.asc())
+    elif sort_by == "market_value":
+        # Sort by calculated market value (quantity * current_price)
+        holdings_query = holdings_query.order_by(
+            (Holding.quantity * Holding.current_price).desc() if sort_order == "desc" 
+            else (Holding.quantity * Holding.current_price).asc()
+        )
+    elif sort_by == "pnl":
+        # Sort by calculated P&L ((quantity * current_price) - (quantity * average_cost))
+        holdings_query = holdings_query.order_by(
+            ((Holding.quantity * Holding.current_price) - (Holding.quantity * Holding.average_cost)).desc() 
+            if sort_order == "desc" 
+            else ((Holding.quantity * Holding.current_price) - (Holding.quantity * Holding.average_cost)).asc()
+        )
+    else:
+        # Default to symbol sorting
+        holdings_query = holdings_query.order_by(Holding.symbol.asc())
+    
+    # Get paginated holdings with sorting
+    holdings = holdings_query.offset(holdings_offset).limit(holdings_per_page).all()
     
     # Holdings pagination info
     holdings_pagination_info = {
@@ -1877,7 +1941,9 @@ async def portfolio_detail_fast(portfolio_id: str, request: Request, db: Session
         "has_prev": holdings_page > 1,
         "has_next": holdings_page < holdings_total_pages,
         "prev_page": holdings_page - 1 if holdings_page > 1 else None,
-        "next_page": holdings_page + 1 if holdings_page < holdings_total_pages else None
+        "next_page": holdings_page + 1 if holdings_page < holdings_total_pages else None,
+        "sort_by": sort_by,
+        "sort_order": sort_order
     }
     
     # Pagination for transactions (fast view)
