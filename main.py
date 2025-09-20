@@ -501,7 +501,7 @@ def normalize_symbol_for_yfinance(symbol: str) -> str:
 
 # Price cache to avoid rate limiting
 price_cache = {}
-cache_duration = 300  # 5 minutes
+cache_duration = 1800  # 30 minutes - increased for better performance
 
 # Auto-update configuration (like TrendWise)
 auto_update_enabled = True
@@ -656,9 +656,9 @@ def update_holdings_current_prices(db: Session, portfolio_id: str = None):
         updated_count = 0
         
         for i, holding in enumerate(holdings):
-            # Add delay between requests to avoid rate limiting
-            if i > 0:
-                time.sleep(2)  # 2-second delay between requests
+            # Reduced delay for better performance - only for large portfolios
+            if i > 0 and len(holdings) > 10:
+                time.sleep(0.1)  # Reduced to 0.1 second for large portfolios
             
             # Try TrendWise's exact pattern
             current_price = get_current_stock_price_trendwise_pattern(holding.symbol)
@@ -1748,8 +1748,12 @@ async def portfolio_detail(portfolio_id: str, request: Request, db: Session = De
     if not portfolio:
         raise HTTPException(status_code=404, detail="Portfolio not found")
     
-    # Update current prices from existing data provider before displaying
-    update_holdings_current_prices(db, portfolio_id)
+    # Check if price update is requested (optional parameter for performance)
+    update_prices = request.query_params.get("update_prices", "false").lower() == "true"
+    
+    if update_prices:
+        # Update current prices from existing data provider before displaying
+        update_holdings_current_prices(db, portfolio_id)
     
     # Recalculate portfolio value with updated prices INCLUDING grid allocations
     portfolio.current_value = calculate_portfolio_value(portfolio, db)
@@ -1775,6 +1779,51 @@ async def portfolio_detail(portfolio_id: str, request: Request, db: Session = De
         "grid_allocations": grid_allocations,
         "active_grids": active_grids,
         "grid_count": len(active_grids)
+    })
+    
+    return templates.TemplateResponse("portfolio_detail.html", {"request": request, **context})
+
+@app.get("/portfolios/{portfolio_id}/fast", response_class=HTMLResponse)
+async def portfolio_detail_fast(portfolio_id: str, request: Request, db: Session = Depends(get_db)):
+    """Fast portfolio detail view without price updates"""
+    context = get_user_context(request, db)
+    if not context["is_authenticated"]:
+        return RedirectResponse(url="/login", status_code=302)
+    
+    # Get portfolio with ownership check
+    portfolio = db.query(Portfolio).filter(
+        Portfolio.id == portfolio_id,
+        Portfolio.user_id == context["user"].id
+    ).first()
+    
+    if not portfolio:
+        raise HTTPException(status_code=404, detail="Portfolio not found")
+    
+    # Skip price updates for fast loading
+    # Recalculate portfolio value with existing prices
+    portfolio.current_value = calculate_portfolio_value(portfolio, db)
+    db.commit()
+    
+    # Get holdings, transactions, and grid allocations for display
+    holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio_id).all()
+    transactions = db.query(Transaction).filter(Transaction.portfolio_id == portfolio_id).order_by(desc(Transaction.created_at)).limit(10).all()
+    
+    # Get grid allocations
+    active_grids = db.query(Grid).filter(
+        Grid.portfolio_id == portfolio_id,
+        Grid.status == GridStatus.active
+    ).all()
+    
+    grid_allocations = sum([float(grid.investment_amount) for grid in active_grids])
+    
+    context.update({
+        "portfolio": portfolio,
+        "holdings": holdings,
+        "transactions": transactions,
+        "grid_allocations": grid_allocations,
+        "active_grids": active_grids,
+        "grid_count": len(active_grids),
+        "fast_mode": True  # Indicate this is fast mode
     })
     
     return templates.TemplateResponse("portfolio_detail.html", {"request": request, **context})
@@ -2805,6 +2854,28 @@ async def health_check():
 async def security_status():
     """Get current security middleware status"""
     return get_security_status()
+
+@app.post("/debug/security/clear-blocks")
+async def clear_security_blocks():
+    """Clear all blocked IPs (for debugging/emergency)"""
+    try:
+        from security_middleware import clear_rate_limits
+        clear_rate_limits()
+        return {"status": "✅ All rate limits and blocks cleared"}
+    except Exception as e:
+        logger.error(f"Error clearing security blocks: {e}")
+        return {"status": f"❌ Error: {e}"}
+
+@app.post("/debug/security/unblock/{ip}")
+async def unblock_specific_ip(ip: str):
+    """Unblock a specific IP address"""
+    try:
+        from security_middleware import unblock_ip
+        unblock_ip(ip)
+        return {"status": f"✅ IP {ip} unblocked"}
+    except Exception as e:
+        logger.error(f"Error unblocking IP {ip}: {e}")
+        return {"status": f"❌ Error: {e}"}
 
 @app.get("/debug/session")
 async def debug_session(request: Request):

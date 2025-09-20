@@ -44,12 +44,29 @@ class SecurityManager:
         
         # Rate limiting configuration
         self.RATE_LIMIT_WINDOW = 60  # 1 minute
-        self.MAX_REQUESTS_PER_MINUTE = 100
-        self.MAX_404_REQUESTS_PER_MINUTE = 10
-        self.BLOCK_DURATION = 300  # 5 minutes
+        self.MAX_REQUESTS_PER_MINUTE = 200  # Increased for MCP server usage
+        self.MAX_404_REQUESTS_PER_MINUTE = 50  # Increased for development/testing
+        self.BLOCK_DURATION = 120  # Reduced to 2 minutes
         
-        # Whitelist for localhost and health checks
+        # Whitelist for localhost, health checks, and trusted IPs
         self.whitelisted_ips = {'127.0.0.1', '::1'}
+        
+        # Additional trusted IP ranges (Cloudflare, common CDNs)
+        self.trusted_ip_ranges = [
+            '104.16.0.0/12',    # Cloudflare
+            '172.64.0.0/13',    # Cloudflare
+            '108.162.192.0/18', # Cloudflare
+            '198.41.128.0/17',  # Cloudflare
+            '173.245.48.0/20',  # Cloudflare
+            '103.21.244.0/22',  # Cloudflare
+            '103.22.200.0/22',  # Cloudflare
+            '103.31.4.0/22',    # Cloudflare
+            '141.101.64.0/18',  # Cloudflare
+            '188.114.96.0/20',  # Cloudflare
+            '190.93.240.0/20',  # Cloudflare
+            '197.234.240.0/22', # Cloudflare
+            '198.41.128.0/17',  # Cloudflare
+        ]
     
     def is_ip_whitelisted(self, ip: str) -> bool:
         """Check if IP is whitelisted"""
@@ -61,6 +78,12 @@ class SecurityManager:
             ip_obj = ipaddress.ip_address(ip)
             if ip_obj.is_private:
                 return True
+            
+            # Check trusted IP ranges (Cloudflare, CDNs)
+            for ip_range in self.trusted_ip_ranges:
+                if ip_obj in ipaddress.ip_network(ip_range):
+                    return True
+                    
         except ValueError:
             pass
         
@@ -79,11 +102,24 @@ class SecurityManager:
     def block_ip(self, ip: str, duration: Optional[int] = None):
         """Block an IP for specified duration"""
         if self.is_ip_whitelisted(ip):
+            logger.info(f"⚪ Skipping block for whitelisted IP {ip}")
             return
         
         duration = duration or self.BLOCK_DURATION
         self.blocked_ips[ip] = time.time() + duration
         logger.warning(f"🚫 Blocked IP {ip} for {duration} seconds due to suspicious activity")
+    
+    def unblock_ip(self, ip: str):
+        """Manually unblock an IP"""
+        if ip in self.blocked_ips:
+            del self.blocked_ips[ip]
+            logger.info(f"✅ Manually unblocked IP {ip}")
+        
+    def clear_all_blocks(self):
+        """Clear all blocked IPs (for debugging/reset)"""
+        blocked_count = len(self.blocked_ips)
+        self.blocked_ips.clear()
+        logger.info(f"🧹 Cleared {blocked_count} blocked IPs")
     
     def clean_old_requests(self, ip: str):
         """Remove old requests outside the rate limit window"""
@@ -93,7 +129,7 @@ class SecurityManager:
         while self.request_counts[ip] and self.request_counts[ip][0] < window_start:
             self.request_counts[ip].popleft()
     
-    def check_rate_limit(self, ip: str, is_404: bool = False) -> bool:
+    def check_rate_limit(self, ip: str, is_404: bool = False, is_authenticated: bool = False) -> bool:
         """Check if request should be rate limited"""
         if self.is_ip_whitelisted(ip):
             return False
@@ -107,13 +143,17 @@ class SecurityManager:
         # Count current requests
         request_count = len(self.request_counts[ip])
         
+        # Higher limits for authenticated requests
+        max_requests = self.MAX_REQUESTS_PER_MINUTE * 2 if is_authenticated else self.MAX_REQUESTS_PER_MINUTE
+        max_404_requests = self.MAX_404_REQUESTS_PER_MINUTE * 2 if is_authenticated else self.MAX_404_REQUESTS_PER_MINUTE
+        
         # Check limits
-        if is_404 and request_count >= self.MAX_404_REQUESTS_PER_MINUTE:
-            logger.warning(f"⚠️ Rate limit exceeded for 404s from IP {ip}: {request_count} requests")
+        if is_404 and request_count >= max_404_requests:
+            logger.warning(f"⚠️ Rate limit exceeded for 404s from IP {ip}: {request_count} requests (auth: {is_authenticated})")
             self.block_ip(ip)
             return True
-        elif request_count >= self.MAX_REQUESTS_PER_MINUTE:
-            logger.warning(f"⚠️ Rate limit exceeded from IP {ip}: {request_count} requests")
+        elif request_count >= max_requests:
+            logger.warning(f"⚠️ Rate limit exceeded from IP {ip}: {request_count} requests (auth: {is_authenticated})")
             self.block_ip(ip)
             return True
         
@@ -150,9 +190,12 @@ class RateLimitingMiddleware(BaseHTTPMiddleware):
         # Get client IP
         client_ip = self.get_client_ip(request)
         
+        # Check if request is authenticated (has valid Bearer token)
+        is_authenticated = self.is_request_authenticated(request)
+        
         # Check if request should be blocked
-        if security_manager.check_rate_limit(client_ip):
-            logger.warning(f"🚫 Rate limited request from {client_ip} to {request.url.path}")
+        if security_manager.check_rate_limit(client_ip, is_authenticated=is_authenticated):
+            logger.warning(f"🚫 Rate limited request from {client_ip} to {request.url.path} (auth: {is_authenticated})")
             return JSONResponse(
                 status_code=429,
                 content={"error": "Rate limit exceeded. Please try again later."}
@@ -164,9 +207,14 @@ class RateLimitingMiddleware(BaseHTTPMiddleware):
         # Update rate limiting based on response status
         if response.status_code == 404:
             # Check if this IP is making too many 404 requests
-            security_manager.check_rate_limit(client_ip, is_404=True)
+            security_manager.check_rate_limit(client_ip, is_404=True, is_authenticated=is_authenticated)
         
         return response
+    
+    def is_request_authenticated(self, request: Request) -> bool:
+        """Check if request has valid authentication"""
+        auth_header = request.headers.get("authorization")
+        return bool(auth_header and auth_header.startswith("Bearer "))
     
     def get_client_ip(self, request: Request) -> str:
         """Extract client IP from request"""
@@ -311,9 +359,15 @@ def get_security_status() -> Dict:
     
     # Count active blocks
     active_blocks = 0
+    blocked_ips_list = []
     for ip, unblock_time in security_manager.blocked_ips.items():
         if current_time < unblock_time:
             active_blocks += 1
+            blocked_ips_list.append({
+                "ip": ip,
+                "unblock_time": unblock_time,
+                "remaining_seconds": int(unblock_time - current_time)
+            })
     
     # Get request counts
     active_rate_limits = len([
@@ -323,10 +377,26 @@ def get_security_status() -> Dict:
     
     return {
         "active_blocked_ips": active_blocks,
+        "blocked_ips_details": blocked_ips_list,
         "active_rate_limited_ips": active_rate_limits,
         "total_tracked_ips": len(security_manager.request_counts),
         "rate_limit_window": security_manager.RATE_LIMIT_WINDOW,
         "max_requests_per_minute": security_manager.MAX_REQUESTS_PER_MINUTE,
+        "max_requests_per_minute_authenticated": security_manager.MAX_REQUESTS_PER_MINUTE * 2,
         "max_404_requests_per_minute": security_manager.MAX_404_REQUESTS_PER_MINUTE,
-        "block_duration": security_manager.BLOCK_DURATION
+        "max_404_requests_per_minute_authenticated": security_manager.MAX_404_REQUESTS_PER_MINUTE * 2,
+        "block_duration": security_manager.BLOCK_DURATION,
+        "whitelisted_ips": list(security_manager.whitelisted_ips),
+        "trusted_ip_ranges": security_manager.trusted_ip_ranges
     }
+
+# Utility functions for debugging/management
+def clear_rate_limits():
+    """Clear all rate limiting data (for debugging)"""
+    security_manager.clear_all_blocks()
+    security_manager.request_counts.clear()
+    logger.info("🧹 Cleared all rate limiting data")
+
+def unblock_ip(ip: str):
+    """Manually unblock a specific IP"""
+    security_manager.unblock_ip(ip)
