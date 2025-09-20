@@ -40,8 +40,11 @@
                 <div class="text-sm text-gray-600">Grid Allocations</div>
             </div>
             <div class="text-center">
-                <div class="text-lg font-semibold text-gray-900">{{ holdings|length }}</div>
+                <div class="text-lg font-semibold text-gray-900">{{ holdings_pagination.total_holdings if holdings_pagination else holdings|length }}</div>
                 <div class="text-sm text-gray-600">Holdings</div>
+                {% if holdings_pagination and holdings_pagination.total_pages > 1 %}
+                <div class="text-xs text-gray-500">Page {{ holdings_pagination.current_page }}/{{ holdings_pagination.total_pages }}</div>
+                {% endif %}
             </div>
             <div class="text-center">
                 <div class="text-lg font-semibold text-gray-900">{{ pagination.total_transactions if pagination else transactions|length }}</div>
@@ -114,6 +117,79 @@
                 </tbody>
             </table>
         </div>
+        
+        <!-- Holdings Pagination Controls -->
+        {% if holdings_pagination.total_pages > 1 %}
+        <div class="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
+            <div class="flex-1 flex justify-between sm:hidden">
+                {% if holdings_pagination.has_prev %}
+                <a href="?holdings_page={{ holdings_pagination.prev_page }}&holdings_per_page={{ holdings_pagination.per_page }}" 
+                   class="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                    Previous
+                </a>
+                {% endif %}
+                {% if holdings_pagination.has_next %}
+                <a href="?holdings_page={{ holdings_pagination.next_page }}&holdings_per_page={{ holdings_pagination.per_page }}" 
+                   class="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                    Next
+                </a>
+                {% endif %}
+            </div>
+            <div class="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                <div class="flex items-center space-x-4">
+                    <p class="text-sm text-gray-700">
+                        Showing <span class="font-medium">{{ ((holdings_pagination.current_page - 1) * holdings_pagination.per_page) + 1 }}</span>
+                        to <span class="font-medium">{{ holdings_pagination.current_page * holdings_pagination.per_page if holdings_pagination.current_page * holdings_pagination.per_page < holdings_pagination.total_holdings else holdings_pagination.total_holdings }}</span>
+                        of <span class="font-medium">{{ holdings_pagination.total_holdings }}</span> holdings
+                    </p>
+                    <select onchange="window.location.href='?holdings_page=1&holdings_per_page=' + this.value" 
+                            class="text-sm border border-gray-300 rounded px-2 py-1">
+                        <option value="10" {% if holdings_pagination.per_page == 10 %}selected{% endif %}>10 per page</option>
+                        <option value="20" {% if holdings_pagination.per_page == 20 %}selected{% endif %}>20 per page</option>
+                        <option value="50" {% if holdings_pagination.per_page == 50 %}selected{% endif %}>50 per page</option>
+                        <option value="{{ holdings_pagination.total_holdings }}" {% if holdings_pagination.per_page >= holdings_pagination.total_holdings %}selected{% endif %}>Show All</option>
+                    </select>
+                </div>
+                <div>
+                    <nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Holdings Pagination">
+                        {% if holdings_pagination.has_prev %}
+                        <a href="?holdings_page={{ holdings_pagination.prev_page }}&holdings_per_page={{ holdings_pagination.per_page }}" 
+                           class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
+                            <span class="sr-only">Previous</span>
+                            <i class="fas fa-chevron-left h-5 w-5"></i>
+                        </a>
+                        {% endif %}
+                        
+                        {% for page_num in range(1, holdings_pagination.total_pages + 1) %}
+                            {% if page_num == holdings_pagination.current_page %}
+                            <span class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-blue-50 text-sm font-medium text-blue-600">
+                                {{ page_num }}
+                            </span>
+                            {% elif page_num <= 3 or page_num > holdings_pagination.total_pages - 3 or (page_num >= holdings_pagination.current_page - 1 and page_num <= holdings_pagination.current_page + 1) %}
+                            <a href="?holdings_page={{ page_num }}&holdings_per_page={{ holdings_pagination.per_page }}" 
+                               class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50">
+                                {{ page_num }}
+                            </a>
+                            {% elif page_num == 4 and holdings_pagination.current_page > 5 %}
+                            <span class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">...</span>
+                            {% elif page_num == holdings_pagination.total_pages - 3 and holdings_pagination.current_page < holdings_pagination.total_pages - 4 %}
+                            <span class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">...</span>
+                            {% endif %}
+                        {% endfor %}
+                        
+                        {% if holdings_pagination.has_next %}
+                        <a href="?holdings_page={{ holdings_pagination.next_page }}&holdings_per_page={{ holdings_pagination.per_page }}" 
+                           class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
+                            <span class="sr-only">Next</span>
+                            <i class="fas fa-chevron-right h-5 w-5"></i>
+                        </a>
+                        {% endif %}
+                    </nav>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
         {% else %}
         <div class="text-center py-8">
             <i class="fas fa-chart-pie text-4xl text-gray-300 mb-4"></i>

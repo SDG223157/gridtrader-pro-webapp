@@ -1760,8 +1760,31 @@ async def portfolio_detail(portfolio_id: str, request: Request, db: Session = De
     
     db.commit()
     
-    # Get holdings, transactions, and grid allocations for display
-    holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio_id).all()
+    # Pagination for holdings
+    holdings_page = int(request.query_params.get("holdings_page", 1))
+    holdings_per_page = int(request.query_params.get("holdings_per_page", 20))  # Default 20 holdings per page
+    holdings_offset = (holdings_page - 1) * holdings_per_page
+    
+    # Get total holdings count for pagination
+    total_holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio_id).count()
+    holdings_total_pages = (total_holdings + holdings_per_page - 1) // holdings_per_page
+    
+    # Get paginated holdings
+    holdings = db.query(Holding).filter(
+        Holding.portfolio_id == portfolio_id
+    ).order_by(Holding.symbol).offset(holdings_offset).limit(holdings_per_page).all()
+    
+    # Holdings pagination info
+    holdings_pagination_info = {
+        "current_page": holdings_page,
+        "per_page": holdings_per_page,
+        "total_holdings": total_holdings,
+        "total_pages": holdings_total_pages,
+        "has_prev": holdings_page > 1,
+        "has_next": holdings_page < holdings_total_pages,
+        "prev_page": holdings_page - 1 if holdings_page > 1 else None,
+        "next_page": holdings_page + 1 if holdings_page < holdings_total_pages else None
+    }
     
     # Pagination for transactions
     page = int(request.query_params.get("page", 1))
@@ -1800,6 +1823,7 @@ async def portfolio_detail(portfolio_id: str, request: Request, db: Session = De
     context.update({
         "portfolio": portfolio,
         "holdings": holdings,
+        "holdings_pagination": holdings_pagination_info,
         "transactions": transactions,
         "pagination": pagination_info,
         "grid_allocations": grid_allocations,
@@ -1830,8 +1854,31 @@ async def portfolio_detail_fast(portfolio_id: str, request: Request, db: Session
     portfolio.current_value = calculate_portfolio_value(portfolio, db)
     db.commit()
     
-    # Get holdings, transactions, and grid allocations for display
-    holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio_id).all()
+    # Pagination for holdings (fast view)
+    holdings_page = int(request.query_params.get("holdings_page", 1))
+    holdings_per_page = int(request.query_params.get("holdings_per_page", 20))  # Default 20 holdings per page
+    holdings_offset = (holdings_page - 1) * holdings_per_page
+    
+    # Get total holdings count for pagination
+    total_holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio_id).count()
+    holdings_total_pages = (total_holdings + holdings_per_page - 1) // holdings_per_page
+    
+    # Get paginated holdings
+    holdings = db.query(Holding).filter(
+        Holding.portfolio_id == portfolio_id
+    ).order_by(Holding.symbol).offset(holdings_offset).limit(holdings_per_page).all()
+    
+    # Holdings pagination info
+    holdings_pagination_info = {
+        "current_page": holdings_page,
+        "per_page": holdings_per_page,
+        "total_holdings": total_holdings,
+        "total_pages": holdings_total_pages,
+        "has_prev": holdings_page > 1,
+        "has_next": holdings_page < holdings_total_pages,
+        "prev_page": holdings_page - 1 if holdings_page > 1 else None,
+        "next_page": holdings_page + 1 if holdings_page < holdings_total_pages else None
+    }
     
     # Pagination for transactions (fast view)
     page = int(request.query_params.get("page", 1))
@@ -1870,6 +1917,7 @@ async def portfolio_detail_fast(portfolio_id: str, request: Request, db: Session
     context.update({
         "portfolio": portfolio,
         "holdings": holdings,
+        "holdings_pagination": holdings_pagination_info,
         "transactions": transactions,
         "pagination": pagination_info,
         "grid_allocations": grid_allocations,
@@ -1897,6 +1945,73 @@ async def add_transaction_page(portfolio_id: str, request: Request, db: Session 
     
     context["portfolio"] = portfolio
     return templates.TemplateResponse("add_transaction.html", {"request": request, **context})
+
+@app.get("/api/portfolios/{portfolio_id}/holdings")
+async def get_portfolio_holdings(
+    portfolio_id: str, 
+    page: int = 1, 
+    per_page: int = 20,
+    user: User = Depends(require_auth), 
+    db: Session = Depends(get_db)
+):
+    """Get paginated holdings for a portfolio"""
+    try:
+        # Verify portfolio ownership
+        portfolio = db.query(Portfolio).filter(
+            Portfolio.id == portfolio_id,
+            Portfolio.user_id == user.id
+        ).first()
+        
+        if not portfolio:
+            raise HTTPException(status_code=404, detail="Portfolio not found")
+        
+        # Pagination logic
+        offset = (page - 1) * per_page
+        total_holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio_id).count()
+        total_pages = (total_holdings + per_page - 1) // per_page
+        
+        # Get paginated holdings
+        holdings = db.query(Holding).filter(
+            Holding.portfolio_id == portfolio_id
+        ).order_by(Holding.symbol).offset(offset).limit(per_page).all()
+        
+        # Format holdings data
+        holdings_data = []
+        for holding in holdings:
+            market_value = float(holding.quantity) * float(holding.current_price or 0)
+            cost_basis = float(holding.quantity) * float(holding.average_cost)
+            unrealized_pnl = market_value - cost_basis
+            pnl_percentage = (unrealized_pnl / cost_basis * 100) if cost_basis > 0 else 0
+            
+            holdings_data.append({
+                "symbol": holding.symbol,
+                "quantity": float(holding.quantity),
+                "average_cost": float(holding.average_cost),
+                "current_price": float(holding.current_price or 0),
+                "market_value": market_value,
+                "unrealized_pnl": unrealized_pnl,
+                "pnl_percentage": pnl_percentage,
+                "created_at": holding.created_at.isoformat(),
+                "updated_at": holding.updated_at.isoformat()
+            })
+        
+        return {
+            "holdings": holdings_data,
+            "pagination": {
+                "current_page": page,
+                "per_page": per_page,
+                "total_holdings": total_holdings,
+                "total_pages": total_pages,
+                "has_prev": page > 1,
+                "has_next": page < total_pages
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Get portfolio holdings error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get holdings")
 
 @app.get("/api/portfolios/{portfolio_id}/transactions")
 async def get_portfolio_transactions(
