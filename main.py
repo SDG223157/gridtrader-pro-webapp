@@ -1762,7 +1762,13 @@ async def portfolio_detail(portfolio_id: str, request: Request, db: Session = De
     
     # Get holdings, transactions, and grid allocations for display
     holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio_id).all()
-    transactions = db.query(Transaction).filter(Transaction.portfolio_id == portfolio_id).order_by(Transaction.executed_at.desc()).limit(20).all()
+    
+    # Get transaction limit from query params (default: show all, but allow limiting for performance)
+    transaction_limit = request.query_params.get("limit")
+    if transaction_limit and transaction_limit.isdigit():
+        transactions = db.query(Transaction).filter(Transaction.portfolio_id == portfolio_id).order_by(Transaction.executed_at.desc()).limit(int(transaction_limit)).all()
+    else:
+        transactions = db.query(Transaction).filter(Transaction.portfolio_id == portfolio_id).order_by(Transaction.executed_at.desc()).all()
     
     # Calculate grid allocations total
     active_grids = db.query(Grid).filter(
@@ -1806,7 +1812,13 @@ async def portfolio_detail_fast(portfolio_id: str, request: Request, db: Session
     
     # Get holdings, transactions, and grid allocations for display
     holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio_id).all()
-    transactions = db.query(Transaction).filter(Transaction.portfolio_id == portfolio_id).order_by(desc(Transaction.created_at)).limit(10).all()
+    
+    # Get transaction limit from query params (default: show all for fast view)
+    transaction_limit = request.query_params.get("limit")
+    if transaction_limit and transaction_limit.isdigit():
+        transactions = db.query(Transaction).filter(Transaction.portfolio_id == portfolio_id).order_by(desc(Transaction.created_at)).limit(int(transaction_limit)).all()
+    else:
+        transactions = db.query(Transaction).filter(Transaction.portfolio_id == portfolio_id).order_by(desc(Transaction.created_at)).all()
     
     # Get grid allocations
     active_grids = db.query(Grid).filter(
