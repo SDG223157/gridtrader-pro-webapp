@@ -2611,16 +2611,41 @@ async def create_initial_grid_orders(grid: Grid, current_price: float, db: Sessi
     """Create initial buy/sell orders for the grid strategy"""
     try:
         orders_created = 0
+        symbol = grid.symbol
         
-        for level in grid.strategy_config["grid_levels"]:
-            level_price = level["price"]
-            quantity = level["quantity"]
+        # Check if this is a China/HK stock (no short selling allowed)
+        is_china_hk_stock = (symbol.endswith('.SS') or symbol.endswith('.SZ') or symbol.endswith('.HK'))
+        
+        if is_china_hk_stock:
+            logger.info(f"🇨🇳 Creating China/HK grid for {symbol} - BUY orders only (no short selling)")
             
-            if quantity <= 0:
-                continue
+            # For China/HK stocks: Only create BUY orders below current price
+            buy_levels = []
+            for level in grid.strategy_config["grid_levels"]:
+                if level["price"] < current_price:
+                    buy_levels.append(level)
+            
+            if not buy_levels:
+                logger.warning(f"No buy levels below current price ${current_price} for {symbol}")
+                return
+            
+            # Recalculate allocation: distribute total investment across buy levels only
+            total_investment = float(grid.investment_amount)
+            investment_per_buy_level = total_investment / len(buy_levels)
+            
+            logger.info(f"💰 China/HK Grid Allocation:")
+            logger.info(f"   Total Investment: ${total_investment:,.2f}")
+            logger.info(f"   Buy Levels: {len(buy_levels)}")
+            logger.info(f"   Investment per Buy Level: ${investment_per_buy_level:,.2f}")
+            
+            for level in buy_levels:
+                level_price = level["price"]
+                # Recalculate quantity based on new allocation per level
+                quantity = investment_per_buy_level / level_price
                 
-            # Create buy orders below current price
-            if level_price < current_price:
+                if quantity <= 0:
+                    continue
+                
                 order = GridOrder(
                     grid_id=grid.id,
                     order_type=TransactionType.buy,
@@ -2630,24 +2655,57 @@ async def create_initial_grid_orders(grid: Grid, current_price: float, db: Sessi
                 )
                 db.add(order)
                 orders_created += 1
+                
+                logger.info(f"✅ BUY order: ${level_price:.2f} x {quantity:,.0f} shares = ${investment_per_buy_level:,.2f}")
             
-            # Create sell orders above current price (if we had existing holdings)
-            elif level_price > current_price:
-                # For now, we'll create these as pending until we have shares to sell
-                order = GridOrder(
-                    grid_id=grid.id,
-                    order_type=TransactionType.sell,
-                    target_price=Decimal(str(level_price)),
-                    quantity=Decimal(str(quantity)),
-                    status=OrderStatus.pending
-                )
-                db.add(order)
-                orders_created += 1
+            # Update strategy config to reflect China/HK constraints
+            grid.strategy_config['market_type'] = 'china_hk'
+            grid.strategy_config['short_selling_allowed'] = False
+            grid.strategy_config['buy_levels_only'] = True
+            grid.strategy_config['buy_levels_count'] = len(buy_levels)
+            grid.strategy_config['investment_per_buy_level'] = investment_per_buy_level
+            
+        else:
+            logger.info(f"🇺🇸 Creating US/International grid for {symbol} - BUY and SELL orders")
+            
+            # For US/International stocks: Create both buy and sell orders
+            for level in grid.strategy_config["grid_levels"]:
+                level_price = level["price"]
+                quantity = level["quantity"]
+                
+                if quantity <= 0:
+                    continue
+                    
+                # Create buy orders below current price
+                if level_price < current_price:
+                    order = GridOrder(
+                        grid_id=grid.id,
+                        order_type=TransactionType.buy,
+                        target_price=Decimal(str(level_price)),
+                        quantity=Decimal(str(quantity)),
+                        status=OrderStatus.pending
+                    )
+                    db.add(order)
+                    orders_created += 1
+                
+                # Create sell orders above current price (if we had existing holdings)
+                elif level_price > current_price:
+                    # For now, we'll create these as pending until we have shares to sell
+                    order = GridOrder(
+                        grid_id=grid.id,
+                        order_type=TransactionType.sell,
+                        target_price=Decimal(str(level_price)),
+                        quantity=Decimal(str(quantity)),
+                        status=OrderStatus.pending
+                    )
+                    db.add(order)
+                    orders_created += 1
         
         grid.active_orders = orders_created
         db.commit()
         
-        logger.info(f"✅ Created {orders_created} initial grid orders for {grid.name}")
+        market_type = "China/HK (BUY only)" if is_china_hk_stock else "US/International (BUY/SELL)"
+        logger.info(f"✅ Created {orders_created} initial grid orders for {grid.name} ({market_type})")
         
     except Exception as e:
         logger.error(f"❌ Error creating initial grid orders: {e}")
