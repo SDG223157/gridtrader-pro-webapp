@@ -322,7 +322,7 @@ async function resumeGrid(gridId) {
 }
 
 async function deleteGrid(gridId) {
-    if (!confirm('Are you sure you want to delete this grid strategy? This will return unused cash to your portfolio.')) return;
+    if (!confirm('Are you sure you want to delete this grid strategy? This will return all invested funds to your portfolio cash balance and permanently remove the grid.')) return;
     
     try {
         const response = await fetch(`/api/grids/${gridId}`, {
@@ -332,7 +332,9 @@ async function deleteGrid(gridId) {
         
         const result = await response.json();
         if (result.success) {
-            alert('Grid deleted successfully! Unused cash returned to portfolio.');
+            const fundsReturned = result.funds_returned || 0;
+            const ordersDeleted = result.orders_deleted || 0;
+            alert(`Grid deleted successfully!\n\nFunds returned: $${fundsReturned.toLocaleString()}\nOrders deleted: ${ordersDeleted}\n\nThe grid has been completely removed and funds returned to your portfolio.`);
             window.location.href = '/grids';
         } else {
             alert(result.detail || 'Failed to delete grid');

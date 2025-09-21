@@ -2468,7 +2468,10 @@ async def grids_page(request: Request, db: Session = Depends(get_db)):
     if not context["is_authenticated"]:
         return RedirectResponse(url="/login", status_code=302)
     
-    grids = db.query(Grid).join(Portfolio).filter(Portfolio.user_id == context["user"].id).all()
+    grids = db.query(Grid).join(Portfolio).filter(
+        Portfolio.user_id == context["user"].id,
+        Grid.status != GridStatus.cancelled
+    ).all()
     context["grids"] = grids
     return templates.TemplateResponse("grids.html", {"request": request, **context})
 
@@ -2841,29 +2844,65 @@ async def delete_grid(grid_id: str, user: User = Depends(require_auth), db: Sess
             raise HTTPException(status_code=404, detail="Grid not found")
         
         portfolio = grid.portfolio
+        grid_name = grid.name
+        investment_amount = float(grid.investment_amount)
         
-        # Cancel all pending orders
-        pending_orders = db.query(GridOrder).filter(
-            GridOrder.grid_id == grid_id,
-            GridOrder.status == OrderStatus.pending
-        ).all()
+        logger.info(f"🗑️ Starting deletion of grid: {grid_name} (Investment: ${investment_amount:,.2f})")
         
-        for order in pending_orders:
-            order.status = OrderStatus.cancelled
+        # Get all grid orders to calculate what needs to be returned
+        all_orders = db.query(GridOrder).filter(GridOrder.grid_id == grid_id).all()
         
-        # Return unused investment amount to portfolio cash
-        if grid.status == GridStatus.active:
-            unused_amount = grid.investment_amount - (grid.total_profit or 0)
-            portfolio.cash_balance += unused_amount
-            logger.info(f"💰 Returned ${unused_amount} to portfolio from deleted grid")
+        # Calculate funds to return
+        funds_to_return = 0.0
+        filled_orders = 0
+        pending_orders = 0
         
-        # Mark grid as cancelled
-        grid.status = GridStatus.cancelled
+        for order in all_orders:
+            if order.status == OrderStatus.filled:
+                filled_orders += 1
+                # For filled orders, we don't return the money as it's been used
+                continue
+            elif order.status == OrderStatus.pending:
+                pending_orders += 1
+                # For pending orders, return the allocated amount
+                if order.order_type == TransactionType.buy and order.quantity > 0:
+                    order_value = float(order.target_price) * float(order.quantity)
+                    funds_to_return += order_value
+        
+        # If no detailed calculation possible, return the full investment amount
+        if funds_to_return == 0 and grid.status == GridStatus.active:
+            funds_to_return = investment_amount
+        
+        logger.info(f"📊 Grid deletion analysis:")
+        logger.info(f"   Total Orders: {len(all_orders)}")
+        logger.info(f"   Filled Orders: {filled_orders}")
+        logger.info(f"   Pending Orders: {pending_orders}")
+        logger.info(f"   Funds to Return: ${funds_to_return:,.2f}")
+        
+        # Delete all grid orders first
+        for order in all_orders:
+            db.delete(order)
+        
+        logger.info(f"🔧 Deleted {len(all_orders)} grid orders")
+        
+        # Return funds to portfolio cash balance
+        if funds_to_return > 0:
+            portfolio.cash_balance = float(portfolio.cash_balance) + funds_to_return
+            logger.info(f"💰 Returned ${funds_to_return:,.2f} to portfolio cash balance")
+            logger.info(f"📈 Portfolio cash balance updated: ${portfolio.cash_balance:,.2f}")
+        
+        # Actually DELETE the grid (don't just cancel it)
+        db.delete(grid)
         
         db.commit()
         
-        logger.info(f"✅ Grid deleted: {grid.name}")
-        return {"success": True, "message": "Grid deleted successfully"}
+        logger.info(f"✅ Grid completely deleted: {grid_name}")
+        return {
+            "success": True, 
+            "message": "Grid deleted successfully",
+            "funds_returned": funds_to_return,
+            "orders_deleted": len(all_orders)
+        }
     
     except HTTPException:
         raise
