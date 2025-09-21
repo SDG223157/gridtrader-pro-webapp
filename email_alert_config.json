@@ -1,0 +1,49 @@
+{
+  "target_email": "isky999@gmail.com",
+  "smtp_server": "smtp.gmail.com",
+  "smtp_port": 587,
+  "from_name": "GridTrader Pro",
+  "alert_types": {
+    "grid_order_filled": {
+      "enabled": true,
+      "frequency": "immediate",
+      "subject": "\ud83c\udfaf Grid Order Filled - {symbol}",
+      "priority": "medium"
+    },
+    "price_boundary": {
+      "enabled": true,
+      "frequency": "immediate",
+      "subject": "\u26a0\ufe0f Price Boundary Alert - {symbol}",
+      "priority": "high"
+    },
+    "profit_target": {
+      "enabled": true,
+      "thresholds": [
+        5000,
+        15000,
+        30000
+      ],
+      "subject": "\ud83c\udf89 Profit Target Reached - {symbol}",
+      "priority": "high"
+    },
+    "risk_warning": {
+      "enabled": true,
+      "frequency": "immediate",
+      "subject": "\ud83d\udea8 RISK WARNING - {symbol}",
+      "priority": "critical"
+    }
+  },
+  "grids": {
+    "600298.SS": {
+      "grid_id": "9d26f827-4605-4cce-ac42-8dbcf173433d",
+      "grid_name": "600298.SS Conservative Grid",
+      "portfolio_name": "Yang's Investment Portfolio",
+      "price_range": {
+        "lower": 36.32,
+        "upper": 42.94
+      },
+      "investment": 1000000,
+      "boundary_buffer": 0.5
+    }
+  }
+}
