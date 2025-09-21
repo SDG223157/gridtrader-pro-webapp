@@ -403,27 +403,195 @@ def cleanup_old_data(self):
         logger.error(f"Error cleaning up old data: {e}")
         return {"status": "error", "message": str(e)}
 
-# Schedule tasks
+@celery_app.task(bind=True, name='tasks.monitor_china_market_hours')
+def monitor_china_market_hours(self):
+    """Monitor China market hours and adjust task frequency"""
+    try:
+        import pytz
+        from datetime import datetime, time as dt_time
+        
+        # Beijing timezone
+        beijing_tz = pytz.timezone('Asia/Shanghai')
+        now_beijing = datetime.now(beijing_tz)
+        current_time = now_beijing.time()
+        
+        # Market hours: 9:30 AM - 3:00 PM Beijing Time
+        market_open = dt_time(9, 30)
+        market_close = dt_time(15, 0)
+        is_weekday = now_beijing.weekday() < 5
+        is_market_open = is_weekday and market_open <= current_time <= market_close
+        
+        # Log market status
+        if is_market_open:
+            logger.info(f"🟢 China market OPEN - {now_beijing.strftime('%H:%M:%S')} Beijing Time")
+            
+            # During market hours, trigger more frequent updates for grid trading
+            # This could be used to dynamically adjust task frequencies
+            
+        else:
+            logger.info(f"🔴 China market CLOSED - {now_beijing.strftime('%H:%M:%S')} Beijing Time")
+            
+            # Calculate time to next market open
+            if current_time < market_open:
+                next_open = now_beijing.replace(hour=9, minute=30, second=0, microsecond=0)
+            else:
+                # Next trading day
+                next_day = now_beijing + timedelta(days=1)
+                while next_day.weekday() >= 5:  # Skip weekends
+                    next_day += timedelta(days=1)
+                next_open = next_day.replace(hour=9, minute=30, second=0, microsecond=0)
+            
+            time_to_open = next_open - now_beijing
+            logger.info(f"⏰ Next market open in: {str(time_to_open).split('.')[0]}")
+        
+        return {
+            "status": "success",
+            "market_open": is_market_open,
+            "beijing_time": now_beijing.strftime('%Y-%m-%d %H:%M:%S %Z'),
+            "market_hours": "9:30 AM - 3:00 PM Beijing Time"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error monitoring China market hours: {e}")
+        return {"status": "error", "message": str(e)}
+
+@celery_app.task(bind=True, name='tasks.monitor_grid_prices_realtime')
+def monitor_grid_prices_realtime(self):
+    """Monitor grid trading stock prices in real-time during China market hours"""
+    try:
+        import pytz
+        from datetime import datetime, time as dt_time
+        
+        # Check if China market is open
+        beijing_tz = pytz.timezone('Asia/Shanghai')
+        now_beijing = datetime.now(beijing_tz)
+        current_time = now_beijing.time()
+        market_open = dt_time(9, 30)
+        market_close = dt_time(15, 0)
+        is_weekday = now_beijing.weekday() < 5
+        is_market_open = is_weekday and market_open <= current_time <= market_close
+        
+        if not is_market_open:
+            logger.info("📴 Skipping grid price monitoring - China market closed")
+            return {"status": "skipped", "reason": "market_closed"}
+        
+        db = get_db()
+        
+        # Get all active grids
+        active_grids = db.query(Grid).filter(Grid.status == "active").all()
+        
+        if not active_grids:
+            logger.info("No active grids to monitor")
+            return {"status": "success", "grids_monitored": 0}
+        
+        monitored_count = 0
+        alerts_created = 0
+        
+        for grid in active_grids:
+            try:
+                # Get current price using yfinance (most reliable for China stocks)
+                current_price = data_provider.get_current_price(grid.symbol)
+                
+                if not current_price:
+                    continue
+                
+                # Check grid boundaries
+                upper_boundary = float(grid.upper_price)
+                lower_boundary = float(grid.lower_price)
+                boundary_buffer = 0.50  # $0.50 buffer for alerts
+                
+                # Create boundary alerts
+                if current_price <= lower_boundary + boundary_buffer:
+                    # Approaching lower boundary
+                    alert = Alert(
+                        user_id=grid.portfolio.user_id,
+                        alert_type="grid",
+                        title=f"⚠️ Grid Boundary Alert - {grid.symbol}",
+                        message=f"{grid.symbol} price ${current_price:.2f} approaching lower boundary ${lower_boundary:.2f}",
+                        alert_metadata={
+                            "grid_id": grid.id,
+                            "symbol": grid.symbol,
+                            "current_price": current_price,
+                            "boundary_price": lower_boundary,
+                            "boundary_type": "lower",
+                            "distance": current_price - lower_boundary
+                        }
+                    )
+                    db.add(alert)
+                    alerts_created += 1
+                    logger.info(f"⚠️ Lower boundary alert created for {grid.symbol}")
+                    
+                elif current_price >= upper_boundary - boundary_buffer:
+                    # Approaching upper boundary
+                    alert = Alert(
+                        user_id=grid.portfolio.user_id,
+                        alert_type="grid",
+                        title=f"⚠️ Grid Boundary Alert - {grid.symbol}",
+                        message=f"{grid.symbol} price ${current_price:.2f} approaching upper boundary ${upper_boundary:.2f}",
+                        alert_metadata={
+                            "grid_id": grid.id,
+                            "symbol": grid.symbol,
+                            "current_price": current_price,
+                            "boundary_price": upper_boundary,
+                            "boundary_type": "upper",
+                            "distance": upper_boundary - current_price
+                        }
+                    )
+                    db.add(alert)
+                    alerts_created += 1
+                    logger.info(f"⚠️ Upper boundary alert created for {grid.symbol}")
+                
+                monitored_count += 1
+                
+            except Exception as e:
+                logger.error(f"Error monitoring grid {grid.id}: {e}")
+                continue
+        
+        db.commit()
+        db.close()
+        
+        logger.info(f"🔍 Monitored {monitored_count} grids, created {alerts_created} alerts")
+        return {
+            "status": "success",
+            "grids_monitored": monitored_count,
+            "alerts_created": alerts_created,
+            "market_open": is_market_open,
+            "beijing_time": now_beijing.strftime('%H:%M:%S')
+        }
+        
+    except Exception as e:
+        logger.error(f"Error monitoring grid prices: {e}")
+        return {"status": "error", "message": str(e)}
+
+# Schedule tasks optimized for China market hours (9:30 AM - 3:00 PM Beijing Time)
 celery_app.conf.beat_schedule = {
-    'update-market-data': {
+    'update-market-data-frequent': {
         'task': 'tasks.update_market_data',
-        'schedule': 300.0,  # Every 5 minutes during market hours
+        'schedule': 60.0,  # Every 1 minute during market hours for grid trading
     },
     'update-portfolio-values': {
         'task': 'tasks.update_portfolio_values',
-        'schedule': 600.0,  # Every 10 minutes
+        'schedule': 300.0,  # Every 5 minutes (optimized for China stocks)
     },
     'process-grid-orders': {
         'task': 'tasks.process_grid_orders',
-        'schedule': 180.0,  # Every 3 minutes
+        'schedule': 60.0,  # Every 1 minute for real-time grid execution
     },
     'generate-alerts': {
         'task': 'tasks.generate_alerts',
-        'schedule': 900.0,  # Every 15 minutes
+        'schedule': 180.0,  # Every 3 minutes for faster alert response
     },
     'cleanup-old-data': {
         'task': 'tasks.cleanup_old_data',
         'schedule': 86400.0,  # Once per day
+    },
+    'china-market-monitor': {
+        'task': 'tasks.monitor_china_market_hours',
+        'schedule': 300.0,  # Every 5 minutes - market status check
+    },
+    'grid-prices-realtime': {
+        'task': 'tasks.monitor_grid_prices_realtime',
+        'schedule': 60.0,  # Every 1 minute during China market hours
     },
 }
 
