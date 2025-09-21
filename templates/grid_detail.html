@@ -79,8 +79,19 @@
             </div>
             <div>
                 <h4 class="font-semibold text-gray-700">Grid Setup</h4>
-                <p class="text-sm text-gray-600">Levels: {{ grid.strategy_config.grid_count }}</p>
-                <p class="text-sm text-gray-600">Per Level: ${{ "{:,.2f}".format(grid.strategy_config.price_per_grid) }}</p>
+                {% if grid.symbol.endswith('.SS') or grid.symbol.endswith('.SZ') or grid.symbol.endswith('.HK') %}
+                    <p class="text-sm text-gray-600">Active Levels: {{ orders|selectattr("order_type.value", "equalto", "buy")|list|length }} (Buy only)</p>
+                    {% set buy_orders = orders|selectattr("order_type.value", "equalto", "buy")|list %}
+                    {% if buy_orders %}
+                        <p class="text-sm text-gray-600">Per Buy Level: ${{ "{:,.0f}".format((buy_orders[0].target_price * buy_orders[0].quantity)) }}</p>
+                    {% else %}
+                        <p class="text-sm text-gray-600">Per Buy Level: ${{ "{:,.0f}".format(grid.investment_amount / 6) }}</p>
+                    {% endif %}
+                    <p class="text-xs text-blue-600">🇨🇳 China/HK optimized</p>
+                {% else %}
+                    <p class="text-sm text-gray-600">Levels: {{ grid.strategy_config.grid_count }}</p>
+                    <p class="text-sm text-gray-600">Per Level: ${{ "{:,.2f}".format(grid.strategy_config.price_per_grid) }}</p>
+                {% endif %}
             </div>
             <div>
                 <h4 class="font-semibold text-gray-700">Performance</h4>
@@ -165,34 +176,91 @@
     <!-- Grid Visualization -->
     <div class="bg-white rounded-lg shadow-md p-6">
         <h2 class="text-xl font-bold text-gray-900 mb-4">Grid Visualization</h2>
+        {% if grid.symbol.endswith('.SS') or grid.symbol.endswith('.SZ') or grid.symbol.endswith('.HK') %}
+        <div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <div class="flex items-center">
+                <span class="text-blue-600 mr-2">🇨🇳</span>
+                <span class="text-sm font-medium text-blue-800">China/HK Market Grid</span>
+            </div>
+            <p class="text-xs text-blue-600 mt-1">Only BUY orders shown (short selling not allowed in China/HK markets)</p>
+        </div>
+        {% endif %}
         <div class="relative">
-            <!-- Price axis -->
-            <div class="space-y-2">
-                {% for level in grid.strategy_config.grid_levels %}
-                <div class="flex items-center justify-between p-2 rounded
-                    {% if level.price <= current_price and level.type == 'buy' %}bg-green-100 border-l-4 border-green-500
-                    {% elif level.price >= current_price and level.type == 'sell' %}bg-red-100 border-l-4 border-red-500
-                    {% else %}bg-gray-50 border-l-4 border-gray-300{% endif %}">
-                    
+            <!-- Current Price Indicator -->
+            <div class="mb-4 p-3 bg-blue-100 border-l-4 border-blue-500 rounded">
+                <div class="flex items-center justify-between">
                     <div class="flex items-center space-x-4">
-                        <span class="text-sm font-medium text-gray-700">Level {{ level.level }}</span>
-                        <span class="text-sm font-bold
-                            {% if level.type == 'buy' %}text-green-700{% else %}text-red-700{% endif %}">
-                            {{ level.type|upper }}
-                        </span>
-                    </div>
-                    
-                    <div class="flex items-center space-x-4">
-                        <span class="text-sm font-medium text-gray-900">${{ "{:.2f}".format(level.price) }}</span>
-                        <span class="text-xs text-gray-600">{{ "{:.4f}".format(level.quantity) }} shares</span>
-                        {% if level.price == current_price %}
+                        <span class="text-sm font-medium text-gray-700">Current Market Price</span>
                         <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
                             CURRENT
                         </span>
-                        {% endif %}
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <span class="text-lg font-bold text-blue-900">${{ "{:.2f}".format(current_price) }}</span>
+                        <span class="text-xs text-blue-600">{{ grid.symbol }}</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Active Orders (sorted by price) -->
+            <div class="space-y-2">
+                {% set order_counter = [0] %}
+                {% for order in orders|sort(attribute='target_price') %}
+                {% set _ = order_counter.append(order_counter.pop() + 1) %}
+                <div class="flex items-center justify-between p-3 rounded-lg
+                    {% if order.order_type.value == 'buy' %}bg-green-50 border-l-4 border-green-500
+                    {% else %}bg-red-50 border-l-4 border-red-500{% endif %}">
+                    
+                    <div class="flex items-center space-x-4">
+                        <span class="text-sm font-medium text-gray-700">Level {{ order_counter[-1] }}</span>
+                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full
+                            {% if order.order_type.value == 'buy' %}bg-green-100 text-green-800
+                            {% else %}bg-red-100 text-red-800{% endif %}">
+                            {{ order.order_type.value|upper }}
+                        </span>
+                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full
+                            {% if order.status.value == 'filled' %}bg-green-100 text-green-800
+                            {% elif order.status.value == 'pending' %}bg-yellow-100 text-yellow-800
+                            {% elif order.status.value == 'cancelled' %}bg-gray-100 text-gray-800
+                            {% else %}bg-red-100 text-red-800{% endif %}">
+                            {{ order.status.value|title }}
+                        </span>
+                    </div>
+                    
+                    <div class="flex items-center space-x-4">
+                        <span class="text-sm font-bold text-gray-900">${{ "{:.2f}".format(order.target_price) }}</span>
+                        <span class="text-xs text-gray-600">{{ "{:,.0f}".format(order.quantity) }} shares</span>
+                        <span class="text-xs text-gray-500">${{ "{:,.0f}".format(order.target_price * order.quantity) }}</span>
                     </div>
                 </div>
                 {% endfor %}
+            </div>
+            
+            {% if not orders %}
+            <div class="text-center py-8 text-gray-500">
+                <p>No active orders found</p>
+                <p class="text-sm">Grid orders will appear here once they are created</p>
+            </div>
+            {% endif %}
+        </div>
+        
+        <!-- Grid Statistics -->
+        <div class="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div class="text-center p-3 bg-gray-50 rounded-lg">
+                <div class="text-lg font-bold text-gray-900">{{ orders|selectattr("order_type.value", "equalto", "buy")|list|length }}</div>
+                <div class="text-xs text-gray-600">Buy Orders</div>
+            </div>
+            <div class="text-center p-3 bg-gray-50 rounded-lg">
+                <div class="text-lg font-bold text-gray-900">{{ orders|selectattr("order_type.value", "equalto", "sell")|list|length }}</div>
+                <div class="text-xs text-gray-600">Sell Orders</div>
+            </div>
+            <div class="text-center p-3 bg-gray-50 rounded-lg">
+                <div class="text-lg font-bold text-gray-900">{{ orders|selectattr("status.value", "equalto", "pending")|list|length }}</div>
+                <div class="text-xs text-gray-600">Pending</div>
+            </div>
+            <div class="text-center p-3 bg-gray-50 rounded-lg">
+                <div class="text-lg font-bold text-gray-900">{{ orders|selectattr("status.value", "equalto", "filled")|list|length }}</div>
+                <div class="text-xs text-gray-600">Filled</div>
             </div>
         </div>
     </div>
