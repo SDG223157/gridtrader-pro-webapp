@@ -60,8 +60,26 @@ def get_db():
 
 @celery_app.task(bind=True, name='tasks.update_market_data')
 def update_market_data(self):
-    """Update market data for all tracked symbols"""
+    """Update market data for all tracked symbols - optimized for China market hours"""
     try:
+        import pytz
+        from datetime import datetime, time as dt_time
+        
+        # Check if China market is open (since most symbols are Chinese)
+        beijing_tz = pytz.timezone('Asia/Shanghai')
+        now_beijing = datetime.now(beijing_tz)
+        current_time = now_beijing.time()
+        market_open = dt_time(9, 30)
+        market_close = dt_time(15, 0)
+        is_weekday = now_beijing.weekday() < 5
+        is_market_open = is_weekday and market_open <= current_time <= market_close
+        
+        if not is_market_open:
+            logger.info("📴 Skipping market data update - China market closed (prices don't move)")
+            return {"status": "skipped", "reason": "china_market_closed", "beijing_time": now_beijing.strftime('%H:%M:%S')}
+        
+        logger.info(f"🟢 Updating market data - China market OPEN ({now_beijing.strftime('%H:%M:%S')} Beijing)")
+        
         db = get_db()
         
         # Get all unique symbols from holdings and grids
@@ -159,8 +177,26 @@ def update_portfolio_values(self):
 
 @celery_app.task(bind=True, name='tasks.process_grid_orders')
 def process_grid_orders(self):
-    """Process grid trading orders"""
+    """Process grid trading orders - only during China market hours"""
     try:
+        import pytz
+        from datetime import datetime, time as dt_time
+        
+        # Check if China market is open
+        beijing_tz = pytz.timezone('Asia/Shanghai')
+        now_beijing = datetime.now(beijing_tz)
+        current_time = now_beijing.time()
+        market_open = dt_time(9, 30)
+        market_close = dt_time(15, 0)
+        is_weekday = now_beijing.weekday() < 5
+        is_market_open = is_weekday and market_open <= current_time <= market_close
+        
+        if not is_market_open:
+            logger.info("📴 Skipping grid order processing - China market closed")
+            return {"status": "skipped", "reason": "china_market_closed"}
+        
+        logger.info(f"🟢 Processing grid orders - China market OPEN ({now_beijing.strftime('%H:%M:%S')} Beijing)")
+        
         db = get_db()
         
         active_grids = db.query(Grid).filter(Grid.status == "active").all()
@@ -563,23 +599,97 @@ def monitor_grid_prices_realtime(self):
         logger.error(f"Error monitoring grid prices: {e}")
         return {"status": "error", "message": str(e)}
 
+@celery_app.task(bind=True, name='tasks.after_hours_summary')
+def after_hours_summary(self):
+    """Generate summary after China market close - only once since prices don't move"""
+    try:
+        import pytz
+        from datetime import datetime, time as dt_time
+        
+        # Check if China market is closed
+        beijing_tz = pytz.timezone('Asia/Shanghai')
+        now_beijing = datetime.now(beijing_tz)
+        current_time = now_beijing.time()
+        market_open = dt_time(9, 30)
+        market_close = dt_time(15, 0)
+        is_weekday = now_beijing.weekday() < 5
+        is_market_open = is_weekday and market_open <= current_time <= market_close
+        
+        if is_market_open:
+            logger.info("📈 Market is open - skipping after-hours summary")
+            return {"status": "skipped", "reason": "market_open"}
+        
+        # Only run summary once after market close (around 3:30 PM Beijing)
+        if current_time < dt_time(15, 30) or current_time > dt_time(16, 0):
+            logger.info("📴 Not after-hours summary time - skipping")
+            return {"status": "skipped", "reason": "not_summary_time"}
+        
+        db = get_db()
+        
+        # Get all active grids for summary
+        active_grids = db.query(Grid).filter(Grid.status == "active").all()
+        summary_data = []
+        
+        for grid in active_grids:
+            try:
+                # Get final closing price (since market is closed, this won't change)
+                current_price = data_provider.get_current_price(grid.symbol)
+                
+                if current_price:
+                    grid_position = ((current_price - float(grid.lower_price)) / 
+                                   (float(grid.upper_price) - float(grid.lower_price))) * 100
+                    
+                    summary_data.append({
+                        "symbol": grid.symbol,
+                        "grid_name": grid.name,
+                        "current_price": current_price,
+                        "grid_position": round(grid_position, 1),
+                        "lower_boundary": float(grid.lower_price),
+                        "upper_boundary": float(grid.upper_price),
+                        "investment": float(grid.investment_amount)
+                    })
+                    
+                    logger.info(f"📊 {grid.symbol}: ${current_price:.2f} ({grid_position:.1f}% in grid)")
+                
+            except Exception as e:
+                logger.error(f"Error in summary for grid {grid.id}: {e}")
+                continue
+        
+        db.close()
+        
+        logger.info(f"📋 After-hours summary completed for {len(summary_data)} grids")
+        logger.info("💤 Prices stable until next market open (9:30 AM Beijing)")
+        
+        return {
+            "status": "success",
+            "grids_summarized": len(summary_data),
+            "summary_data": summary_data,
+            "beijing_time": now_beijing.strftime('%Y-%m-%d %H:%M:%S %Z'),
+            "next_market_open": "9:30 AM Beijing Time"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in after-hours summary: {e}")
+        return {"status": "error", "message": str(e)}
+
 # Schedule tasks optimized for China market hours (9:30 AM - 3:00 PM Beijing Time)
+# 🔴 AFTER MARKET HOURS: Minimal checks since prices don't move
 celery_app.conf.beat_schedule = {
     'update-market-data-frequent': {
         'task': 'tasks.update_market_data',
-        'schedule': 60.0,  # Every 1 minute during market hours for grid trading
+        'schedule': 60.0,  # Every 1 minute ONLY during China market hours
     },
     'update-portfolio-values': {
         'task': 'tasks.update_portfolio_values',
-        'schedule': 300.0,  # Every 5 minutes (optimized for China stocks)
+        'schedule': 300.0,  # Every 5 minutes during market hours, once after close
     },
     'process-grid-orders': {
         'task': 'tasks.process_grid_orders',
-        'schedule': 60.0,  # Every 1 minute for real-time grid execution
+        'schedule': 60.0,  # Every 1 minute ONLY during market hours
     },
     'generate-alerts': {
         'task': 'tasks.generate_alerts',
-        'schedule': 180.0,  # Every 3 minutes for faster alert response
+        'schedule': 180.0,  # Every 3 minutes during market hours only
     },
     'cleanup-old-data': {
         'task': 'tasks.cleanup_old_data',
@@ -587,11 +697,11 @@ celery_app.conf.beat_schedule = {
     },
     'china-market-monitor': {
         'task': 'tasks.monitor_china_market_hours',
-        'schedule': 300.0,  # Every 5 minutes - market status check
+        'schedule': 3600.0,  # Every 1 hour - just to track market status
     },
-    'grid-prices-realtime': {
-        'task': 'tasks.monitor_grid_prices_realtime',
-        'schedule': 60.0,  # Every 1 minute during China market hours
+    'after-hours-summary': {
+        'task': 'tasks.after_hours_summary',
+        'schedule': 3600.0,  # Every 1 hour after market close for summary only
     },
 }
 
