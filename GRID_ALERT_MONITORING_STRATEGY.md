@@ -66,28 +66,28 @@ The optimal frequency depends on your trading style, risk tolerance, and market 
 **Profile**: Frequent monitoring, hands-on management
 **Total Time**: 30-60 minutes per day
 
-**Schedule**:
-- **9:00 AM**: Market open check (5 min)
-- **12:00 PM**: Midday review (10 min)
-- **3:00 PM**: Market close check (10 min)
-- **6:00 PM**: Evening summary (15 min)
+**Schedule** (Beijing Time):
+- **9:00 AM**: Pre-market check (5 min)
+- **12:00 PM**: Midday review during trading (10 min)
+- **3:30 PM**: Post-market close check (10 min)
+- **7:00 PM**: Evening summary (15 min)
 - **As needed**: Critical alerts (immediate)
 
 ### **💼 BUSY PROFESSIONAL SCHEDULE**
 **Profile**: Limited time, automated focus
 **Total Time**: 15-30 minutes per day
 
-**Schedule**:
-- **8:00 AM**: Morning brief (10 min)
-- **6:00 PM**: Evening review (15 min)
+**Schedule** (Beijing Time):
+- **9:00 AM**: Market open brief (10 min)
+- **7:00 PM**: Post-market review (15 min)
 - **Critical only**: Immediate response to high-priority alerts
 
 ### **😎 PASSIVE INVESTOR SCHEDULE**
 **Profile**: Set-and-forget approach
 **Total Time**: 10-20 minutes per day
 
-**Schedule**:
-- **Evening**: Daily summary check (10-15 min)
+**Schedule** (Beijing Time):
+- **Evening**: Daily summary check after 3:00 PM market close (10-15 min)
 - **Weekend**: Weekly performance review (30 min)
 - **Emergency only**: Critical alerts response
 
@@ -203,10 +203,10 @@ The optimal frequency depends on your trading style, risk tolerance, and market 
 ```
 
 ### **Time-Based Alert Rules**:
-- **Market Hours**: More frequent monitoring (9:30 AM - 4:00 PM EST)
+- **China Market Hours**: More frequent monitoring (9:30 AM - 3:00 PM Beijing Time)
 - **After Hours**: Reduced frequency, critical only
 - **Weekends**: Summary alerts only
-- **Holidays**: Emergency alerts only
+- **Chinese Holidays**: Emergency alerts only
 
 ---
 
