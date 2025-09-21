@@ -1,0 +1,68 @@
+{
+  "name": "GridTrader Pro",
+  "description": "Systematic Investment Management Platform with Grid Trading - Production",
+  "type": "dockerfile",
+  "dockerfile": "Dockerfile.production",
+  "buildArgs": {},
+  "environment": {
+    "DB_HOST": "${DB_HOST}",
+    "DB_PORT": "3306",
+    "DB_NAME": "default", 
+    "DB_USER": "mysql",
+    "DB_PASSWORD": "${DB_PASSWORD}",
+    "GOOGLE_CLIENT_ID": "${GOOGLE_CLIENT_ID}",
+    "GOOGLE_CLIENT_SECRET": "${GOOGLE_CLIENT_SECRET}",
+    "GOOGLE_REDIRECT_URI": "https://gridsai.app/api/auth/google/callback",
+    "SECRET_KEY": "${SECRET_KEY}",
+    "ENVIRONMENT": "production",
+    "HOST": "0.0.0.0",
+    "PORT": "3000",
+    "HOSTNAME": "0.0.0.0",
+    "FRONTEND_URL": "https://gridsai.app",
+    "JWT_ALGORITHM": "HS256",
+    "JWT_EXPIRE_HOURS": "24",
+    "REDIS_HOST": "${REDIS_HOST}",
+    "REDIS_PORT": "6379", 
+    "REDIS_PASSWORD": "${REDIS_PASSWORD}",
+    "REDIS_URL": "${REDIS_URL}",
+    "WAIT_FOR_SERVICES": "true",
+    "INIT_SAMPLE_DATA": "true",
+    "YFINANCE_TIMEOUT": "30",
+    "DATA_UPDATE_INTERVAL": "300",
+    "LOG_LEVEL": "INFO",
+    "LOG_FILE": "/app/logs/app.log",
+    "SMTP_USERNAME": "${SMTP_USERNAME}",
+    "SMTP_PASSWORD": "${SMTP_PASSWORD}",
+    "SMTP_SERVER": "smtp.gmail.com",
+    "SMTP_PORT": "587",
+    "FROM_EMAIL": "${FROM_EMAIL}",
+    "FROM_NAME": "GridTrader Pro Alerts",
+    "ENABLE_EMAIL_ALERTS": "true",
+    "DEFAULT_ALERT_EMAIL": "${DEFAULT_ALERT_EMAIL}"
+  },
+  "ports": [
+    {
+      "internal": 3000,
+      "external": 80,
+      "protocol": "http"
+    }
+  ],
+  "volumes": [
+    {
+      "source": "./logs",
+      "target": "/app/logs",
+      "type": "bind"
+    }
+  ],
+  "healthcheck": {
+    "url": "/health",
+    "interval": 30,
+    "timeout": 10,
+    "retries": 3
+  },
+  "resources": {
+    "memory": "1G",
+    "cpu": "1.0"
+  },
+  "restart": "unless-stopped"
+}
