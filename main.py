@@ -2617,30 +2617,35 @@ async def create_initial_grid_orders(grid: Grid, current_price: float, db: Sessi
         is_china_hk_stock = (symbol.endswith('.SS') or symbol.endswith('.SZ') or symbol.endswith('.HK'))
         
         if is_china_hk_stock:
-            logger.info(f"🇨🇳 Creating China/HK grid for {symbol} - BUY orders only (no short selling)")
+            logger.info(f"🇨🇳 Creating China/HK grid for {symbol} - Full grid with buy-only funding")
             
-            # For China/HK stocks: Only create BUY orders below current price
+            # For China/HK stocks: Create full grid but allocate funds only to buy levels
             buy_levels = []
+            sell_levels = []
+            
             for level in grid.strategy_config["grid_levels"]:
                 if level["price"] < current_price:
                     buy_levels.append(level)
+                elif level["price"] > current_price:
+                    sell_levels.append(level)
             
             if not buy_levels:
                 logger.warning(f"No buy levels below current price ${current_price} for {symbol}")
                 return
             
-            # Recalculate allocation: distribute total investment across buy levels only
+            # Allocate total investment across buy levels only
             total_investment = float(grid.investment_amount)
             investment_per_buy_level = total_investment / len(buy_levels)
             
-            logger.info(f"💰 China/HK Grid Allocation:")
+            logger.info(f"💰 China/HK Grid Structure:")
             logger.info(f"   Total Investment: ${total_investment:,.2f}")
-            logger.info(f"   Buy Levels: {len(buy_levels)}")
+            logger.info(f"   Buy Levels: {len(buy_levels)} (funded)")
+            logger.info(f"   Sell Levels: {len(sell_levels)} (unfunded initially)")
             logger.info(f"   Investment per Buy Level: ${investment_per_buy_level:,.2f}")
             
+            # Create BUY orders with full allocation
             for level in buy_levels:
                 level_price = level["price"]
-                # Recalculate quantity based on new allocation per level
                 quantity = investment_per_buy_level / level_price
                 
                 if quantity <= 0:
@@ -2658,11 +2663,31 @@ async def create_initial_grid_orders(grid: Grid, current_price: float, db: Sessi
                 
                 logger.info(f"✅ BUY order: ${level_price:.2f} x {quantity:,.0f} shares = ${investment_per_buy_level:,.2f}")
             
-            # Update strategy config to reflect China/HK constraints
+            # Create SELL orders with 0 initial quantity (will be populated when buy orders fill)
+            for level in sell_levels:
+                level_price = level["price"]
+                # Initial quantity is 0 - will be set when corresponding buy order fills
+                quantity = 0
+                
+                order = GridOrder(
+                    grid_id=grid.id,
+                    order_type=TransactionType.sell,
+                    target_price=Decimal(str(level_price)),
+                    quantity=Decimal(str(quantity)),
+                    status=OrderStatus.pending  # Will be activated when we have shares to sell
+                )
+                db.add(order)
+                orders_created += 1
+                
+                logger.info(f"📋 SELL order: ${level_price:.2f} x {quantity:,.0f} shares (unfunded - will activate on buy fills)")
+            
+            # Update strategy config to reflect China/HK structure
             grid.strategy_config['market_type'] = 'china_hk'
             grid.strategy_config['short_selling_allowed'] = False
-            grid.strategy_config['buy_levels_only'] = True
+            grid.strategy_config['buy_levels_funded'] = True
+            grid.strategy_config['sell_levels_unfunded'] = True
             grid.strategy_config['buy_levels_count'] = len(buy_levels)
+            grid.strategy_config['sell_levels_count'] = len(sell_levels)
             grid.strategy_config['investment_per_buy_level'] = investment_per_buy_level
             
         else:
