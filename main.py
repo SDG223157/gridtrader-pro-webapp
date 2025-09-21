@@ -17,6 +17,7 @@ from auth_simple import (
     setup_oauth, create_access_token, get_current_user, require_auth, 
     create_user, authenticate_user, create_or_update_user_from_google
 )
+from email_alert_service import EmailAlertService, send_grid_alert_to_user
 from data_provider import YFinanceDataProvider
 from app.systematic_trading import systematic_trading_engine, AlertLevel, MarketRegime
 from security_middleware import setup_security_middleware, get_security_status
@@ -3303,6 +3304,95 @@ async def get_alerts_summary(
     except Exception as e:
         logger.error(f"Error getting alerts summary: {e}")
         raise HTTPException(status_code=500, detail="Failed to get alerts summary")
+
+@app.post("/api/grids/{grid_id}/alerts/test-email")
+async def send_test_grid_alert(
+    grid_id: str,
+    alert_type: str = "grid_order_filled",
+    user: User = Depends(require_auth),
+    db: Session = Depends(get_db)
+):
+    """Send test email alert for grid trading"""
+    try:
+        # Verify grid ownership
+        grid = db.query(Grid).join(Portfolio).filter(
+            Grid.id == grid_id,
+            Portfolio.user_id == user.id
+        ).first()
+        
+        if not grid:
+            raise HTTPException(status_code=404, detail="Grid not found")
+        
+        # Get portfolio for context
+        portfolio = db.query(Portfolio).filter(Portfolio.id == grid.portfolio_id).first()
+        
+        # Sample alert data based on Yang's 600298.SS grid
+        sample_alert_data = {
+            "grid_order_filled": {
+                "symbol": grid.symbol,
+                "order_type": "buy",
+                "price": 38.53,
+                "quantity": 2000,
+                "profit": 220.00,
+                "grid_name": grid.name,
+                "portfolio_name": portfolio.name,
+                "portfolio_id": portfolio.id,
+                "grid_id": grid.id
+            },
+            "profit_target": {
+                "symbol": grid.symbol,
+                "total_profit": 8500.00,
+                "profit_percentage": 8.5,
+                "investment_amount": float(grid.investment_amount),
+                "duration_days": 15,
+                "grid_name": grid.name,
+                "grid_id": grid.id
+            },
+            "price_boundary": {
+                "symbol": grid.symbol,
+                "current_price": 36.45,
+                "boundary_price": float(grid.lower_price),
+                "boundary_type": "approaching lower",
+                "grid_name": grid.name,
+                "grid_id": grid.id
+            },
+            "risk_warning": {
+                "symbol": grid.symbol,
+                "risk_type": "High Volatility Spike",
+                "current_price": 35.20,
+                "risk_level": "HIGH",
+                "impact_description": "Price dropped 10% below grid range",
+                "grid_name": grid.name,
+                "grid_id": grid.id
+            }
+        }
+        
+        if alert_type not in sample_alert_data:
+            raise HTTPException(status_code=400, detail=f"Invalid alert type: {alert_type}")
+        
+        # Send email alert
+        alert_data = sample_alert_data[alert_type]
+        success = send_grid_alert_to_user(user.id, alert_type, alert_data, db)
+        
+        if success:
+            return {
+                "success": True,
+                "message": f"Test {alert_type} alert sent to {user.email}",
+                "alert_data": alert_data,
+                "sent_at": datetime.utcnow().isoformat()
+            }
+        else:
+            return {
+                "success": False,
+                "message": "Failed to send email alert",
+                "error": "Email service not configured or SMTP error"
+            }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error sending test alert: {e}")
+        raise HTTPException(status_code=500, detail="Failed to send test alert")
 
 @app.post("/debug/security/clear-blocks")
 async def clear_security_blocks():
