@@ -65,37 +65,50 @@ def update_market_data(self):
         import pytz
         from datetime import datetime, time as dt_time
         
-        # Check if China/Hong Kong markets are open
+        # Check if any major market is open (US, China, Hong Kong)
+        import pytz
+        
+        # Market timezones
+        us_tz = pytz.timezone('US/Eastern')
         beijing_tz = pytz.timezone('Asia/Shanghai')
+        
+        now_us = datetime.now(us_tz)
         now_beijing = datetime.now(beijing_tz)
-        current_time = now_beijing.time()
         
-        # Market hours (Beijing Time):
-        # China (Shanghai/Shenzhen): 9:30 AM - 3:00 PM
-        # Hong Kong: 9:30 AM - 4:00 PM
-        china_market_open = dt_time(9, 30)
-        china_market_close = dt_time(15, 0)
-        hk_market_open = dt_time(9, 30)
-        hk_market_close = dt_time(16, 0)
+        is_weekday = now_us.weekday() < 5
         
-        is_weekday = now_beijing.weekday() < 5
-        china_market_open_bool = is_weekday and china_market_open <= current_time <= china_market_close
-        hk_market_open_bool = is_weekday and hk_market_open <= current_time <= hk_market_close
+        # Market hours check
+        # US: 9:30 AM - 4:00 PM ET
+        us_market_open = (is_weekday and 
+                         dt_time(9, 30) <= now_us.time() <= dt_time(16, 0))
         
-        # Update if either market is open
-        any_market_open = china_market_open_bool or hk_market_open_bool
+        # China: 9:30 AM - 3:00 PM Beijing
+        china_market_open = (is_weekday and 
+                            dt_time(9, 30) <= now_beijing.time() <= dt_time(15, 0))
+        
+        # Hong Kong: 9:30 AM - 4:00 PM Beijing  
+        hk_market_open = (is_weekday and 
+                         dt_time(9, 30) <= now_beijing.time() <= dt_time(16, 0))
+        
+        # Update if any market is open
+        any_market_open = us_market_open or china_market_open or hk_market_open
         
         if not any_market_open:
-            logger.info("📴 Skipping market data update - Both China and HK markets closed")
-            return {"status": "skipped", "reason": "all_markets_closed", "beijing_time": now_beijing.strftime('%H:%M:%S')}
+            logger.info("📴 Skipping market data update - All markets closed (US, China, Hong Kong)")
+            return {"status": "skipped", "reason": "all_markets_closed", 
+                   "us_time": now_us.strftime('%H:%M:%S'), 
+                   "beijing_time": now_beijing.strftime('%H:%M:%S')}
         
-        market_status = []
-        if china_market_open_bool:
-            market_status.append("China")
-        if hk_market_open_bool:
-            market_status.append("Hong Kong")
+        # Build active markets list
+        active_markets = []
+        if us_market_open:
+            active_markets.append("US")
+        if china_market_open:
+            active_markets.append("China")
+        if hk_market_open:
+            active_markets.append("Hong Kong")
             
-        logger.info(f"🟢 Updating market data - {'/'.join(market_status)} market(s) OPEN ({now_beijing.strftime('%H:%M:%S')} Beijing)")
+        logger.info(f"🟢 Updating market data - {'/'.join(active_markets)} market(s) OPEN")
         
         db = get_db()
         
