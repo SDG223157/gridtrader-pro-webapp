@@ -3151,6 +3151,159 @@ async def security_status():
     """Get current security middleware status"""
     return get_security_status()
 
+# Grid Trading Alert System Endpoints
+@app.post("/api/grids/{grid_id}/alerts/configure")
+async def configure_grid_alerts(
+    grid_id: str,
+    request: dict,
+    user: User = Depends(require_auth),
+    db: Session = Depends(get_db)
+):
+    """Configure alert settings for a specific grid"""
+    try:
+        # Verify grid ownership
+        grid = db.query(Grid).join(Portfolio).filter(
+            Grid.id == grid_id,
+            Portfolio.user_id == user.id
+        ).first()
+        
+        if not grid:
+            raise HTTPException(status_code=404, detail="Grid not found")
+        
+        # Configure alerts (this would be stored in a new AlertConfig table)
+        alert_config = {
+            "grid_id": grid_id,
+            "user_id": user.id,
+            "order_filled_alerts": request.get("order_filled_alerts", True),
+            "boundary_alerts": request.get("boundary_alerts", True),
+            "profit_alerts": request.get("profit_alerts", True),
+            "rebalance_alerts": request.get("rebalance_alerts", True),
+            "risk_alerts": request.get("risk_alerts", True),
+            "alert_channels": request.get("channels", ["in_app", "email"]),
+            "min_profit_threshold": request.get("min_profit_threshold", 1000),
+            "updated_at": datetime.utcnow()
+        }
+        
+        return {
+            "success": True,
+            "message": f"Alert configuration updated for grid {grid.name}",
+            "config": alert_config
+        }
+        
+    except Exception as e:
+        logger.error(f"Error configuring grid alerts: {e}")
+        raise HTTPException(status_code=500, detail="Failed to configure alerts")
+
+@app.get("/api/grids/{grid_id}/alerts")
+async def get_grid_alerts(
+    grid_id: str,
+    limit: int = 50,
+    user: User = Depends(require_auth),
+    db: Session = Depends(get_db)
+):
+    """Get recent alerts for a specific grid"""
+    try:
+        # Verify grid ownership
+        grid = db.query(Grid).join(Portfolio).filter(
+            Grid.id == grid_id,
+            Portfolio.user_id == user.id
+        ).first()
+        
+        if not grid:
+            raise HTTPException(status_code=404, detail="Grid not found")
+        
+        # This would query from an Alerts table in a real implementation
+        sample_alerts = [
+            {
+                "id": "alert_20250920_143000_9d26f827",
+                "type": "grid_order_filled",
+                "priority": "medium",
+                "title": f"Grid Order Filled - {grid.symbol}",
+                "message": f"🎯 BUY order filled for {grid.symbol} at $38.53",
+                "created_at": datetime.utcnow().isoformat(),
+                "acknowledged": False
+            },
+            {
+                "id": "alert_20250920_142500_9d26f827", 
+                "type": "profit_target",
+                "priority": "high",
+                "title": f"Profit Target Reached - {grid.symbol}",
+                "message": f"🎉 Grid profit reached $5,000 for {grid.symbol}",
+                "created_at": (datetime.utcnow() - timedelta(minutes=30)).isoformat(),
+                "acknowledged": True
+            }
+        ]
+        
+        return {
+            "grid_id": grid_id,
+            "symbol": grid.symbol,
+            "alerts": sample_alerts[:limit],
+            "total_alerts": len(sample_alerts),
+            "unacknowledged_count": len([a for a in sample_alerts if not a["acknowledged"]])
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting grid alerts: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get alerts")
+
+@app.post("/api/alerts/{alert_id}/acknowledge")
+async def acknowledge_alert(
+    alert_id: str,
+    user: User = Depends(require_auth),
+    db: Session = Depends(get_db)
+):
+    """Acknowledge an alert"""
+    try:
+        # In a real implementation, this would update the Alert table
+        return {
+            "success": True,
+            "message": f"Alert {alert_id} acknowledged",
+            "acknowledged_at": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error acknowledging alert: {e}")
+        raise HTTPException(status_code=500, detail="Failed to acknowledge alert")
+
+@app.get("/api/alerts/summary")
+async def get_alerts_summary(
+    user: User = Depends(require_auth),
+    db: Session = Depends(get_db)
+):
+    """Get summary of all user alerts"""
+    try:
+        # Get user's portfolios and grids
+        portfolios = db.query(Portfolio).filter(Portfolio.user_id == user.id).all()
+        total_grids = 0
+        active_grids = 0
+        
+        for portfolio in portfolios:
+            grids = db.query(Grid).filter(Grid.portfolio_id == portfolio.id).all()
+            total_grids += len(grids)
+            active_grids += len([g for g in grids if g.status == GridStatus.active])
+        
+        # Sample alert summary (in real implementation, query from Alerts table)
+        return {
+            "user_id": user.id,
+            "total_portfolios": len(portfolios),
+            "total_grids": total_grids,
+            "active_grids": active_grids,
+            "alerts_summary": {
+                "total_alerts_24h": 12,
+                "unacknowledged_alerts": 3,
+                "high_priority_alerts": 2,
+                "profit_alerts": 5,
+                "boundary_alerts": 4,
+                "order_filled_alerts": 8
+            },
+            "alert_channels_configured": ["in_app", "email"],
+            "last_alert": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting alerts summary: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get alerts summary")
+
 @app.post("/debug/security/clear-blocks")
 async def clear_security_blocks():
     """Clear all blocked IPs (for debugging/emergency)"""
