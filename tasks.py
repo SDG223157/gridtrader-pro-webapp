@@ -60,7 +60,7 @@ def get_db():
 
 @celery_app.task(bind=True, name='tasks.update_market_data')
 def update_market_data(self):
-    """Update market data for all tracked symbols - optimized for China market hours"""
+    """Update market data ONLY for stocks with active grid trading strategies"""
     try:
         import pytz
         from datetime import datetime, time as dt_time
@@ -112,16 +112,43 @@ def update_market_data(self):
         
         db = get_db()
         
-        # Get all unique symbols from holdings and grids
-        holdings_symbols = db.query(Holding.symbol).distinct().all()
-        grid_symbols = db.query(Grid.symbol).distinct().all()
+        # Get ONLY symbols that have ACTIVE grid trading strategies
+        active_grid_symbols = db.query(Grid.symbol).filter(
+            Grid.status == 'active'
+        ).distinct().all()
         
+        if not active_grid_symbols:
+            logger.info("📝 No active grid trading strategies - skipping market data update")
+            db.close()
+            return {"status": "success", "reason": "no_active_grids", "updated_symbols": []}
+        
+        # Extract symbols from query result and filter by market hours
+        symbols_to_monitor = [symbol[0] for symbol in active_grid_symbols]
         symbols = set()
-        symbols.update([h.symbol for h in holdings_symbols])
-        symbols.update([g.symbol for g in grid_symbols])
         
-        # Add popular market symbols
-        symbols.update(['SPY', 'QQQ', 'VTI', 'BTC-USD', 'ETH-USD'])
+        # Filter symbols based on their market hours
+        for symbol in symbols_to_monitor:
+            if symbol.endswith('.SS') or symbol.endswith('.SZ'):  # China stocks
+                if china_market_open:
+                    symbols.add(symbol)
+            elif symbol.endswith('.HK'):  # Hong Kong stocks
+                if hk_market_open:
+                    symbols.add(symbol)
+            else:  # US stocks (no suffix or other formats)
+                if us_market_open:
+                    symbols.add(symbol)
+        
+        if not symbols:
+            logger.info(f"📴 No active grid markets open - Grid symbols: {symbols_to_monitor}")
+            logger.info(f"⏰ Market status - Beijing: {now_beijing.strftime('%H:%M')}, US: {now_us.strftime('%H:%M %Z')}")
+            db.close()
+            return {
+                "status": "skipped", 
+                "reason": "grid_markets_closed",
+                "active_grid_symbols": symbols_to_monitor,
+                "beijing_time": now_beijing.strftime('%H:%M:%S'),
+                "us_time": now_us.strftime('%H:%M:%S %Z')
+            }
         
         symbols_list = list(symbols)
         
@@ -129,18 +156,19 @@ def update_market_data(self):
             logger.info("No symbols to update")
             return {"status": "success", "message": "No symbols to update"}
         
-        logger.info(f"Updating market data for {len(symbols_list)} symbols")
+        logger.info(f"🎯 GRID TRADING: Updating {len(symbols_list)} active grid symbols: {symbols_list}")
         
-        # Update market data
+        # Update market data only for active grid symbols
         results = data_provider.update_market_data(db, symbols_list, period="5d")
         
         db.close()
         
-        logger.info(f"Market data update completed: {results}")
+        logger.info(f"✅ Grid trading market data completed: {results}")
         return {
             "status": "success", 
             "symbols_updated": results["success"],
             "symbols_failed": results["failed"],
+            "active_grid_symbols": symbols_to_monitor,
             "total_symbols": len(symbols_list)
         }
         
