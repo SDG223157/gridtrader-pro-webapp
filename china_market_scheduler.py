@@ -16,11 +16,18 @@ import pytz
 # Beijing timezone
 BEIJING_TZ = pytz.timezone('Asia/Shanghai')
 
-# China market hours (Beijing Time)
-MARKET_OPEN_HOUR = 9
-MARKET_OPEN_MINUTE = 30
-MARKET_CLOSE_HOUR = 15
-MARKET_CLOSE_MINUTE = 0
+# Market hours (Beijing Time)
+# China (Shanghai/Shenzhen): 9:30 AM - 3:00 PM
+# Hong Kong: 9:30 AM - 4:00 PM
+CHINA_MARKET_OPEN_HOUR = 9
+CHINA_MARKET_OPEN_MINUTE = 30
+CHINA_MARKET_CLOSE_HOUR = 15
+CHINA_MARKET_CLOSE_MINUTE = 0
+
+HK_MARKET_OPEN_HOUR = 9
+HK_MARKET_OPEN_MINUTE = 30
+HK_MARKET_CLOSE_HOUR = 16
+HK_MARKET_CLOSE_MINUTE = 0
 
 logger = logging.getLogger(__name__)
 
@@ -32,27 +39,53 @@ class ChinaMarketScheduler:
         self.grid_symbols = []
         self.last_price_check = {}
         
-    def is_market_hours(self) -> bool:
-        """Check if China market is currently open"""
+    def is_market_hours(self, market="china") -> bool:
+        """Check if China or Hong Kong market is currently open"""
         now_beijing = datetime.now(BEIJING_TZ)
         current_time = now_beijing.time()
-        
-        # Market hours: 9:30 AM - 3:00 PM Beijing Time
-        market_open = dt_time(MARKET_OPEN_HOUR, MARKET_OPEN_MINUTE)
-        market_close = dt_time(MARKET_CLOSE_HOUR, MARKET_CLOSE_MINUTE)
         
         # Check if it's a weekday (Monday=0, Sunday=6)
         is_weekday = now_beijing.weekday() < 5
         
+        if market == "china":
+            # China market hours: 9:30 AM - 3:00 PM Beijing Time
+            market_open = dt_time(CHINA_MARKET_OPEN_HOUR, CHINA_MARKET_OPEN_MINUTE)
+            market_close = dt_time(CHINA_MARKET_CLOSE_HOUR, CHINA_MARKET_CLOSE_MINUTE)
+        elif market == "hongkong":
+            # Hong Kong market hours: 9:30 AM - 4:00 PM Beijing Time
+            market_open = dt_time(HK_MARKET_OPEN_HOUR, HK_MARKET_OPEN_MINUTE)
+            market_close = dt_time(HK_MARKET_CLOSE_HOUR, HK_MARKET_CLOSE_MINUTE)
+        else:
+            # Check if any market is open
+            china_open = self.is_market_hours("china")
+            hk_open = self.is_market_hours("hongkong")
+            return china_open or hk_open
+        
         return is_weekday and market_open <= current_time <= market_close
     
     def get_market_status(self) -> Dict:
-        """Get current market status"""
+        """Get current market status for both China and Hong Kong"""
         now_beijing = datetime.now(BEIJING_TZ)
-        is_open = self.is_market_hours()
+        china_open = self.is_market_hours("china")
+        hk_open = self.is_market_hours("hongkong")
+        any_open = china_open or hk_open
+        
+        # Determine market status
+        if china_open and hk_open:
+            market_status = "🟢 Both China & Hong Kong OPEN"
+            next_close = "3:00 PM (China closes first)"
+        elif china_open:
+            market_status = "🟢 China OPEN, Hong Kong CLOSED"
+            next_close = "3:00 PM (China close)"
+        elif hk_open:
+            market_status = "🟢 Hong Kong OPEN, China CLOSED"
+            next_close = "4:00 PM (Hong Kong close)"
+        else:
+            market_status = "🔴 Both markets CLOSED"
+            next_close = "Next open: 9:30 AM"
         
         # Calculate time to next market event
-        if is_open:
+        if any_open:
             # Market is open - calculate time to close
             close_time = now_beijing.replace(hour=15, minute=0, second=0, microsecond=0)
             time_to_event = close_time - now_beijing
@@ -73,11 +106,15 @@ class ChinaMarketScheduler:
             next_event = "Market Open"
         
         return {
-            "is_market_open": is_open,
+            "china_market_open": china_open,
+            "hk_market_open": hk_open,
+            "any_market_open": any_open,
+            "market_status": market_status,
             "current_time_beijing": now_beijing.strftime("%Y-%m-%d %H:%M:%S %Z"),
             "next_event": next_event,
             "time_to_next_event": str(time_to_event).split('.')[0],  # Remove microseconds
-            "market_hours": "9:30 AM - 3:00 PM Beijing Time"
+            "china_hours": "9:30 AM - 3:00 PM Beijing Time",
+            "hk_hours": "9:30 AM - 4:00 PM Beijing Time"
         }
     
     def check_grid_prices_realtime(self):
@@ -85,7 +122,7 @@ class ChinaMarketScheduler:
         market_status = self.get_market_status()
         
         print(f"🔍 REAL-TIME PRICE CHECK - {market_status['current_time_beijing']}")
-        print(f"📊 Market Status: {'🟢 OPEN' if market_status['is_market_open'] else '🔴 CLOSED'}")
+        print(f"📊 Market Status: {market_status['market_status']}")
         print(f"⏰ Next Event: {market_status['next_event']} in {market_status['time_to_next_event']}")
         
         # Grid trading symbols to monitor
@@ -151,10 +188,12 @@ class ChinaMarketScheduler:
     def log_market_status(self):
         """Log current market status"""
         status = self.get_market_status()
-        if status["is_market_open"]:
+        if status["any_market_open"]:
             print(f"🟢 Market OPEN - {status['current_time_beijing']}")
+            print(f"   China: {'🟢 OPEN' if status['china_market_open'] else '🔴 CLOSED'}")
+            print(f"   Hong Kong: {'🟢 OPEN' if status['hk_market_open'] else '🔴 CLOSED'}")
         else:
-            print(f"🔴 Market CLOSED - Next: {status['next_event']} in {status['time_to_next_event']}")
+            print(f"🔴 Both markets CLOSED - Next: {status['next_event']} in {status['time_to_next_event']}")
     
     def run_scheduler(self):
         """Run the scheduler continuously"""
@@ -184,9 +223,10 @@ def main():
     print("🇨🇳 CHINA MARKET STATUS")
     print("=" * 40)
     print(f"Current Time: {status['current_time_beijing']}")
-    print(f"Market Status: {'🟢 OPEN' if status['is_market_open'] else '🔴 CLOSED'}")
+    print(f"Market Status: {status['market_status']}")
+    print(f"China Market: {'🟢 OPEN' if status['china_market_open'] else '🔴 CLOSED'} (9:30 AM - 3:00 PM)")
+    print(f"Hong Kong Market: {'🟢 OPEN' if status['hk_market_open'] else '🔴 CLOSED'} (9:30 AM - 4:00 PM)")
     print(f"Next Event: {status['next_event']} in {status['time_to_next_event']}")
-    print(f"Market Hours: {status['market_hours']}")
     
     # Run a single price check
     print("\n🔍 SINGLE PRICE CHECK TEST:")

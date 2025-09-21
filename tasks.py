@@ -65,20 +65,37 @@ def update_market_data(self):
         import pytz
         from datetime import datetime, time as dt_time
         
-        # Check if China market is open (since most symbols are Chinese)
+        # Check if China/Hong Kong markets are open
         beijing_tz = pytz.timezone('Asia/Shanghai')
         now_beijing = datetime.now(beijing_tz)
         current_time = now_beijing.time()
-        market_open = dt_time(9, 30)
-        market_close = dt_time(15, 0)
+        
+        # Market hours (Beijing Time):
+        # China (Shanghai/Shenzhen): 9:30 AM - 3:00 PM
+        # Hong Kong: 9:30 AM - 4:00 PM
+        china_market_open = dt_time(9, 30)
+        china_market_close = dt_time(15, 0)
+        hk_market_open = dt_time(9, 30)
+        hk_market_close = dt_time(16, 0)
+        
         is_weekday = now_beijing.weekday() < 5
-        is_market_open = is_weekday and market_open <= current_time <= market_close
+        china_market_open_bool = is_weekday and china_market_open <= current_time <= china_market_close
+        hk_market_open_bool = is_weekday and hk_market_open <= current_time <= hk_market_close
         
-        if not is_market_open:
-            logger.info("📴 Skipping market data update - China market closed (prices don't move)")
-            return {"status": "skipped", "reason": "china_market_closed", "beijing_time": now_beijing.strftime('%H:%M:%S')}
+        # Update if either market is open
+        any_market_open = china_market_open_bool or hk_market_open_bool
         
-        logger.info(f"🟢 Updating market data - China market OPEN ({now_beijing.strftime('%H:%M:%S')} Beijing)")
+        if not any_market_open:
+            logger.info("📴 Skipping market data update - Both China and HK markets closed")
+            return {"status": "skipped", "reason": "all_markets_closed", "beijing_time": now_beijing.strftime('%H:%M:%S')}
+        
+        market_status = []
+        if china_market_open_bool:
+            market_status.append("China")
+        if hk_market_open_bool:
+            market_status.append("Hong Kong")
+            
+        logger.info(f"🟢 Updating market data - {'/'.join(market_status)} market(s) OPEN ({now_beijing.strftime('%H:%M:%S')} Beijing)")
         
         db = get_db()
         
@@ -182,20 +199,37 @@ def process_grid_orders(self):
         import pytz
         from datetime import datetime, time as dt_time
         
-        # Check if China market is open
+        # Check if China/Hong Kong markets are open
         beijing_tz = pytz.timezone('Asia/Shanghai')
         now_beijing = datetime.now(beijing_tz)
         current_time = now_beijing.time()
-        market_open = dt_time(9, 30)
-        market_close = dt_time(15, 0)
+        
+        # Market hours (Beijing Time):
+        # China (Shanghai/Shenzhen): 9:30 AM - 3:00 PM
+        # Hong Kong: 9:30 AM - 4:00 PM
+        china_market_open = dt_time(9, 30)
+        china_market_close = dt_time(15, 0)
+        hk_market_open = dt_time(9, 30)
+        hk_market_close = dt_time(16, 0)
+        
         is_weekday = now_beijing.weekday() < 5
-        is_market_open = is_weekday and market_open <= current_time <= market_close
+        china_market_open_bool = is_weekday and china_market_open <= current_time <= china_market_close
+        hk_market_open_bool = is_weekday and hk_market_open <= current_time <= hk_market_close
         
-        if not is_market_open:
-            logger.info("📴 Skipping grid order processing - China market closed")
-            return {"status": "skipped", "reason": "china_market_closed"}
+        # Process if either market is open
+        any_market_open = china_market_open_bool or hk_market_open_bool
         
-        logger.info(f"🟢 Processing grid orders - China market OPEN ({now_beijing.strftime('%H:%M:%S')} Beijing)")
+        if not any_market_open:
+            logger.info("📴 Skipping grid processing - Both China and HK markets closed")
+            return {"status": "skipped", "reason": "all_markets_closed"}
+        
+        market_status = []
+        if china_market_open_bool:
+            market_status.append("China")
+        if hk_market_open_bool:
+            market_status.append("Hong Kong")
+            
+        logger.info(f"🟢 Processing grid orders - {'/'.join(market_status)} market(s) OPEN ({now_beijing.strftime('%H:%M:%S')} Beijing)")
         
         db = get_db()
         
