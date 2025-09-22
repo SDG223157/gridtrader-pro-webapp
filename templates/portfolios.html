@@ -21,12 +21,24 @@
                 <div class="space-y-2">
                     <div class="flex justify-between">
                         <span class="text-sm text-gray-600">Current Value:</span>
-                        <span class="text-sm font-medium">${{ "%.2f"|format(portfolio.current_value or 0) }}</span>
+                        {% set value_diff = (portfolio.current_value or 0) - (portfolio.initial_capital or 0) %}
+                        <span class="text-sm font-bold {% if value_diff > 0 %}text-green-600{% elif value_diff < 0 %}text-red-600{% else %}text-gray-900{% endif %}">
+                            ${{ "{:,.2f}"|format(portfolio.current_value or 0) }}
+                        </span>
                     </div>
                     <div class="flex justify-between">
                         <span class="text-sm text-gray-600">Initial Capital:</span>
-                        <span class="text-sm font-medium">${{ "%.2f"|format(portfolio.initial_capital or 0) }}</span>
+                        <span class="text-sm font-medium text-gray-900">${{ "{:,.2f}"|format(portfolio.initial_capital or 0) }}</span>
                     </div>
+                    {% if value_diff != 0 %}
+                    <div class="flex justify-between">
+                        <span class="text-sm text-gray-600">Change:</span>
+                        <span class="text-sm font-bold {% if value_diff > 0 %}text-green-600{% elif value_diff < 0 %}text-red-600{% else %}text-gray-900{% endif %}">
+                            {% if value_diff > 0 %}+{% endif %} ${{ "{:,.2f}"|format(value_diff) }}
+                            ({% if value_diff > 0 %}+{% endif %}{{ "{:.2f}"|format((value_diff / portfolio.initial_capital * 100) if portfolio.initial_capital > 0 else 0) }}%)
+                        </span>
+                    </div>
+                    {% endif %}
                     {% if portfolio.performance %}
                     <div class="flex justify-between">
                         <span class="text-sm text-gray-600">P&L:</span>
