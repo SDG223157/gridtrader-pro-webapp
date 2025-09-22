@@ -178,59 +178,126 @@ def update_market_data(self):
 
 @celery_app.task(bind=True, name='tasks.update_portfolio_values')
 def update_portfolio_values(self):
-    """Update portfolio values and holdings"""
+    """Update portfolio values and holdings for ALL stocks in portfolios"""
     try:
+        import pytz
+        from datetime import datetime, time as dt_time
+        
+        # Check market hours to optimize updates
+        us_tz = pytz.timezone('US/Eastern')
+        beijing_tz = pytz.timezone('Asia/Shanghai')
+        
+        now_us = datetime.now(us_tz)
+        now_beijing = datetime.now(beijing_tz)
+        
+        is_weekday = now_us.weekday() < 5
+        
+        # Market hours check
+        us_market_open = (is_weekday and dt_time(9, 30) <= now_us.time() <= dt_time(16, 0))
+        china_market_open = (is_weekday and dt_time(9, 30) <= now_beijing.time() <= dt_time(15, 0))
+        hk_market_open = (is_weekday and dt_time(9, 30) <= now_beijing.time() <= dt_time(16, 0))
+        
+        any_market_open = us_market_open or china_market_open or hk_market_open
+        
+        # Log market status
+        active_markets = []
+        if us_market_open:
+            active_markets.append("🇺🇸 US")
+        if china_market_open:
+            active_markets.append("🇨🇳 China")
+        if hk_market_open:
+            active_markets.append("🇭🇰 Hong Kong")
+        
+        logger.info(f"💼 Portfolio Update - Markets: {', '.join(active_markets) if active_markets else 'All closed'}")
+        
         db = get_db()
         
-        portfolios = db.query(Portfolio).filter(Portfolio.status == "active").all()
+        portfolios = db.query(Portfolio).all()  # Get ALL portfolios (not just active)
         updated_count = 0
+        total_holdings_updated = 0
+        
+        logger.info(f"📊 Found {len(portfolios)} portfolios to update")
         
         for portfolio in portfolios:
             try:
                 holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio.id).all()
                 
                 if not holdings:
+                    logger.info(f"⏭️ Skipping {portfolio.name} - no holdings")
                     continue
                 
-                # Get current prices for all holdings
+                logger.info(f"💼 Updating {portfolio.name}: {len(holdings)} holdings")
+                
+                # Get ALL symbols in this portfolio (regardless of grid status)
                 symbols = [h.symbol for h in holdings]
+                
+                # Get current prices for all holdings in this portfolio
                 current_prices = data_provider.get_multiple_prices(symbols)
                 
                 total_value = 0.0
+                holdings_updated_in_portfolio = 0
                 
                 for holding in holdings:
                     current_price = current_prices.get(holding.symbol)
                     if current_price:
                         # Update holding values
+                        old_price = float(holding.current_price) if holding.current_price else 0
                         holding.current_price = current_price
                         holding.market_value = float(holding.quantity) * current_price
                         holding.unrealized_pnl = holding.market_value - (float(holding.quantity) * float(holding.average_cost))
                         
                         total_value += holding.market_value
+                        holdings_updated_in_portfolio += 1
+                        
+                        # Log significant price changes
+                        if old_price > 0:
+                            price_change = ((current_price - old_price) / old_price) * 100
+                            if abs(price_change) > 1.0:  # Log changes > 1%
+                                logger.info(f"   📈 {holding.symbol}: ${old_price:.2f} → ${current_price:.2f} ({price_change:+.1f}%)")
+                    else:
+                        # If price fetch failed, use existing price for total calculation
+                        if holding.current_price and holding.quantity:
+                            total_value += float(holding.quantity) * float(holding.current_price)
+                        logger.warning(f"   ❌ Failed to get price for {holding.symbol}")
                 
                 # Update portfolio value
+                old_value = portfolio.current_value
                 portfolio.current_value = total_value + float(portfolio.cash_balance or 0)
                 
+                # Calculate return
                 if float(portfolio.initial_capital) > 0:
                     portfolio.total_return = ((portfolio.current_value - float(portfolio.initial_capital)) / float(portfolio.initial_capital))
                 
                 updated_count += 1
+                total_holdings_updated += holdings_updated_in_portfolio
+                
+                # Log portfolio value changes
+                if old_value != portfolio.current_value:
+                    value_change = portfolio.current_value - old_value
+                    logger.info(f"   💰 Portfolio value: ${old_value:,.2f} → ${portfolio.current_value:,.2f} ({value_change:+,.2f})")
                 
             except Exception as e:
-                logger.error(f"Error updating portfolio {portfolio.id}: {e}")
+                logger.error(f"❌ Error updating portfolio {portfolio.name}: {e}")
                 continue
         
         db.commit()
         db.close()
         
-        logger.info(f"Updated {updated_count} portfolios")
-        return {
-            "status": "success",
-            "portfolios_updated": updated_count
+        result = {
+            "status": "success", 
+            "portfolios_updated": updated_count,
+            "total_portfolios": len(portfolios),
+            "holdings_updated": total_holdings_updated,
+            "markets_open": active_markets,
+            "beijing_time": now_beijing.strftime('%H:%M:%S'),
+            "us_time": now_us.strftime('%H:%M:%S %Z')
         }
         
+        logger.info(f"✅ Portfolio update complete: {updated_count} portfolios, {total_holdings_updated} holdings updated")
+        return result
+        
     except Exception as e:
-        logger.error(f"Error updating portfolio values: {e}")
+        logger.error(f"❌ Error updating portfolio values: {e}")
         return {"status": "error", "message": str(e)}
 
 @celery_app.task(bind=True, name='tasks.process_grid_orders')

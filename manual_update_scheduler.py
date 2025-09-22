@@ -220,16 +220,22 @@ def main():
     """Run manual scheduler update"""
     print("🚀 MANUAL SCHEDULER UPDATE")
     print("=" * 50)
+    print("📋 SCHEDULER LOGIC SEPARATION:")
+    print("   🎯 Grid Trading: Only stocks with active grids (for order processing)")
+    print("   💼 Portfolio Updates: ALL stocks in portfolios (for accurate values)")
+    print()
     
     # Step 1: Update market data for grid trading stocks
-    print("\n📊 STEP 1: UPDATING MARKET DATA (Grid Trading Stocks)")
+    print("📊 STEP 1: UPDATING MARKET DATA (Grid Trading Stocks Only)")
     print("-" * 50)
+    print("Purpose: Monitor stocks with active grid strategies for order execution")
     market_result = update_market_data_manual()
     print(f"Result: {market_result}")
     
     # Step 2: Update portfolio values
-    print("\n💼 STEP 2: UPDATING PORTFOLIO VALUES")
+    print("\n💼 STEP 2: UPDATING PORTFOLIO VALUES (All Portfolio Stocks)")
     print("-" * 50)
+    print("Purpose: Update prices for ALL stocks in ALL portfolios for accurate values")
     portfolio_result = update_portfolio_values_manual()
     print(f"Result: {portfolio_result}")
     
