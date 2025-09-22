@@ -500,9 +500,9 @@ def normalize_symbol_for_yfinance(symbol: str) -> str:
         # Keep original for international symbols (e.g., 600298.SS)
         return symbol
 
-# Price cache to avoid rate limiting
+# Price cache to avoid rate limiting - optimized for trading
 price_cache = {}
-cache_duration = 1800  # 30 minutes - increased for better performance
+cache_duration = 60  # 1 minute during market hours for real-time trading
 
 # Auto-update configuration (like TrendWise)
 auto_update_enabled = True
@@ -584,8 +584,29 @@ def get_current_stock_price_trendwise_pattern(symbol: str) -> float:
         
         if cache_key in price_cache:
             cached_price, cached_time = price_cache[cache_key]
-            if current_time - cached_time < cache_duration:
-                logger.info(f"📦 Using cached price for {symbol}: ${cached_price}")
+            
+            # Market-aware caching: shorter cache during market hours
+            import pytz
+            from datetime import datetime, time as dt_time
+            
+            beijing_tz = pytz.timezone('Asia/Shanghai')
+            us_tz = pytz.timezone('US/Eastern')
+            now_beijing = datetime.now(beijing_tz)
+            now_us = datetime.now(us_tz)
+            
+            is_weekday = now_beijing.weekday() < 5
+            china_market_open = is_weekday and dt_time(9, 30) <= now_beijing.time() <= dt_time(15, 0)
+            us_market_open = is_weekday and dt_time(9, 30) <= now_us.time() <= dt_time(16, 0)
+            
+            # Determine cache duration based on market status
+            if china_market_open or us_market_open:
+                effective_cache_duration = 60  # 1 minute during market hours
+            else:
+                effective_cache_duration = 1800  # 30 minutes after hours
+            
+            if current_time - cached_time < effective_cache_duration:
+                market_status = "market hours" if (china_market_open or us_market_open) else "after hours"
+                logger.info(f"📦 Using cached price for {symbol}: ${cached_price} ({market_status} cache)")
                 return cached_price
         
         logger.info(f"🔄 TrendWise pattern for {ticker_symbol}")
@@ -4061,13 +4082,19 @@ async def recalculate_portfolio_values(user: User = Depends(require_auth), db: S
 
 @app.get("/api/refresh-prices")
 async def refresh_prices(user: User = Depends(require_auth), db: Session = Depends(get_db)):
-    """Refresh current prices for all user's holdings"""
+    """Refresh current prices for all user's holdings with cache clearing"""
     try:
+        # Clear price cache to force fresh market data
+        global price_cache
+        cache_cleared = len(price_cache)
+        price_cache.clear()
+        logger.info(f"🧹 Cleared {cache_cleared} cached prices - forcing fresh market data")
+        
         portfolios = db.query(Portfolio).filter(Portfolio.user_id == user.id).all()
         total_holdings_updated = 0
         
         for portfolio in portfolios:
-            # Update holdings prices
+            # Update holdings prices with fresh data
             success = update_holdings_current_prices(db, portfolio.id)
             if success:
                 holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio.id).all()
@@ -4080,12 +4107,33 @@ async def refresh_prices(user: User = Depends(require_auth), db: Session = Depen
         
         return {
             "success": True,
-            "message": f"Updated prices for {total_holdings_updated} holdings",
-            "holdings_updated": total_holdings_updated
+            "message": f"Updated prices for {total_holdings_updated} holdings with fresh market data",
+            "holdings_updated": total_holdings_updated,
+            "cache_cleared": cache_cleared
         }
         
     except Exception as e:
         db.rollback()
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/clear-price-cache")
+async def clear_price_cache(user: User = Depends(require_auth)):
+    """Clear price cache to force fresh market data on next request"""
+    try:
+        global price_cache
+        cache_cleared = len(price_cache)
+        price_cache.clear()
+        
+        logger.info(f"🧹 Manual cache clear: {cache_cleared} cached prices removed")
+        
+        return {
+            "success": True,
+            "message": f"Price cache cleared - {cache_cleared} cached prices removed",
+            "cache_cleared": cache_cleared
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error clearing cache: {e}")
         return {"success": False, "error": str(e)}
 
 @app.get("/admin/fix-symbols")
