@@ -15,7 +15,7 @@
             <div class="text-right">
                 {% set value_diff = (portfolio.current_value or 0) - (portfolio.initial_capital or 0) %}
                 <div class="text-2xl font-bold {% if value_diff > 0 %}text-green-600{% elif value_diff < 0 %}text-red-600{% else %}text-gray-900{% endif %}">
-                    ${{ "{:,.2f}"|format(portfolio.current_value or 0) }}
+                    ${{ "%.2f"|format(portfolio.current_value or 0) }}
                 </div>
                 <div class="text-sm text-gray-600">Current Value</div>
                 {% set return_pct = ((portfolio.current_value or 0) - portfolio.initial_capital) / portfolio.initial_capital * 100 if portfolio.initial_capital > 0 else 0 %}
