@@ -682,8 +682,8 @@ def update_holdings_current_prices(db: Session, portfolio_id: str = None):
             if i > 0 and len(holdings) > 10:
                 time.sleep(0.1)  # Reduced to 0.1 second for large portfolios
             
-            # Try TrendWise's exact pattern
-            current_price = get_current_stock_price_trendwise_pattern(holding.symbol)
+            # Use data provider for consistent pricing
+            current_price = data_provider.get_current_price(holding.symbol)
             
             # If alternative APIs failed, use intelligent fallback
             if not current_price or current_price <= 0:

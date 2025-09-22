@@ -16,21 +16,52 @@ class YFinanceDataProvider:
         self.timeout = timeout
     
     def get_current_price(self, symbol: str) -> Optional[float]:
-        """Get current price for a symbol"""
+        """Get current price for a symbol with multiple fallback methods"""
         try:
             ticker = yf.Ticker(symbol)
-            data = ticker.history(period="1d", interval="1m")
             
-            if data.empty:
-                logger.warning(f"No data available for {symbol}")
-                return None
+            # Method 1: Try info for real-time price
+            try:
+                info = ticker.info
+                if info and 'currentPrice' in info:
+                    current_price = float(info['currentPrice'])
+                    logger.info(f"💰 Real-time price for {symbol}: ${current_price:.2f} (from info)")
+                    return current_price
+                elif info and 'regularMarketPrice' in info:
+                    current_price = float(info['regularMarketPrice'])
+                    logger.info(f"💰 Market price for {symbol}: ${current_price:.2f} (from regularMarketPrice)")
+                    return current_price
+            except Exception as e:
+                logger.warning(f"⚠️ Info method failed for {symbol}: {e}")
             
-            current_price = float(data['Close'].iloc[-1])
-            logger.info(f"Current price for {symbol}: ${current_price:.2f}")
-            return current_price
+            # Method 2: Try recent history
+            try:
+                data = ticker.history(period="1d", interval="1m")
+                
+                if not data.empty:
+                    current_price = float(data['Close'].iloc[-1])
+                    data_time = data.index[-1]
+                    logger.info(f"💰 Historical price for {symbol}: ${current_price:.2f} (from {data_time})")
+                    return current_price
+            except Exception as e:
+                logger.warning(f"⚠️ History method failed for {symbol}: {e}")
+            
+            # Method 3: Try daily data as fallback
+            try:
+                data = ticker.history(period="5d", interval="1d")
+                
+                if not data.empty:
+                    current_price = float(data['Close'].iloc[-1])
+                    logger.info(f"💰 Daily close for {symbol}: ${current_price:.2f} (fallback)")
+                    return current_price
+            except Exception as e:
+                logger.warning(f"⚠️ Daily data failed for {symbol}: {e}")
+            
+            logger.warning(f"❌ No price data available for {symbol}")
+            return None
         
         except Exception as e:
-            logger.error(f"Error fetching current price for {symbol}: {e}")
+            logger.error(f"❌ Error fetching current price for {symbol}: {e}")
             return None
     
     def get_historical_data(self, symbol: str, period: str = "1y", interval: str = "1d") -> Optional[pd.DataFrame]:
