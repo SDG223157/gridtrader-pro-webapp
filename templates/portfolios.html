@@ -5,10 +5,24 @@
 {% block content %}
 <div class="container mx-auto px-4 py-8">
     <div class="flex justify-between items-center mb-6">
-        <h1 class="text-3xl font-bold text-gray-900">My Portfolios</h1>
-        <a href="/portfolios/create" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
-            Create Portfolio
-        </a>
+        <div class="flex items-center">
+            <h1 class="text-3xl font-bold text-gray-900">My Portfolios</h1>
+            {% if auto_update_enabled %}
+            <div id="auto-update-indicator" class="ml-4 px-3 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
+                🔄 Auto-updating prices
+            </div>
+            {% endif %}
+        </div>
+        <div class="flex space-x-3">
+            <button id="refresh-btn" onclick="manualRefresh()" 
+                    class="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded text-sm"
+                    title="Update all portfolio values with current market prices">
+                🔄 Refresh Prices
+            </button>
+            <a href="/portfolios/create" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                Create Portfolio
+            </a>
+        </div>
     </div>
     
     <div class="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -71,6 +85,7 @@
 </div>
 
 <script>
+// Portfolio deletion function
 async function deletePortfolio(portfolioId, portfolioName) {
     // Confirm deletion
     const confirmMessage = `Are you sure you want to delete the portfolio "${portfolioName}"?\n\nThis will permanently delete:\n- The portfolio\n- All holdings\n- All transactions\n- All associated grid strategies\n\nThis action cannot be undone.`;
@@ -105,6 +120,110 @@ async function deletePortfolio(portfolioId, portfolioName) {
         alert('Failed to delete portfolio. Please try again.');
         console.error('Delete portfolio error:', error);
     }
+}
+
+// Auto-refresh functionality for portfolios page
+let refreshInterval;
+let isRefreshing = false;
+
+async function refreshPortfolioValues() {
+    if (isRefreshing) return;
+    
+    isRefreshing = true;
+    console.log('🔄 Refreshing portfolio values...');
+    
+    try {
+        // Show loading indicator
+        const portfolioCards = document.querySelectorAll('.portfolio-card');
+        portfolioCards.forEach(card => {
+            card.style.opacity = '0.7';
+            card.style.transition = 'opacity 0.3s';
+        });
+        
+        // Clear price cache and refresh
+        await fetch('/api/clear-price-cache', { method: 'POST' });
+        
+        // Call refresh prices API
+        const response = await fetch('/api/refresh-prices', {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            console.log(`✅ Refreshed prices for ${result.holdings_updated} holdings`);
+            
+            // Reload the page to show updated values and colors
+            window.location.reload();
+        } else {
+            console.error('❌ Failed to refresh prices:', result.error);
+        }
+        
+    } catch (error) {
+        console.error('❌ Error refreshing portfolio values:', error);
+    } finally {
+        isRefreshing = false;
+        
+        // Remove loading indicator
+        const portfolioCards = document.querySelectorAll('.portfolio-card');
+        portfolioCards.forEach(card => {
+            card.style.opacity = '1';
+        });
+    }
+}
+
+// Manual refresh button
+function manualRefresh() {
+    refreshPortfolioValues();
+}
+
+// Initialize page functionality
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🚀 Portfolios page loaded with auto-refresh');
+    
+    // Add portfolio-card class to existing cards for loading indicator
+    const portfolioCards = document.querySelectorAll('.bg-white.rounded-lg.shadow-md');
+    portfolioCards.forEach(card => {
+        card.classList.add('portfolio-card');
+    });
+    
+    // Refresh button is already in the template, no need to create dynamically
+    
+    // Auto-refresh every 3 minutes during market hours
+    {% if auto_update_enabled %}
+    console.log('⏰ Setting up auto-refresh every 3 minutes');
+    refreshInterval = setInterval(() => {
+        console.log('⏰ Periodic portfolio refresh...');
+        refreshPortfolioValues();
+    }, 180000); // 3 minutes
+    {% endif %}
+});
+
+// Stop auto-refresh when leaving page
+window.addEventListener('beforeunload', () => {
+    if (refreshInterval) {
+        clearInterval(refreshInterval);
+        console.log('📴 Stopped auto-refresh');
+    }
+});
+
+// Add visual feedback for loading states
+function showLoadingState() {
+    const portfolioCards = document.querySelectorAll('.portfolio-card');
+    portfolioCards.forEach(card => {
+        card.style.opacity = '0.7';
+        card.style.transition = 'opacity 0.3s';
+    });
+}
+
+function hideLoadingState() {
+    const portfolioCards = document.querySelectorAll('.portfolio-card');
+    portfolioCards.forEach(card => {
+        card.style.opacity = '1';
+    });
 }
 </script>
 {% endblock %}
