@@ -13,21 +13,14 @@
             </div>
             {% endif %}
         </div>
-        <div class="flex space-x-3">
-            <button id="refresh-btn" onclick="manualRefresh()" 
-                    class="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded text-sm"
-                    title="Update all portfolio values with current market prices">
-                🔄 Refresh Prices
-            </button>
-            <a href="/portfolios/create" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
-                Create Portfolio
-            </a>
-        </div>
+        <a href="/portfolios/create" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+            Create Portfolio
+        </a>
     </div>
     
     <div class="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {% for portfolio in portfolios %}
-        <div class="bg-white overflow-hidden shadow rounded-lg">
+        <div class="bg-white overflow-hidden shadow rounded-lg portfolio-card" data-portfolio-id="{{ portfolio.id }}" data-portfolio-name="{{ portfolio.name }}">
             <div class="p-6">
                 <h3 class="text-lg font-medium text-gray-900 mb-2">{{ portfolio.name }}</h3>
                 <p class="text-sm text-gray-500 mb-4">{{ portfolio.description }}</p>
@@ -36,7 +29,7 @@
                     <div class="flex justify-between">
                         <span class="text-sm text-gray-600">Current Value:</span>
                         {% set value_diff = (portfolio.current_value or 0) - (portfolio.initial_capital or 0) %}
-                        <span class="text-sm font-bold {% if value_diff > 0 %}text-green-600{% elif value_diff < 0 %}text-red-600{% else %}text-gray-900{% endif %}">
+                        <span data-field="current-value" class="text-sm font-bold {% if value_diff > 0 %}text-green-600{% elif value_diff < 0 %}text-red-600{% else %}text-gray-900{% endif %}">
                             ${{ "%.2f"|format(portfolio.current_value or 0) }}
                         </span>
                     </div>
@@ -47,7 +40,7 @@
                     {% if value_diff != 0 %}
                     <div class="flex justify-between">
                         <span class="text-sm text-gray-600">Change:</span>
-                        <span class="text-sm font-bold {% if value_diff > 0 %}text-green-600{% elif value_diff < 0 %}text-red-600{% else %}text-gray-900{% endif %}">
+                        <span data-field="change" class="text-sm font-bold {% if value_diff > 0 %}text-green-600{% elif value_diff < 0 %}text-red-600{% else %}text-gray-900{% endif %}">
                             {% if value_diff > 0 %}+{% endif %} ${{ "%.2f"|format(value_diff) }}
                             ({% if value_diff > 0 %}+{% endif %}{{ "%.2f"|format((value_diff / portfolio.initial_capital * 100) if portfolio.initial_capital > 0 else 0) }}%)
                         </span>
@@ -122,108 +115,150 @@ async function deletePortfolio(portfolioId, portfolioName) {
     }
 }
 
-// Auto-refresh functionality for portfolios page
+// Pure JavaScript auto-refresh functionality
 let refreshInterval;
 let isRefreshing = false;
+let lastUpdateTime = Date.now();
 
-async function refreshPortfolioValues() {
+async function updatePortfolioValuesJS() {
     if (isRefreshing) return;
     
     isRefreshing = true;
-    console.log('🔄 Refreshing portfolio values...');
+    console.log('🔄 Auto-refreshing portfolio values...');
     
     try {
-        // Show loading indicator
-        const portfolioCards = document.querySelectorAll('.portfolio-card');
-        portfolioCards.forEach(card => {
-            card.style.opacity = '0.7';
-            card.style.transition = 'opacity 0.3s';
-        });
+        // Show subtle loading indicator
+        updateAutoRefreshIndicator('🔄 Updating prices...', 'bg-yellow-100 text-yellow-800');
         
-        // Clear price cache and refresh
+        // Clear cache and get fresh prices
         await fetch('/api/clear-price-cache', { method: 'POST' });
         
-        // Call refresh prices API
-        const response = await fetch('/api/refresh-prices', {
+        // Get updated portfolio data
+        const response = await fetch('/api/portfolios', {
             method: 'GET',
-            headers: {
-                'Content-Type': 'application/json'
-            }
+            headers: { 'Content-Type': 'application/json' }
         });
         
-        const result = await response.json();
-        
-        if (result.success) {
-            console.log(`✅ Refreshed prices for ${result.holdings_updated} holdings`);
+        if (response.ok) {
+            const data = await response.json();
             
-            // Reload the page to show updated values and colors
-            window.location.reload();
+            if (data.portfolios) {
+                console.log(`✅ Got fresh data for ${data.portfolios.length} portfolios`);
+                
+                // Update each portfolio card with fresh data
+                data.portfolios.forEach(portfolio => {
+                    updatePortfolioCard(portfolio);
+                });
+                
+                lastUpdateTime = Date.now();
+                updateAutoRefreshIndicator('🔄 Auto-updating prices', 'bg-green-100 text-green-800');
+                console.log('✅ Portfolio values updated dynamically');
+            }
         } else {
-            console.error('❌ Failed to refresh prices:', result.error);
+            console.error('❌ Failed to get portfolio data');
+            updateAutoRefreshIndicator('❌ Update failed', 'bg-red-100 text-red-800');
         }
         
     } catch (error) {
-        console.error('❌ Error refreshing portfolio values:', error);
+        console.error('❌ Error in auto-refresh:', error);
+        updateAutoRefreshIndicator('❌ Update error', 'bg-red-100 text-red-800');
     } finally {
         isRefreshing = false;
-        
-        // Remove loading indicator
-        const portfolioCards = document.querySelectorAll('.portfolio-card');
-        portfolioCards.forEach(card => {
-            card.style.opacity = '1';
-        });
     }
 }
 
-// Manual refresh button
-function manualRefresh() {
-    refreshPortfolioValues();
+function updatePortfolioCard(portfolio) {
+    // Find the portfolio card by ID or name
+    const portfolioCards = document.querySelectorAll('.portfolio-card');
+    
+    portfolioCards.forEach(card => {
+        const portfolioName = card.querySelector('h3')?.textContent;
+        
+        if (portfolioName === portfolio.name) {
+            // Update current value with color coding
+            const currentValueElement = card.querySelector('[data-field="current-value"]');
+            if (currentValueElement) {
+                const valueDiff = portfolio.current_value - portfolio.initial_capital;
+                const colorClass = valueDiff > 0 ? 'text-green-600' : valueDiff < 0 ? 'text-red-600' : 'text-gray-900';
+                
+                currentValueElement.textContent = `$${portfolio.current_value.toFixed(2)}`;
+                currentValueElement.className = `text-sm font-bold ${colorClass}`;
+            }
+            
+            // Update change amount and percentage
+            const changeElement = card.querySelector('[data-field="change"]');
+            if (changeElement) {
+                const valueDiff = portfolio.current_value - portfolio.initial_capital;
+                const changePercent = (valueDiff / portfolio.initial_capital * 100);
+                const colorClass = valueDiff > 0 ? 'text-green-600' : valueDiff < 0 ? 'text-red-600' : 'text-gray-900';
+                
+                const sign = valueDiff > 0 ? '+' : '';
+                changeElement.textContent = `${sign} $${valueDiff.toFixed(2)} (${sign}${changePercent.toFixed(2)}%)`;
+                changeElement.className = `text-sm font-bold ${colorClass}`;
+            }
+            
+            // Add subtle animation to show update
+            card.style.transform = 'scale(1.02)';
+            setTimeout(() => {
+                card.style.transform = 'scale(1)';
+            }, 200);
+        }
+    });
 }
 
-// Initialize page functionality
+function updateAutoRefreshIndicator(text, className) {
+    const indicator = document.getElementById('auto-update-indicator');
+    if (indicator) {
+        indicator.textContent = text;
+        indicator.className = `ml-4 px-3 py-1 rounded-full text-xs font-medium ${className}`;
+    }
+}
+
+// Initialize pure JavaScript auto-refresh
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('🚀 Portfolios page loaded with auto-refresh');
+    console.log('🚀 Portfolios page loaded with pure JS auto-refresh');
     
-    // Add portfolio-card class to existing cards for loading indicator
-    const portfolioCards = document.querySelectorAll('.bg-white.rounded-lg.shadow-md');
+    // Add smooth transitions to portfolio cards
+    const portfolioCards = document.querySelectorAll('.portfolio-card');
     portfolioCards.forEach(card => {
-        card.classList.add('portfolio-card');
+        card.style.transition = 'transform 0.2s ease, opacity 0.3s ease';
     });
     
-    // Refresh button is already in the template, no need to create dynamically
-    
-    // Auto-refresh every 3 minutes during market hours
     {% if auto_update_enabled %}
-    console.log('⏰ Setting up auto-refresh every 3 minutes');
+    console.log('⏰ Starting pure JavaScript auto-refresh every 2 minutes');
+    
+    // Start auto-refresh immediately and then every 2 minutes
+    setTimeout(() => {
+        updatePortfolioValuesJS();
+    }, 5000); // First update after 5 seconds
+    
     refreshInterval = setInterval(() => {
-        console.log('⏰ Periodic portfolio refresh...');
-        refreshPortfolioValues();
-    }, 180000); // 3 minutes
+        console.log('⏰ Periodic auto-refresh...');
+        updatePortfolioValuesJS();
+    }, 120000); // 2 minutes
+    
+    // Show last update time
+    const indicator = document.getElementById('auto-update-indicator');
+    if (indicator) {
+        setInterval(() => {
+            const timeSinceUpdate = Math.floor((Date.now() - lastUpdateTime) / 1000);
+            if (timeSinceUpdate < 60) {
+                indicator.textContent = `🔄 Updated ${timeSinceUpdate}s ago`;
+            } else {
+                const minutes = Math.floor(timeSinceUpdate / 60);
+                indicator.textContent = `🔄 Updated ${minutes}m ago`;
+            }
+        }, 1000);
+    }
     {% endif %}
 });
 
-// Stop auto-refresh when leaving page
+// Clean up on page leave
 window.addEventListener('beforeunload', () => {
     if (refreshInterval) {
         clearInterval(refreshInterval);
         console.log('📴 Stopped auto-refresh');
     }
 });
-
-// Add visual feedback for loading states
-function showLoadingState() {
-    const portfolioCards = document.querySelectorAll('.portfolio-card');
-    portfolioCards.forEach(card => {
-        card.style.opacity = '0.7';
-        card.style.transition = 'opacity 0.3s';
-    });
-}
-
-function hideLoadingState() {
-    const portfolioCards = document.querySelectorAll('.portfolio-card');
-    portfolioCards.forEach(card => {
-        card.style.opacity = '1';
-    });
-}
 </script>
 {% endblock %}
