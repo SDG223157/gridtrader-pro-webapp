@@ -1,7 +1,7 @@
 import os
 import asyncio
 from celery import Celery
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, Session
 from database import engine, User, Portfolio, Holding, Grid, MarketData, Alert, GridOrder, OrderStatus, TransactionType
 from decimal import Decimal
 from data_provider import YFinanceDataProvider
