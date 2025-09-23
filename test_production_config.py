@@ -164,7 +164,7 @@ def test_email_service():
         os.environ['SMTP_SERVER'] = 'smtp.gmail.com'
         os.environ['SMTP_PORT'] = '587'
         os.environ['SMTP_USERNAME'] = 'isky999@gmail.com'
-        os.environ['SMTP_PASSWORD'] = 'nzdb euzz nmyr soyd'
+        os.environ['SMTP_PASSWORD'] = '***REDACTED***'  # Use actual password from Coolify env
         os.environ['FROM_EMAIL'] = 'isky999@gmail.com'
         os.environ['FROM_NAME'] = 'GridTrader Pro Alerts'
         
