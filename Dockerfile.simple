@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y \
     pkg-config \
     curl \
     netcat-openbsd \
+    supervisor \
     && rm -rf /var/lib/apt/lists/* \
     && useradd -m -u 1000 appuser
 
@@ -27,8 +28,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . /app/
 
 # Create necessary directories and set permissions
-RUN mkdir -p /app/logs /app/static /app/templates \
+RUN mkdir -p /app/logs /app/static /app/templates /var/log/supervisor \
     && chown -R appuser:appuser /app
+
+# Copy supervisor configuration
+COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 # Create simple startup script
 RUN echo '#!/bin/bash\n\
@@ -55,9 +59,9 @@ fi\n\
 echo "🔧 Setting up database..."\n\
 python init_database.py\n\
 \n\
-# Start application\n\
-echo "🎬 Starting GridTrader Pro..."\n\
-exec python main.py' > /start.sh && chmod +x /start.sh
+# Start application with supervisor\n\
+echo "🎬 Starting services..."\n\
+exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf' > /start.sh && chmod +x /start.sh
 
 # Expose port
 EXPOSE 3000
@@ -66,8 +70,8 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:3000/health || exit 1
 
-# Switch to app user
-USER appuser
+# Switch to root for supervisor
+USER root
 
 # Start the application
 CMD ["/start.sh"]
