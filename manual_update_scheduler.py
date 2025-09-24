@@ -25,30 +25,27 @@ def get_db():
     return SessionLocal()
 
 def calculate_portfolio_value(portfolio: Portfolio, db: Session) -> Decimal:
-    """Calculate total portfolio value including cash, holdings, and grid allocations"""
+    """Calculate total portfolio value including cash balance and holdings market value
+    
+    Note: Grid allocations are NOT added because when a grid is created, the investment
+    amount is deducted from cash_balance. The grid either:
+    1. Creates holdings (which are counted in holdings market value), or
+    2. Remains as reserved cash (which is still part of cash_balance)
+    Adding grid allocations would double-count this money.
+    """
     try:
         # Start with cash balance
         total_value = portfolio.cash_balance or Decimal('0')
         
         # Add holdings market value
         holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio.id).all()
+        holdings_value = Decimal('0')
         for holding in holdings:
             holding_market_value = (holding.quantity or Decimal('0')) * (holding.current_price or Decimal('0'))
             total_value += holding_market_value
+            holdings_value += holding_market_value
         
-        # Add active grid trading allocations
-        active_grids = db.query(Grid).filter(
-            Grid.portfolio_id == portfolio.id,
-            Grid.status == GridStatus.active
-        ).all()
-        
-        for grid in active_grids:
-            # Add the investment amount allocated to this grid
-            grid_allocation = grid.investment_amount or Decimal('0')
-            total_value += grid_allocation
-            logger.debug(f"📊 Adding grid '{grid.name}' allocation: ${grid_allocation}")
-        
-        logger.info(f"💰 Portfolio {portfolio.name} total value: ${total_value} (cash: ${portfolio.cash_balance}, grids: {len(active_grids)})")
+        logger.info(f"💰 Portfolio {portfolio.name} total value: ${total_value} (cash: ${portfolio.cash_balance}, holdings: ${holdings_value})")
         return total_value
         
     except Exception as e:
