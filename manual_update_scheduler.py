@@ -13,6 +13,7 @@ from sqlalchemy.orm import sessionmaker
 from database import engine, Portfolio, Holding, Grid, MarketData, GridStatus
 from data_provider import YFinanceDataProvider
 from decimal import Decimal
+from sqlalchemy.orm import Session
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -22,6 +23,37 @@ def get_db():
     """Get database session"""
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     return SessionLocal()
+
+def calculate_portfolio_value(portfolio: Portfolio, db: Session) -> Decimal:
+    """Calculate total portfolio value including cash, holdings, and grid allocations"""
+    try:
+        # Start with cash balance
+        total_value = portfolio.cash_balance or Decimal('0')
+        
+        # Add holdings market value
+        holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio.id).all()
+        for holding in holdings:
+            holding_market_value = (holding.quantity or Decimal('0')) * (holding.current_price or Decimal('0'))
+            total_value += holding_market_value
+        
+        # Add active grid trading allocations
+        active_grids = db.query(Grid).filter(
+            Grid.portfolio_id == portfolio.id,
+            Grid.status == GridStatus.active
+        ).all()
+        
+        for grid in active_grids:
+            # Add the investment amount allocated to this grid
+            grid_allocation = grid.investment_amount or Decimal('0')
+            total_value += grid_allocation
+            logger.debug(f"📊 Adding grid '{grid.name}' allocation: ${grid_allocation}")
+        
+        logger.info(f"💰 Portfolio {portfolio.name} total value: ${total_value} (cash: ${portfolio.cash_balance}, grids: {len(active_grids)})")
+        return total_value
+        
+    except Exception as e:
+        logger.error(f"❌ Error calculating portfolio value: {e}")
+        return portfolio.cash_balance or Decimal('0')
 
 def update_market_data_manual():
     """Update market data ONLY for stocks with active grid trading strategies"""
@@ -180,9 +212,9 @@ def update_portfolio_values_manual():
                         except Exception as e:
                             logger.error(f"   ❌ Error updating holding {holding.symbol}: {e}")
                     
-                    # Update portfolio value
+                    # Update portfolio value using the comprehensive calculation that includes grid allocations
                     old_value = portfolio.current_value
-                    portfolio.current_value = total_value + float(portfolio.cash_balance or 0)
+                    portfolio.current_value = float(calculate_portfolio_value(portfolio, db))
                     
                     # Calculate return
                     if float(portfolio.initial_capital) > 0:
