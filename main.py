@@ -1532,7 +1532,7 @@ async def dashboard_summary(user: User = Depends(require_auth), db: Session = De
 
 @app.get("/api/portfolios")
 async def get_portfolios(user: User = Depends(require_auth), db: Session = Depends(get_db)):
-    """Get all portfolios with cash balances for MCP integration"""
+    """Get all portfolios with current calculated values including grid allocations"""
     try:
         portfolios = db.query(Portfolio).filter(Portfolio.user_id == user.id).all()
         
@@ -1543,15 +1543,23 @@ async def get_portfolios(user: User = Depends(require_auth), db: Session = Depen
             cash_balance = float(portfolio.cash_balance or 0)
             total_cash += cash_balance
             
+            # Calculate current portfolio value including grid allocations
+            current_value = float(calculate_portfolio_value(portfolio, db))
+            
+            # Calculate total return based on current calculated value
+            total_return = 0.0
+            if float(portfolio.initial_capital) > 0:
+                total_return = ((current_value - float(portfolio.initial_capital)) / float(portfolio.initial_capital)) * 100
+            
             portfolio_data = {
                 "id": portfolio.id,
                 "name": portfolio.name,
                 "description": portfolio.description or "",
                 "strategy_type": portfolio.strategy_type.value if portfolio.strategy_type else "balanced",
                 "initial_capital": float(portfolio.initial_capital),
-                "current_value": float(portfolio.current_value or 0),
+                "current_value": current_value,  # Use calculated value instead of database value
                 "cash_balance": cash_balance,
-                "total_return": float(portfolio.total_return or 0) * 100,  # Convert to percentage
+                "total_return": total_return,  # Use calculated return
                 "created_at": portfolio.created_at.isoformat(),
                 "updated_at": portfolio.updated_at.isoformat()
             }
