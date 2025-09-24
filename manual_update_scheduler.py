@@ -25,16 +25,15 @@ def get_db():
     return SessionLocal()
 
 def calculate_portfolio_value(portfolio: Portfolio, db: Session) -> Decimal:
-    """Calculate total portfolio value including cash balance and holdings market value
+    """Calculate total portfolio value including cash balance, holdings, and active grid allocations
     
-    Note: Grid allocations are NOT added because when a grid is created, the investment
-    amount is deducted from cash_balance. The grid either:
-    1. Creates holdings (which are counted in holdings market value), or
-    2. Remains as reserved cash (which is still part of cash_balance)
-    Adding grid allocations would double-count this money.
+    Total Portfolio Value = Cash Balance + Holdings Market Value + Active Grid Allocations
+    
+    When a grid is created, money is deducted from cash_balance but it's still part of the 
+    total portfolio value - it's just allocated to a specific trading strategy.
     """
     try:
-        # Start with cash balance
+        # Start with cash balance (remaining unallocated cash)
         total_value = portfolio.cash_balance or Decimal('0')
         
         # Add holdings market value
@@ -45,7 +44,20 @@ def calculate_portfolio_value(portfolio: Portfolio, db: Session) -> Decimal:
             total_value += holding_market_value
             holdings_value += holding_market_value
         
-        logger.info(f"💰 Portfolio {portfolio.name} total value: ${total_value} (cash: ${portfolio.cash_balance}, holdings: ${holdings_value})")
+        # Add active grid trading allocations
+        active_grids = db.query(Grid).filter(
+            Grid.portfolio_id == portfolio.id,
+            Grid.status == GridStatus.active
+        ).all()
+        
+        grid_allocations = Decimal('0')
+        for grid in active_grids:
+            grid_allocation = grid.investment_amount or Decimal('0')
+            total_value += grid_allocation
+            grid_allocations += grid_allocation
+            logger.debug(f"📊 Adding grid '{grid.name}' allocation: ${grid_allocation}")
+        
+        logger.info(f"💰 Portfolio {portfolio.name} total value: ${total_value} (cash: ${portfolio.cash_balance}, holdings: ${holdings_value}, grids: ${grid_allocations})")
         return total_value
         
     except Exception as e:
