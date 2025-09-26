@@ -673,6 +673,24 @@ def monitor_china_market_hours(self):
         logger.error(f"Error monitoring China market hours: {e}")
         return {"status": "error", "message": str(e)}
 
+def check_recent_alert(db: Session, user_id: str, grid_id: str, alert_type: str, level_price: float, hours: int = 24) -> bool:
+    """Check if a similar alert was created recently to prevent duplicates"""
+    from datetime import datetime, timedelta
+    
+    cutoff_time = datetime.now() - timedelta(hours=hours)
+    
+    recent_alert = db.query(Alert).filter(
+        Alert.user_id == user_id,
+        Alert.alert_type == "grid",
+        Alert.created_at >= cutoff_time,
+        Alert.alert_metadata.contains(f'"grid_id": "{grid_id}"'),
+        Alert.alert_metadata.contains(f'"alert_type": "{alert_type}"'),
+        Alert.alert_metadata.contains(f'"sell_level": {level_price}') if alert_type == "sell_level" else 
+        Alert.alert_metadata.contains(f'"buy_level": {level_price}')
+    ).first()
+    
+    return recent_alert is not None
+
 @celery_app.task(bind=True, name='tasks.monitor_grid_prices_realtime')
 def monitor_grid_prices_realtime(self):
     """Monitor grid trading stock prices in real-time during China market hours"""
@@ -732,6 +750,12 @@ def monitor_grid_prices_realtime(self):
                 buy_level_triggered = False
                 for buy_level in buy_levels:
                     if abs(current_price - buy_level) <= 0.10:  # Within $0.10 of buy level
+                        # Check if we already sent this alert recently (within 24 hours)
+                        if check_recent_alert(db, grid.portfolio.user_id, grid.id, "buy_level", buy_level, hours=24):
+                            logger.info(f"⏭️ Skipping duplicate buy level alert for {grid.symbol} at ${buy_level:.2f}")
+                            buy_level_triggered = True  # Mark as triggered to prevent boundary alerts
+                            break
+                        
                         alert = Alert(
                             user_id=grid.portfolio.user_id,
                             alert_type="grid",
@@ -774,6 +798,12 @@ def monitor_grid_prices_realtime(self):
                 if not buy_level_triggered:  # Only check sell levels if no buy level alert
                     for sell_level in sell_levels:
                         if current_price >= sell_level - 0.05:  # Price at or above sell level (with small buffer)
+                            # Check if we already sent this alert recently (within 24 hours)
+                            if check_recent_alert(db, grid.portfolio.user_id, grid.id, "sell_level", sell_level, hours=24):
+                                logger.info(f"⏭️ Skipping duplicate sell level alert for {grid.symbol} at ${sell_level:.2f}")
+                                sell_level_triggered = True  # Mark as triggered to prevent boundary alerts
+                                break
+                            
                             alert = Alert(
                                 user_id=grid.portfolio.user_id,
                                 alert_type="grid",
