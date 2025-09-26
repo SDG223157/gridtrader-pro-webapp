@@ -718,12 +718,15 @@ def monitor_grid_prices_realtime(self):
                 lower_boundary = float(grid.lower_price)
                 boundary_buffer = 0.50  # $0.50 buffer for alerts
                 
-                # For China grids, also check buy levels (since no short selling allowed)
-                # Calculate buy levels based on grid configuration
+                # For China grids, also check buy and sell levels
+                # Calculate buy and sell levels based on grid configuration
                 buy_levels = []
+                sell_levels = []
                 if grid.symbol == "600298.SS":  # Yang's specific grid
                     # Buy levels from CHINA_HK_GRID_TRADING_GUIDE.md
                     buy_levels = [33.69, 34.68, 35.67, 36.66, 37.65, 38.64]
+                    # Sell levels from grid configuration
+                    sell_levels = [40.62, 41.61, 42.60, 43.59, 44.58]
                 
                 # Check buy level alerts (for individual grid levels)
                 buy_level_triggered = False
@@ -766,8 +769,50 @@ def monitor_grid_prices_realtime(self):
                         
                         break  # Only one buy level alert at a time
                 
-                # Create boundary alerts (only if no buy level alert was triggered)
-                if not buy_level_triggered and current_price <= lower_boundary + boundary_buffer:
+                # Check sell level alerts (for individual grid levels)
+                sell_level_triggered = False
+                if not buy_level_triggered:  # Only check sell levels if no buy level alert
+                    for sell_level in sell_levels:
+                        if current_price >= sell_level - 0.05:  # Price at or above sell level (with small buffer)
+                            alert = Alert(
+                                user_id=grid.portfolio.user_id,
+                                alert_type="grid",
+                                title=f"💰 Sell Level Alert - {grid.symbol}",
+                                message=f"{grid.symbol} price ${current_price:.2f} near sell level ${sell_level:.2f} - Consider profit taking",
+                                alert_metadata={
+                                    "grid_id": grid.id,
+                                    "symbol": grid.symbol,
+                                    "current_price": current_price,
+                                    "sell_level": sell_level,
+                                    "alert_type": "sell_level",
+                                    "distance": current_price - sell_level
+                                }
+                            )
+                            db.add(alert)
+                            alerts_created += 1
+                            sell_level_triggered = True
+                            logger.info(f"💰 Sell level alert created for {grid.symbol} at ${sell_level:.2f}")
+                            
+                            # Send email alert for sell level
+                            try:
+                                from email_alert_service import send_grid_alert_to_user
+                                alert_data = {
+                                    "symbol": grid.symbol,
+                                    "current_price": current_price,
+                                    "sell_level": sell_level,
+                                    "grid_name": grid.name,
+                                    "grid_id": grid.id,
+                                    "alert_type": "sell_level"
+                                }
+                                send_grid_alert_to_user(grid.portfolio.user_id, "sell_level", alert_data, db)
+                                logger.info(f"📧 Email alert sent for sell level {sell_level}")
+                            except Exception as email_error:
+                                logger.error(f"Failed to send email alert: {email_error}")
+                            
+                            break  # Only one sell level alert at a time
+                
+                # Create boundary alerts (only if no buy or sell level alert was triggered)
+                if not buy_level_triggered and not sell_level_triggered and current_price <= lower_boundary + boundary_buffer:
                     # Approaching lower boundary
                     alert = Alert(
                         user_id=grid.portfolio.user_id,
@@ -803,7 +848,7 @@ def monitor_grid_prices_realtime(self):
                     except Exception as email_error:
                         logger.error(f"Failed to send boundary email alert: {email_error}")
                     
-                elif current_price >= upper_boundary - boundary_buffer:
+                elif not buy_level_triggered and not sell_level_triggered and current_price >= upper_boundary - boundary_buffer:
                     # Approaching upper boundary
                     alert = Alert(
                         user_id=grid.portfolio.user_id,

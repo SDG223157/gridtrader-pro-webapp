@@ -237,6 +237,45 @@ class EmailAlertService:
         
         return self._send_email(user_email, subject, html_content)
     
+    def send_sell_level_alert(self, user_email: str, user_name: str, sell_data: Dict[str, Any]) -> bool:
+        """Send alert when price approaches a sell level"""
+        if not self.is_configured:
+            return False
+            
+        subject = f"💰 Sell Level Alert - {sell_data['symbol']}"
+        
+        html_content = f"""
+        <html>
+        <head></head>
+        <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <div style="background-color: #d4edda; padding: 20px; border-radius: 8px; border-left: 4px solid #28a745;">
+                <h2 style="color: #155724; margin-top: 0;">💰 Sell Level Opportunity</h2>
+                
+                <div style="background-color: white; padding: 15px; border-radius: 6px; margin: 15px 0;">
+                    <h3 style="color: #333; margin-top: 0;">Price Alert</h3>
+                    <p><strong>Symbol:</strong> {sell_data['symbol']}</p>
+                    <p><strong>Current Price:</strong> ${sell_data['current_price']:.2f}</p>
+                    <p><strong>Sell Level:</strong> ${sell_data['sell_level']:.2f}</p>
+                    <p><strong>Distance:</strong> ${abs(sell_data['current_price'] - sell_data['sell_level']):.2f}</p>
+                </div>
+                
+                <div style="background-color: #d1ecf1; padding: 10px; border-radius: 6px;">
+                    <p style="margin: 0; font-size: 14px; color: #0c5460;">
+                        <strong>Action:</strong> Price is near your grid sell level - consider taking profits or selling shares
+                    </p>
+                </div>
+                
+                <p style="font-size: 12px; color: #999; margin-top: 20px;">
+                    Grid: {sell_data['grid_name']} | 
+                    <a href="https://gridsai.app/grids/{sell_data['grid_id']}">View Grid</a>
+                </p>
+            </div>
+        </body>
+        </html>
+        """
+        
+        return self._send_email(user_email, subject, html_content)
+    
     def _send_email(self, to_email: str, subject: str, html_content: str) -> bool:
         """Send email using SMTP"""
         try:
@@ -292,6 +331,8 @@ def send_grid_alert_to_user(user_id: str, alert_type: str, alert_data: Dict[str,
             return email_service.send_risk_alert(user.email, user_name, alert_data)
         elif alert_type == "buy_level":
             return email_service.send_buy_level_alert(user.email, user_name, alert_data)
+        elif alert_type == "sell_level":
+            return email_service.send_sell_level_alert(user.email, user_name, alert_data)
         else:
             logger.warning(f"Unknown alert type: {alert_type}")
             return False
