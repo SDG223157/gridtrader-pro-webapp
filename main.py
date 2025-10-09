@@ -1467,10 +1467,21 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
     
     # Calculate real portfolio summary
     user_portfolios = db.query(Portfolio).filter(Portfolio.user_id == context["user"].id).all()
-    
-    total_value = sum(float(p.current_value or 0) for p in user_portfolios)
-    total_invested = sum(float(p.initial_capital or 0) for p in user_portfolios)
-    total_return = ((total_value - total_invested) / total_invested * 100) if total_invested > 0 else 0
+
+    total_value = Decimal("0")
+    total_invested = Decimal("0")
+
+    for portfolio in user_portfolios:
+        portfolio_value = calculate_portfolio_value(portfolio, db)
+        total_value += portfolio_value
+        initial_capital = portfolio.initial_capital or Decimal("0")
+        total_invested += initial_capital
+
+    total_return = (
+        float(((total_value - total_invested) / total_invested) * Decimal("100"))
+        if total_invested > 0
+        else 0.0
+    )
     
     # Get active grids count
     active_grids = db.query(Grid).join(Portfolio).filter(
@@ -1486,8 +1497,8 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
     context.update({
         "portfolio_summary": {
             "total_portfolios": len(user_portfolios),
-            "total_value": total_value,
-            "total_invested": total_invested,
+            "total_value": float(total_value),
+            "total_invested": float(total_invested),
             "total_return": round(total_return, 2),
             "active_grids": active_grids
         },
