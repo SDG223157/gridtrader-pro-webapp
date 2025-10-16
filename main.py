@@ -1575,6 +1575,7 @@ async def get_portfolios(user: User = Depends(require_auth), db: Session = Depen
                 "current_value": current_value,  # Use calculated value instead of database value
                 "cash_balance": cash_balance,
                 "total_return": total_return,  # Use calculated return
+                "initiated_date": portfolio.initiated_date.isoformat() if portfolio.initiated_date else None,
                 "created_at": portfolio.created_at.isoformat(),
                 "updated_at": portfolio.updated_at.isoformat()
             }
@@ -1659,6 +1660,7 @@ async def get_portfolio_details(portfolio_id: str, user: User = Depends(require_
             "current_value": float(portfolio.current_value or 0),
             "cash_balance": float(portfolio.cash_balance or 0),
             "total_return": float(portfolio.total_return or 0) * 100,
+            "initiated_date": portfolio.initiated_date.isoformat() if portfolio.initiated_date else None,
             "created_at": portfolio.created_at.isoformat(),
             "updated_at": portfolio.updated_at.isoformat(),
             "holdings": holdings_data,
