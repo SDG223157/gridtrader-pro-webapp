@@ -474,6 +474,24 @@ class GridTraderProMCPServer {
             }
           },
           {
+            name: 'update_portfolio_initiated_date',
+            description: 'Update the initiated date of a portfolio - the date when the portfolio was actually started',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                portfolio_id: {
+                  type: 'string',
+                  description: 'Portfolio ID to update'
+                },
+                initiated_date: {
+                  type: 'string',
+                  description: 'Initiated date in YYYY-MM-DD format (e.g., "2024-01-15"). Set to null or empty string to clear the date.'
+                }
+              },
+              required: ['portfolio_id', 'initiated_date']
+            }
+          },
+          {
             name: 'create_dynamic_grid',
             description: 'Create a dynamic grid trading strategy that automatically adjusts bounds based on market volatility',
             inputSchema: {
@@ -729,6 +747,9 @@ class GridTraderProMCPServer {
           
           case 'update_balance':
             return await this.handleUpdateBalance(args);
+          
+          case 'update_portfolio_initiated_date':
+            return await this.handleUpdatePortfolioInitiatedDate(args);
           
           case 'delete_portfolio':
             return await this.handleDeletePortfolio(args);
@@ -1681,6 +1702,65 @@ class GridTraderProMCPServer {
               `• Try again in a few moments\n\n` +
               `💰 **Example Usage:**\n` +
               `"Update my portfolio balance to $50000 with note 'Bank deposit'"`
+          }
+        ]
+      };
+    }
+  }
+
+  private async handleUpdatePortfolioInitiatedDate(args: any) {
+    try {
+      const updateData = {
+        initiated_date: args.initiated_date || null
+      };
+
+      const result = await this.makeApiCall(`/api/portfolios/${args.portfolio_id}/initiated-date`, 'PUT', updateData);
+      
+      if (result.success) {
+        const oldDate = result.old_initiated_date ? new Date(result.old_initiated_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'Not set';
+        const newDate = result.new_initiated_date ? new Date(result.new_initiated_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'Not set';
+        
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `✅ **Portfolio Initiated Date Updated Successfully!**\n\n` +
+                `**Update Details:**\n` +
+                `• Portfolio: **${result.portfolio_name}**\n` +
+                `• Portfolio ID: ${result.portfolio_id}\n` +
+                `• Previous Date: **${oldDate}**\n` +
+                `• New Date: **${newDate}**\n\n` +
+                `📅 **What This Means:**\n` +
+                `The initiated date tracks when you actually started this portfolio, which can be different from when you created the record in the system.\n\n` +
+                `📋 **Next Steps:**\n` +
+                `• View portfolio details: "Show me portfolio ${result.portfolio_id}"\n` +
+                `• Check all portfolios: "Show me all my portfolios"\n` +
+                `• Calculate performance since initiated date\n\n` +
+                `🎉 **Initiated date update completed successfully!**`
+            }
+          ]
+        };
+      } else {
+        throw new Error(result.message || result.detail || 'Initiated date update failed');
+      }
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `❌ **Initiated Date Update Failed**\n\n` +
+              `Error: ${error.response?.data?.detail || error.message}\n\n` +
+              `💡 **Common Issues:**\n` +
+              `• Invalid portfolio ID\n` +
+              `• Invalid date format (should be YYYY-MM-DD)\n` +
+              `• Authentication error\n` +
+              `• Database connection issue\n\n` +
+              `🔧 **Try:**\n` +
+              `• "Show me all my portfolios" to verify portfolio ID\n` +
+              `• Use date format like "2024-01-15"\n` +
+              `• Try again in a few moments\n\n` +
+              `📅 **Example Usage:**\n` +
+              `"Update my portfolio initiated date to 2024-01-15"`
           }
         ]
       };

@@ -80,6 +80,9 @@ class UpdateApiTokenRequest(BaseModel):
     description: Optional[str] = None
     is_active: Optional[bool] = None
 
+class UpdatePortfolioInitiatedDateRequest(BaseModel):
+    initiated_date: Optional[str] = None  # ISO format date string (YYYY-MM-DD), None to clear
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -1814,6 +1817,57 @@ async def delete_portfolio(portfolio_id: str, user: User = Depends(require_auth)
         db.rollback()
         logger.error(f"Error deleting portfolio: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete portfolio")
+
+@app.put("/api/portfolios/{portfolio_id}/initiated-date")
+async def update_portfolio_initiated_date(
+    portfolio_id: str,
+    request: UpdatePortfolioInitiatedDateRequest,
+    user: User = Depends(require_auth),
+    db: Session = Depends(get_db)
+):
+    """Update the initiated date for a portfolio"""
+    try:
+        # Verify portfolio ownership
+        portfolio = db.query(Portfolio).filter(
+            Portfolio.id == portfolio_id,
+            Portfolio.user_id == user.id
+        ).first()
+        
+        if not portfolio:
+            raise HTTPException(status_code=404, detail="Portfolio not found")
+        
+        # Parse and validate initiated_date
+        old_date = portfolio.initiated_date
+        initiated_date = None
+        
+        if request.initiated_date:
+            try:
+                initiated_date = datetime.strptime(request.initiated_date, "%Y-%m-%d").date()
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+        
+        # Update the initiated_date
+        portfolio.initiated_date = initiated_date
+        db.commit()
+        db.refresh(portfolio)
+        
+        logger.info(f"Portfolio initiated date updated: {portfolio.name} - Old: {old_date}, New: {initiated_date}")
+        
+        return {
+            "success": True,
+            "message": "Portfolio initiated date updated successfully",
+            "portfolio_id": portfolio.id,
+            "portfolio_name": portfolio.name,
+            "old_initiated_date": old_date.isoformat() if old_date else None,
+            "new_initiated_date": initiated_date.isoformat() if initiated_date else None
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating portfolio initiated date: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update portfolio initiated date")
 
 # Portfolio Detail and Transaction Routes
 @app.get("/portfolios/{portfolio_id}", response_class=HTMLResponse)
