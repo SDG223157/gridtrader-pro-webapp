@@ -37,6 +37,13 @@
                        class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
             </div>
             
+            <div>
+                <label for="initiated_date" class="block text-sm font-medium text-gray-700">Initiated Date (Optional)</label>
+                <input type="date" id="initiated_date" name="initiated_date"
+                       class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                <p class="mt-1 text-xs text-gray-500">Date when you actually started this portfolio (leave blank to use today's date)</p>
+            </div>
+            
             <div class="flex justify-end space-x-3">
                 <a href="/portfolios" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded">
                     Cancel
@@ -55,6 +62,11 @@ document.getElementById('portfolioForm').addEventListener('submit', async (e) =>
     const formData = new FormData(e.target);
     const data = Object.fromEntries(formData);
     data.initial_capital = parseFloat(data.initial_capital);
+    
+    // Only include initiated_date if it's provided
+    if (!data.initiated_date) {
+        delete data.initiated_date;
+    }
     
     try {
         const response = await fetch('/api/portfolios', {

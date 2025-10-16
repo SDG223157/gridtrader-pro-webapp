@@ -10,7 +10,13 @@
             <div>
                 <h1 class="text-3xl font-bold text-gray-900">{{ portfolio.name }}</h1>
                 <p class="text-gray-600 mt-2">{{ portfolio.description or "No description" }}</p>
-                <p class="text-sm text-gray-500 mt-1">Strategy: {{ portfolio.strategy_type|title }}</p>
+                <div class="flex items-center gap-4 mt-1">
+                    <p class="text-sm text-gray-500">Strategy: {{ portfolio.strategy_type|title }}</p>
+                    {% if portfolio.initiated_date %}
+                    <span class="text-gray-300">•</span>
+                    <p class="text-sm text-gray-500">Initiated: {{ portfolio.initiated_date.strftime('%b %d, %Y') }}</p>
+                    {% endif %}
+                </div>
             </div>
             <div class="text-right">
                 {% set value_diff = (portfolio.current_value or 0) - (portfolio.initial_capital or 0) %}

@@ -19,6 +19,7 @@ interface Portfolio {
   initial_capital: number;
   current_value: number;
   cash_balance: number;
+  initiated_date?: string;
   created_at: string;
   updated_at: string;
 }
@@ -52,6 +53,7 @@ interface CreatePortfolioRequest {
   description?: string;
   strategy_type: string;
   initial_capital: number;
+  initiated_date?: string;
 }
 
 interface CreateGridRequest {

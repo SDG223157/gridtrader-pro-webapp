@@ -45,6 +45,7 @@ class CreatePortfolioRequest(BaseModel):
     description: str = ""
     strategy_type: str = "balanced"
     initial_capital: float
+    initiated_date: Optional[str] = None  # ISO format date string (YYYY-MM-DD)
 
 class CreateGridRequest(BaseModel):
     portfolio_id: str
@@ -1715,6 +1716,14 @@ async def create_portfolio_page(request: Request, db: Session = Depends(get_db))
 @app.post("/api/portfolios")
 async def create_portfolio(request: CreatePortfolioRequest, user: User = Depends(require_auth), db: Session = Depends(get_db)):
     try:
+        # Parse initiated_date if provided
+        initiated_date = None
+        if request.initiated_date:
+            try:
+                initiated_date = datetime.strptime(request.initiated_date, "%Y-%m-%d").date()
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+        
         portfolio = Portfolio(
             user_id=user.id,
             name=request.name,
@@ -1722,7 +1731,8 @@ async def create_portfolio(request: CreatePortfolioRequest, user: User = Depends
             strategy_type=request.strategy_type,
             initial_capital=request.initial_capital,
             current_value=request.initial_capital,
-            cash_balance=request.initial_capital
+            cash_balance=request.initial_capital,
+            initiated_date=initiated_date
         )
         
         db.add(portfolio)
@@ -1732,6 +1742,8 @@ async def create_portfolio(request: CreatePortfolioRequest, user: User = Depends
         logger.info(f"Portfolio created: {portfolio.name} for user {user.email}")
         return {"success": True, "portfolio_id": portfolio.id, "message": "Portfolio created successfully"}
     
+    except HTTPException:
+        raise
     except Exception as e:
         db.rollback()
         logger.error(f"Error creating portfolio: {e}")
@@ -4083,6 +4095,44 @@ async def migrate_notes_column(db: Session = Depends(get_db)):
         
     except Exception as e:
         db.rollback()
+        return {"success": False, "error": str(e)}
+
+@app.get("/admin/migrate-initiated-date")
+async def migrate_initiated_date_column(db: Session = Depends(get_db)):
+    """Add initiated_date column to portfolios table"""
+    try:
+        # Check if initiated_date column exists
+        result = db.execute(text("""
+            SELECT COLUMN_NAME 
+            FROM INFORMATION_SCHEMA.COLUMNS 
+            WHERE TABLE_SCHEMA = DATABASE() 
+            AND TABLE_NAME = 'portfolios' 
+            AND COLUMN_NAME = 'initiated_date'
+        """))
+        
+        if result.fetchone():
+            return {"success": True, "message": "initiated_date column already exists"}
+        
+        # Add the initiated_date column
+        db.execute(text("""
+            ALTER TABLE portfolios 
+            ADD COLUMN initiated_date DATE NULL 
+            COMMENT 'Date when portfolio was actually initiated (can differ from created_at)'
+            AFTER last_rebalanced
+        """))
+        db.commit()
+        
+        logger.info("✅ Successfully added initiated_date column to portfolios table")
+        
+        return {
+            "success": True, 
+            "message": "initiated_date column added successfully",
+            "details": "Column added after last_rebalanced column"
+        }
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ Migration failed: {e}")
         return {"success": False, "error": str(e)}
 
 @app.get("/admin/recalculate-portfolio-values")
