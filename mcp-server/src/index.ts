@@ -16,12 +16,27 @@ interface Portfolio {
   name: string;
   description?: string;
   strategy_type: string;
+  market: string;
+  currency: string;
   initial_capital: number;
   current_value: number;
   cash_balance: number;
   initiated_date?: string;
   created_at: string;
   updated_at: string;
+}
+
+// Currency symbols for display
+const CURRENCY_SYMBOLS: { [key: string]: string } = {
+  'USD': '$',
+  'HKD': 'HK$',
+  'CNY': '¥'
+};
+
+// Format currency with correct symbol
+function formatCurrency(amount: number, currency: string = 'USD'): string {
+  const symbol = CURRENCY_SYMBOLS[currency] || '$';
+  return `${symbol}${amount.toLocaleString()}`;
 }
 
 interface Grid {
@@ -52,6 +67,7 @@ interface CreatePortfolioRequest {
   name: string;
   description?: string;
   strategy_type: string;
+  market: string;
   initial_capital: number;
   initiated_date?: string;
 }
@@ -160,9 +176,15 @@ class GridTraderProMCPServer {
                   enum: ['balanced', 'aggressive', 'conservative', 'growth', 'income'],
                   default: 'balanced'
                 },
+                market: {
+                  type: 'string',
+                  description: 'Market for the portfolio (determines currency)',
+                  enum: ['US', 'HK', 'CHINA'],
+                  default: 'US'
+                },
                 initial_capital: {
                   type: 'number',
-                  description: 'Initial capital amount in USD'
+                  description: 'Initial capital amount in the market currency (USD for US, HKD for HK, CNY for China)'
                 }
               },
               required: ['name', 'initial_capital']
@@ -813,11 +835,14 @@ class GridTraderProMCPServer {
           const performance = portfolio.performance || {};
           const returnPercent = performance.total_pnl_percent || 0;
           const returnStatus = returnPercent >= 0 ? '📈' : '📉';
+          const currency = portfolio.currency || 'USD';
+          const market = portfolio.market || 'US';
           
-          return `**${index + 1}. ${portfolio.name}**\n` +
+          return `**${index + 1}. ${portfolio.name}** (${market})\n` +
             `   ID: ${portfolio.id}\n` +
+            `   Market: ${market} | Currency: ${currency}\n` +
             `   Strategy: ${portfolio.strategy_type}\n` +
-            `   Value: $${(portfolio.current_value || 0).toLocaleString()}\n` +
+            `   Value: ${formatCurrency(portfolio.current_value || 0, currency)}\n` +
             `   Return: ${returnStatus} ${returnPercent.toFixed(2)}%\n` +
             `   Created: ${new Date(portfolio.created_at).toLocaleDateString()}\n`;
         }).join('\n');
@@ -848,18 +873,21 @@ class GridTraderProMCPServer {
   private async handleGetPortfolioDetails(args: any) {
     try {
       const data = await this.makeApiCall(`/api/portfolios/${args.portfolio_id}`);
+      const currency = data.currency || 'USD';
+      const market = data.market || 'US';
       
       return {
         content: [
           {
             type: 'text',
             text: `💼 **Portfolio Details**\n\n` +
-              `**${data.name}**\n` +
+              `**${data.name}** (${market})\n` +
               `• ID: ${data.id}\n` +
+              `• Market: ${market} | Currency: ${currency}\n` +
               `• Strategy: ${data.strategy_type}\n` +
-              `• Initial Capital: $${data.initial_capital.toLocaleString()}\n` +
-              `• Current Value: $${data.current_value.toLocaleString()}\n` +
-              `• Cash Balance: $${data.cash_balance.toLocaleString()}\n` +
+              `• Initial Capital: ${formatCurrency(data.initial_capital, currency)}\n` +
+              `• Current Value: ${formatCurrency(data.current_value, currency)}\n` +
+              `• Cash Balance: ${formatCurrency(data.cash_balance, currency)}\n` +
               `• Created: ${new Date(data.created_at).toLocaleDateString()}\n` +
               `${data.description ? `• Description: ${data.description}\n` : ''}` +
               `\n---\n\n**Raw Data:**\n${JSON.stringify(data, null, 2)}`
@@ -880,10 +908,15 @@ class GridTraderProMCPServer {
 
   private async handleCreatePortfolio(args: any) {
     try {
+      const market = args.market || 'US';
+      const currencyMap: { [key: string]: string } = { 'US': 'USD', 'HK': 'HKD', 'CHINA': 'CNY' };
+      const currency = currencyMap[market] || 'USD';
+      
       const portfolioData: CreatePortfolioRequest = {
         name: args.name,
         description: args.description,
         strategy_type: args.strategy_type || 'balanced',
+        market: market,
         initial_capital: args.initial_capital
       };
 
@@ -896,8 +929,9 @@ class GridTraderProMCPServer {
             text: `✅ **Portfolio Created Successfully!**\n\n` +
               `💼 **${data.name || args.name}**\n` +
               `• ID: ${data.portfolio_id || data.id}\n` +
-              `• Strategy: ${args.strategy_type}\n` +
-              `• Initial Capital: $${args.initial_capital.toLocaleString()}\n` +
+              `• Market: ${market} (${currency})\n` +
+              `• Strategy: ${args.strategy_type || 'balanced'}\n` +
+              `• Initial Capital: ${formatCurrency(args.initial_capital, currency)}\n` +
               `${args.description ? `• Description: ${args.description}\n` : ''}` +
               `\nYour portfolio is ready for trading!\n\n` +
               `---\n\n**Raw Data:**\n${JSON.stringify(data, null, 2)}`
@@ -1100,15 +1134,31 @@ class GridTraderProMCPServer {
       let summary = `🏠 **GridTrader Pro Dashboard**\n\n`;
       
       if (portfolios.length > 0) {
-        const totalValue = portfolios.reduce((sum: number, p: any) => sum + (p.current_value || 0), 0);
-        const totalInvested = portfolios.reduce((sum: number, p: any) => sum + (p.initial_capital || 0), 0);
-        const totalReturn = totalInvested > 0 ? ((totalValue - totalInvested) / totalInvested * 100) : 0;
+        // Group portfolios by currency
+        const byCurrency: { [key: string]: { value: number; invested: number; count: number } } = {};
+        
+        portfolios.forEach((p: any) => {
+          const currency = p.currency || 'USD';
+          if (!byCurrency[currency]) {
+            byCurrency[currency] = { value: 0, invested: 0, count: 0 };
+          }
+          byCurrency[currency].value += (p.current_value || 0);
+          byCurrency[currency].invested += (p.initial_capital || 0);
+          byCurrency[currency].count += 1;
+        });
         
         summary += `**Portfolio Summary:**\n` +
-          `• Total Portfolios: ${portfolios.length}\n` +
-          `• Total Value: $${totalValue.toLocaleString()}\n` +
-          `• Total Invested: $${totalInvested.toLocaleString()}\n` +
-          `• Total Return: ${totalReturn >= 0 ? '📈' : '📉'} ${totalReturn.toFixed(2)}%\n\n`;
+          `• Total Portfolios: ${portfolios.length}\n\n`;
+        
+        // Show totals by currency
+        for (const [currency, data] of Object.entries(byCurrency)) {
+          const totalReturn = data.invested > 0 ? ((data.value - data.invested) / data.invested * 100) : 0;
+          const returnIcon = totalReturn >= 0 ? '📈' : '📉';
+          summary += `**${currency} Portfolios (${data.count}):**\n` +
+            `  • Value: ${formatCurrency(data.value, currency)}\n` +
+            `  • Invested: ${formatCurrency(data.invested, currency)}\n` +
+            `  • Return: ${returnIcon} ${totalReturn.toFixed(2)}%\n\n`;
+        }
       } else {
         summary += `**Portfolio Summary:**\n• No portfolios yet - create your first portfolio!\n\n`;
       }
@@ -1116,12 +1166,12 @@ class GridTraderProMCPServer {
       if (args.include_market_data) {
         try {
           const symbols = ['SPY', 'QQQ', 'AAPL', 'MSFT'];
-          summary += `**Market Overview:**\n`;
+          summary += `**Market Overview (US):**\n`;
           
           for (const symbol of symbols) {
             try {
               const marketData = await this.makeApiCall(`/api/market/${symbol}?period=current`);
-              summary += `• ${symbol}: $${marketData.price}\n`;
+              summary += `• ${symbol}: ${formatCurrency(marketData.price, 'USD')}\n`;
             } catch {
               summary += `• ${symbol}: Price unavailable\n`;
             }
@@ -1467,6 +1517,15 @@ class GridTraderProMCPServer {
 
   private async handleBuyStock(args: any) {
     try {
+      // Get portfolio details to get the currency
+      let currency = 'USD';
+      try {
+        const portfolioData = await this.makeApiCall(`/api/portfolios/${args.portfolio_id}`);
+        currency = portfolioData.currency || 'USD';
+      } catch (e) {
+        // Use default currency if can't fetch portfolio
+      }
+      
       // Get current price if not provided
       let price = args.price;
       if (!price) {
@@ -1482,7 +1541,7 @@ class GridTraderProMCPServer {
                 text: `❌ **Price Required**\n\n` +
                   `Could not get current market price for ${args.symbol}.\n` +
                   `Please specify the price per share in your command.\n\n` +
-                  `Example: "Buy 10 shares of ${args.symbol} at $150.00 in my growth portfolio"`
+                  `Example: "Buy 10 shares of ${args.symbol} at ${formatCurrency(150, currency)} in my growth portfolio"`
               }
             ]
           };
@@ -1496,7 +1555,7 @@ class GridTraderProMCPServer {
         quantity: args.quantity,
         price: price,
         fees: 0, // Default to 0 fees
-        notes: args.notes || `MCP buy transaction - ${args.quantity} shares at $${price}`
+        notes: args.notes || `MCP buy transaction - ${args.quantity} shares at ${formatCurrency(price, currency)}`
       };
 
       const result = await this.makeApiCall('/api/transactions', 'POST', transactionData);
@@ -1512,14 +1571,14 @@ class GridTraderProMCPServer {
                 `**Trade Details:**\n` +
                 `• Symbol: **${args.symbol.toUpperCase()}**\n` +
                 `• Quantity: **${args.quantity} shares**\n` +
-                `• Price: **$${price.toFixed(2)} per share**\n` +
-                `• Total Cost: **$${totalCost.toFixed(2)}**\n` +
+                `• Price: **${formatCurrency(price, currency)} per share**\n` +
+                `• Total Cost: **${formatCurrency(totalCost, currency)}**\n` +
                 `• Portfolio: ${args.portfolio_id}\n` +
                 `• Transaction ID: ${result.transaction_id}\n\n` +
                 `💰 **Portfolio Impact:**\n` +
-                `• Cash reduced by $${totalCost.toFixed(2)}\n` +
+                `• Cash reduced by ${formatCurrency(totalCost, currency)}\n` +
                 `• Added ${args.quantity} shares of ${args.symbol}\n` +
-                `• Position value: $${totalCost.toFixed(2)}\n\n` +
+                `• Position value: ${formatCurrency(totalCost, currency)}\n\n` +
                 `📋 **Next Steps:**\n` +
                 `• Check updated portfolio: "Show me portfolio details"\n` +
                 `• Monitor position: "What's the current price of ${args.symbol}?"\n` +
@@ -1555,6 +1614,15 @@ class GridTraderProMCPServer {
 
   private async handleSellStock(args: any) {
     try {
+      // Get portfolio details to get the currency
+      let currency = 'USD';
+      try {
+        const portfolioData = await this.makeApiCall(`/api/portfolios/${args.portfolio_id}`);
+        currency = portfolioData.currency || 'USD';
+      } catch (e) {
+        // Use default currency if can't fetch portfolio
+      }
+      
       // Get current price if not provided
       let price = args.price;
       if (!price) {
@@ -1569,7 +1637,7 @@ class GridTraderProMCPServer {
                 text: `❌ **Price Required**\n\n` +
                   `Could not get current market price for ${args.symbol}.\n` +
                   `Please specify the price per share in your command.\n\n` +
-                  `Example: "Sell 10 shares of ${args.symbol} at $150.00 from my growth portfolio"`
+                  `Example: "Sell 10 shares of ${args.symbol} at ${formatCurrency(150, currency)} from my growth portfolio"`
               }
             ]
           };
@@ -1583,7 +1651,7 @@ class GridTraderProMCPServer {
         quantity: args.quantity,
         price: price,
         fees: 0,
-        notes: args.notes || `MCP sell transaction - ${args.quantity} shares at $${price}`
+        notes: args.notes || `MCP sell transaction - ${args.quantity} shares at ${formatCurrency(price, currency)}`
       };
 
       const result = await this.makeApiCall('/api/transactions', 'POST', transactionData);
@@ -1599,12 +1667,12 @@ class GridTraderProMCPServer {
                 `**Trade Details:**\n` +
                 `• Symbol: **${args.symbol.toUpperCase()}**\n` +
                 `• Quantity: **${args.quantity} shares**\n` +
-                `• Price: **$${price.toFixed(2)} per share**\n` +
-                `• Total Proceeds: **$${totalProceeds.toFixed(2)}**\n` +
+                `• Price: **${formatCurrency(price, currency)} per share**\n` +
+                `• Total Proceeds: **${formatCurrency(totalProceeds, currency)}**\n` +
                 `• Portfolio: ${args.portfolio_id}\n` +
                 `• Transaction ID: ${result.transaction_id}\n\n` +
                 `💰 **Portfolio Impact:**\n` +
-                `• Cash increased by $${totalProceeds.toFixed(2)}\n` +
+                `• Cash increased by ${formatCurrency(totalProceeds, currency)}\n` +
                 `• Reduced ${args.quantity} shares of ${args.symbol}\n` +
                 `• Realized P&L will be calculated\n\n` +
                 `📋 **Next Steps:**\n` +
@@ -1642,9 +1710,18 @@ class GridTraderProMCPServer {
 
   private async handleUpdateBalance(args: any) {
     try {
+      // Get portfolio details to get the currency
+      let currency = 'USD';
+      try {
+        const portfolioData = await this.makeApiCall(`/api/portfolios/${args.portfolio_id}`);
+        currency = portfolioData.currency || 'USD';
+      } catch (e) {
+        // Use default currency if can't fetch portfolio
+      }
+      
       const updateData = {
         new_cash_balance: args.new_cash_balance,
-        notes: args.notes || `MCP balance update - Set to $${args.new_cash_balance.toLocaleString()}`
+        notes: args.notes || `MCP balance update - Set to ${formatCurrency(args.new_cash_balance, currency)}`
       };
 
       const result = await this.makeApiCall(`/api/portfolios/${args.portfolio_id}/update-cash`, 'POST', updateData);
@@ -1652,9 +1729,9 @@ class GridTraderProMCPServer {
       if (result.success) {
         const adjustment = result.adjustment;
         const adjustmentText = adjustment > 0 ? 
-          `increased by $${Math.abs(adjustment).toLocaleString()}` : 
+          `increased by ${formatCurrency(Math.abs(adjustment), currency)}` : 
           adjustment < 0 ? 
-            `decreased by $${Math.abs(adjustment).toLocaleString()}` : 
+            `decreased by ${formatCurrency(Math.abs(adjustment), currency)}` : 
             `unchanged (no adjustment needed)`;
         
         return {
@@ -1664,10 +1741,10 @@ class GridTraderProMCPServer {
               text: `✅ **Cash Balance Updated Successfully!**\n\n` +
                 `**Balance Update Details:**\n` +
                 `• Portfolio ID: ${args.portfolio_id}\n` +
-                `• Previous Balance: **$${result.old_balance.toLocaleString()}**\n` +
-                `• New Balance: **$${result.new_balance.toLocaleString()}**\n` +
+                `• Previous Balance: **${formatCurrency(result.old_balance, currency)}**\n` +
+                `• New Balance: **${formatCurrency(result.new_balance, currency)}**\n` +
                 `• Balance Change: **${adjustmentText}**\n` +
-                `• New Total Portfolio Value: **$${result.new_total_value.toLocaleString()}**\n` +
+                `• New Total Portfolio Value: **${formatCurrency(result.new_total_value, currency)}**\n` +
                 `• Notes: ${args.notes || 'Balance update via MCP'}\n\n` +
                 `💰 **Impact:**\n` +
                 `• Cash balance ${adjustmentText}\n` +
@@ -1701,7 +1778,7 @@ class GridTraderProMCPServer {
               `• Check that the balance amount is positive\n` +
               `• Try again in a few moments\n\n` +
               `💰 **Example Usage:**\n` +
-              `"Update my portfolio balance to $50000 with note 'Bank deposit'"`
+              `"Update my portfolio balance to 50000 with note 'Bank deposit'"`
           }
         ]
       };
