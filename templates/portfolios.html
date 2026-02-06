@@ -20,9 +20,15 @@
     
     <div class="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {% for portfolio in portfolios %}
-        <div class="bg-white overflow-hidden shadow rounded-lg portfolio-card" data-portfolio-id="{{ portfolio.id }}" data-portfolio-name="{{ portfolio.name }}">
+        {% set currency_symbol = currency_symbols.get(portfolio.currency, '$') %}
+        <div class="bg-white overflow-hidden shadow rounded-lg portfolio-card" data-portfolio-id="{{ portfolio.id }}" data-portfolio-name="{{ portfolio.name }}" data-currency-symbol="{{ currency_symbol }}">
             <div class="p-6">
-                <h3 class="text-lg font-medium text-gray-900 mb-2">{{ portfolio.name }}</h3>
+                <div class="flex justify-between items-start mb-2">
+                    <h3 class="text-lg font-medium text-gray-900">{{ portfolio.name }}</h3>
+                    <span class="text-xs px-2 py-1 rounded-full {% if portfolio.market.value == 'US' %}bg-blue-100 text-blue-800{% elif portfolio.market.value == 'HK' %}bg-purple-100 text-purple-800{% else %}bg-red-100 text-red-800{% endif %}">
+                        {% if portfolio.market.value == 'US' %}🇺🇸{% elif portfolio.market.value == 'HK' %}🇭🇰{% else %}🇨🇳{% endif %} {{ portfolio.market.value }}
+                    </span>
+                </div>
                 <p class="text-sm text-gray-500 mb-1">{{ portfolio.description }}</p>
                 {% if portfolio.initiated_date %}
                 <p class="text-xs text-gray-400 mb-3">📅 Initiated: {{ portfolio.initiated_date.strftime('%b %d, %Y') }}</p>
@@ -35,18 +41,18 @@
                         <span class="text-sm text-gray-600">Current Value:</span>
                         {% set value_diff = (portfolio.current_value or 0) - (portfolio.initial_capital or 0) %}
                         <span data-field="current-value" class="text-sm font-bold {% if value_diff > 0 %}text-green-600{% elif value_diff < 0 %}text-red-600{% else %}text-gray-900{% endif %}">
-                            ${{ "%.2f"|format(portfolio.current_value or 0) }}
+                            {{ currency_symbol }}{{ "%.2f"|format(portfolio.current_value or 0) }}
                         </span>
                     </div>
                     <div class="flex justify-between">
                         <span class="text-sm text-gray-600">Initial Capital:</span>
-                        <span class="text-sm font-medium text-gray-900">${{ "%.2f"|format(portfolio.initial_capital or 0) }}</span>
+                        <span class="text-sm font-medium text-gray-900">{{ currency_symbol }}{{ "%.2f"|format(portfolio.initial_capital or 0) }}</span>
                     </div>
                     {% if value_diff != 0 %}
                     <div class="flex justify-between">
                         <span class="text-sm text-gray-600">Change:</span>
                         <span data-field="change" class="text-sm font-bold {% if value_diff > 0 %}text-green-600{% elif value_diff < 0 %}text-red-600{% else %}text-gray-900{% endif %}">
-                            {% if value_diff > 0 %}+{% endif %} ${{ "%.2f"|format(value_diff) }}
+                            {% if value_diff > 0 %}+{% endif %} {{ currency_symbol }}{{ "%.2f"|format(value_diff) }}
                             ({% if value_diff > 0 %}+{% endif %}{{ "%.2f"|format((value_diff / portfolio.initial_capital * 100) if portfolio.initial_capital > 0 else 0) }}%)
                         </span>
                     </div>
@@ -55,7 +61,7 @@
                     <div class="flex justify-between">
                         <span class="text-sm text-gray-600">P&L:</span>
                         <span class="text-sm font-medium {% if portfolio.performance.total_pnl >= 0 %}text-green-600{% else %}text-red-600{% endif %}">
-                            ${{ "%.2f"|format(portfolio.performance.total_pnl) }} ({{ "%.2f"|format(portfolio.performance.total_pnl_percent) }}%)
+                            {{ currency_symbol }}{{ "%.2f"|format(portfolio.performance.total_pnl) }} ({{ "%.2f"|format(portfolio.performance.total_pnl_percent) }}%)
                         </span>
                     </div>
                     {% endif %}
@@ -180,13 +186,16 @@ function updatePortfolioCard(portfolio) {
         const portfolioName = card.querySelector('h3')?.textContent;
         
         if (portfolioName === portfolio.name) {
+            // Get currency symbol from data attribute
+            const currencySymbol = card.dataset.currencySymbol || '$';
+            
             // Update current value with color coding
             const currentValueElement = card.querySelector('[data-field="current-value"]');
             if (currentValueElement) {
                 const valueDiff = portfolio.current_value - portfolio.initial_capital;
                 const colorClass = valueDiff > 0 ? 'text-green-600' : valueDiff < 0 ? 'text-red-600' : 'text-gray-900';
                 
-                currentValueElement.textContent = `$${portfolio.current_value.toFixed(2)}`;
+                currentValueElement.textContent = `${currencySymbol}${portfolio.current_value.toFixed(2)}`;
                 currentValueElement.className = `text-sm font-bold ${colorClass}`;
             }
             
@@ -198,7 +207,7 @@ function updatePortfolioCard(portfolio) {
                 const colorClass = valueDiff > 0 ? 'text-green-600' : valueDiff < 0 ? 'text-red-600' : 'text-gray-900';
                 
                 const sign = valueDiff > 0 ? '+' : '';
-                changeElement.textContent = `${sign} $${valueDiff.toFixed(2)} (${sign}${changePercent.toFixed(2)}%)`;
+                changeElement.textContent = `${sign} ${currencySymbol}${valueDiff.toFixed(2)} (${sign}${changePercent.toFixed(2)}%)`;
                 changeElement.className = `text-sm font-bold ${colorClass}`;
             }
             

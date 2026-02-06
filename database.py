@@ -50,6 +50,25 @@ class StrategyType(enum.Enum):
     balanced = "balanced"
     growth = "growth"
 
+class MarketType(enum.Enum):
+    US = "US"
+    HK = "HK"
+    CHINA = "CHINA"
+
+# Market to currency mapping
+MARKET_CURRENCY_MAP = {
+    MarketType.US: "USD",
+    MarketType.HK: "HKD",
+    MarketType.CHINA: "CNY"
+}
+
+# Currency symbols for display
+CURRENCY_SYMBOLS = {
+    "USD": "$",
+    "HKD": "HK$",
+    "CNY": "¥"
+}
+
 class AuthProvider(enum.Enum):
     local = "local"
     google = "google"
@@ -144,6 +163,8 @@ class Portfolio(Base):
     name = Column(String(100), nullable=False)
     description = Column(Text)
     strategy_type = Column(Enum(StrategyType), nullable=False)
+    market = Column(Enum(MarketType), default=MarketType.US, nullable=False)  # US, HK, CHINA
+    currency = Column(String(3), default="USD", nullable=False)  # USD, HKD, CNY
     initial_capital = Column(DECIMAL(15, 2), nullable=False)
     current_value = Column(DECIMAL(15, 2), default=0.00)
     cash_balance = Column(DECIMAL(15, 2), default=0.00)

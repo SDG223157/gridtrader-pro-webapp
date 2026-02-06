@@ -12,7 +12,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import text, desc
-from database import get_db, create_tables, User, UserProfile, Portfolio, Grid, Holding, Alert, Transaction, TransactionType, GridStatus, GridOrder, OrderStatus, ApiToken, SessionLocal, engine
+from database import get_db, create_tables, User, UserProfile, Portfolio, Grid, Holding, Alert, Transaction, TransactionType, GridStatus, GridOrder, OrderStatus, ApiToken, SessionLocal, engine, MarketType, MARKET_CURRENCY_MAP, CURRENCY_SYMBOLS
 from auth_simple import (
     setup_oauth, create_access_token, get_current_user, require_auth, 
     create_user, authenticate_user, create_or_update_user_from_google
@@ -44,6 +44,7 @@ class CreatePortfolioRequest(BaseModel):
     name: str
     description: str = ""
     strategy_type: str = "balanced"
+    market: str = "US"  # US, HK, CHINA
     initial_capital: float
     initiated_date: Optional[str] = None  # ISO format date string (YYYY-MM-DD)
 
@@ -1709,6 +1710,7 @@ async def portfolios_page(request: Request, db: Session = Depends(get_db)):
     
     context["portfolios"] = portfolios
     context["auto_update_enabled"] = auto_update
+    context["currency_symbols"] = CURRENCY_SYMBOLS
     return templates.TemplateResponse("portfolios.html", {"request": request, **context})
 
 @app.get("/portfolios/create", response_class=HTMLResponse)
@@ -1729,11 +1731,21 @@ async def create_portfolio(request: CreatePortfolioRequest, user: User = Depends
             except ValueError:
                 raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
         
+        # Validate and set market type
+        market_str = request.market.upper()
+        if market_str not in ["US", "HK", "CHINA"]:
+            raise HTTPException(status_code=400, detail="Invalid market. Use US, HK, or CHINA")
+        
+        market_type = MarketType[market_str]
+        currency = MARKET_CURRENCY_MAP[market_type]
+        
         portfolio = Portfolio(
             user_id=user.id,
             name=request.name,
             description=request.description,
             strategy_type=request.strategy_type,
+            market=market_type,
+            currency=currency,
             initial_capital=request.initial_capital,
             current_value=request.initial_capital,
             cash_balance=request.initial_capital,
@@ -1744,7 +1756,7 @@ async def create_portfolio(request: CreatePortfolioRequest, user: User = Depends
         db.commit()
         db.refresh(portfolio)
         
-        logger.info(f"Portfolio created: {portfolio.name} for user {user.email}")
+        logger.info(f"Portfolio created: {portfolio.name} (Market: {market_str}, Currency: {currency}) for user {user.email}")
         return {"success": True, "portfolio_id": portfolio.id, "message": "Portfolio created successfully"}
     
     except HTTPException:
@@ -2000,7 +2012,8 @@ async def portfolio_detail(portfolio_id: str, request: Request, db: Session = De
         "pagination": pagination_info,
         "grid_allocations": grid_allocations,
         "active_grids": active_grids,
-        "grid_count": len(active_grids)
+        "grid_count": len(active_grids),
+        "currency_symbols": CURRENCY_SYMBOLS
     })
     
     return templates.TemplateResponse("portfolio_detail.html", {"request": request, **context})
@@ -2128,7 +2141,8 @@ async def portfolio_detail_fast(portfolio_id: str, request: Request, db: Session
         "grid_allocations": grid_allocations,
         "active_grids": active_grids,
         "grid_count": len(active_grids),
-        "fast_mode": True  # Indicate this is fast mode
+        "fast_mode": True,  # Indicate this is fast mode
+        "currency_symbols": CURRENCY_SYMBOLS
     })
     
     return templates.TemplateResponse("portfolio_detail.html", {"request": request, **context})
@@ -2149,6 +2163,7 @@ async def add_transaction_page(portfolio_id: str, request: Request, db: Session 
         raise HTTPException(status_code=404, detail="Portfolio not found")
     
     context["portfolio"] = portfolio
+    context["currency_symbols"] = CURRENCY_SYMBOLS
     return templates.TemplateResponse("add_transaction.html", {"request": request, **context})
 
 @app.get("/api/portfolios/{portfolio_id}/holdings")

@@ -3,12 +3,18 @@
 {% block title %}{{ portfolio.name }} - Portfolio Details{% endblock %}
 
 {% block content %}
+{% set currency_symbol = currency_symbols.get(portfolio.currency, '$') if currency_symbols else '$' %}
 <div class="container mx-auto px-4 py-8">
     <!-- Portfolio Header -->
     <div class="bg-white rounded-lg shadow-md p-6 mb-6">
         <div class="flex justify-between items-start mb-4">
             <div>
-                <h1 class="text-3xl font-bold text-gray-900">{{ portfolio.name }}</h1>
+                <div class="flex items-center gap-3">
+                    <h1 class="text-3xl font-bold text-gray-900">{{ portfolio.name }}</h1>
+                    <span class="text-sm px-2 py-1 rounded-full {% if portfolio.market.value == 'US' %}bg-blue-100 text-blue-800{% elif portfolio.market.value == 'HK' %}bg-purple-100 text-purple-800{% else %}bg-red-100 text-red-800{% endif %}">
+                        {% if portfolio.market.value == 'US' %}🇺🇸{% elif portfolio.market.value == 'HK' %}🇭🇰{% else %}🇨🇳{% endif %} {{ portfolio.market.value }} ({{ portfolio.currency }})
+                    </span>
+                </div>
                 <p class="text-gray-600 mt-2">{{ portfolio.description or "No description" }}</p>
                 <div class="flex items-center gap-4 mt-1">
                     <p class="text-sm text-gray-500">Strategy: {{ portfolio.strategy_type|title }}</p>
@@ -21,7 +27,7 @@
             <div class="text-right">
                 {% set value_diff = (portfolio.current_value or 0) - (portfolio.initial_capital or 0) %}
                 <div class="text-2xl font-bold {% if value_diff > 0 %}text-green-600{% elif value_diff < 0 %}text-red-600{% else %}text-gray-900{% endif %}">
-                    ${{ "%.2f"|format(portfolio.current_value or 0) }}
+                    {{ currency_symbol }}{{ "%.2f"|format(portfolio.current_value or 0) }}
                 </div>
                 <div class="text-sm text-gray-600">Current Value</div>
                 {% set return_pct = ((portfolio.current_value or 0) - portfolio.initial_capital) / portfolio.initial_capital * 100 if portfolio.initial_capital > 0 else 0 %}
@@ -34,18 +40,18 @@
         <!-- Portfolio Summary -->
         <div class="grid grid-cols-5 gap-4 mt-6 pt-6 border-t">
             <div class="text-center">
-                <div class="text-lg font-semibold text-gray-900">${{ "{:,.2f}".format(portfolio.initial_capital) }}</div>
+                <div class="text-lg font-semibold text-gray-900">{{ currency_symbol }}{{ "{:,.2f}".format(portfolio.initial_capital) }}</div>
                 <div class="text-sm text-gray-600">Initial Capital</div>
             </div>
             <div class="text-center">
-                <div class="text-lg font-semibold text-gray-900">${{ "{:,.2f}".format(portfolio.cash_balance or 0) }}</div>
+                <div class="text-lg font-semibold text-gray-900">{{ currency_symbol }}{{ "{:,.2f}".format(portfolio.cash_balance or 0) }}</div>
                 <div class="text-sm text-gray-600">Cash Balance</div>
                 <button onclick="openCashUpdateModal()" class="mt-1 text-xs text-blue-600 hover:text-blue-800 underline">
                     Update Balance
                 </button>
             </div>
             <div class="text-center">
-                <div class="text-lg font-semibold text-blue-600">${{ "{:,.2f}".format(grid_allocations) }}</div>
+                <div class="text-lg font-semibold text-blue-600">{{ currency_symbol }}{{ "{:,.2f}".format(grid_allocations) }}</div>
                 <div class="text-sm text-gray-600">Grid Allocations</div>
             </div>
             <div class="text-center">
@@ -175,11 +181,11 @@
                             </a>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ "%.2f"|format(holding.quantity) }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${{ "%.2f"|format(holding.average_cost) }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${{ "%.2f"|format(holding.current_price) }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${{ "%.2f"|format(market_value) }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ currency_symbol }}{{ "%.2f"|format(holding.average_cost) }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ currency_symbol }}{{ "%.2f"|format(holding.current_price) }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ currency_symbol }}{{ "%.2f"|format(market_value) }}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm {% if pnl >= 0 %}text-green-600{% else %}text-red-600{% endif %}">
-                            ${{ "%.2f"|format(pnl) }} ({{ "%.1f"|format(pnl_pct) }}%)
+                            {{ currency_symbol }}{{ "%.2f"|format(pnl) }} ({{ "%.1f"|format(pnl_pct) }}%)
                         </td>
                     </tr>
                     {% endfor %}
@@ -277,7 +283,7 @@
         <div class="flex justify-between items-center mb-4">
             <h2 class="text-xl font-bold text-gray-900">Active Grid Trading Strategies</h2>
             <div class="text-sm text-gray-500">
-                {{ grid_count }} active grid{{ 's' if grid_count != 1 else '' }} • ${{ "{:,.2f}".format(grid_allocations) }} allocated
+                {{ grid_count }} active grid{{ 's' if grid_count != 1 else '' }} • {{ currency_symbol }}{{ "{:,.2f}".format(grid_allocations) }} allocated
             </div>
         </div>
         
@@ -294,11 +300,11 @@
                 <div class="space-y-1 text-sm">
                     <div class="flex justify-between">
                         <span class="text-gray-600">Investment:</span>
-                        <span class="font-medium">${{ "{:,.2f}".format(grid.investment_amount) }}</span>
+                        <span class="font-medium">{{ currency_symbol }}{{ "{:,.2f}".format(grid.investment_amount) }}</span>
                     </div>
                     <div class="flex justify-between">
                         <span class="text-gray-600">Range:</span>
-                        <span class="font-medium">${{ "{:.2f}".format(grid.lower_price) }} - ${{ "{:.2f}".format(grid.upper_price) }}</span>
+                        <span class="font-medium">{{ currency_symbol }}{{ "{:.2f}".format(grid.lower_price) }} - {{ currency_symbol }}{{ "{:.2f}".format(grid.upper_price) }}</span>
                     </div>
                     <div class="flex justify-between">
                         <span class="text-gray-600">Orders:</span>
@@ -358,8 +364,8 @@
                             </a>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ "%.2f"|format(transaction.quantity) }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${{ "%.2f"|format(transaction.price) }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${{ "%.2f"|format(transaction.total_amount) }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ currency_symbol }}{{ "%.2f"|format(transaction.price) }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ currency_symbol }}{{ "%.2f"|format(transaction.total_amount) }}</td>
                         <td class="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">{{ transaction.notes or "-" }}</td>
                     </tr>
                     {% endfor %}
@@ -454,6 +460,9 @@
 </div>
 
 <script>
+// Currency symbol for this portfolio
+const currencySymbol = '{{ currency_symbol }}';
+
 async function deletePortfolioFromDetail(portfolioId, portfolioName) {
     // Enhanced confirmation for portfolio detail page
     const confirmMessage = `⚠️ DELETE PORTFOLIO: "${portfolioName}"\n\n` +
@@ -462,7 +471,7 @@ async function deletePortfolioFromDetail(portfolioId, portfolioName) {
                           `• All current holdings ({{ holdings|length }} holdings)\n` +
                           `• All transaction history ({{ transactions|length }} transactions)\n` +
                           `• Any associated grid strategies\n\n` +
-                          `💰 Current portfolio value: ${{ "%.2f"|format(portfolio.current_value or 0) }}\n\n` +
+                          `💰 Current portfolio value: ${currencySymbol}{{ "%.2f"|format(portfolio.current_value or 0) }}\n\n` +
                           `This action CANNOT be undone!\n\n` +
                           `Type "DELETE" to confirm:`;
     
@@ -547,14 +556,14 @@ function openCashUpdateModal() {
     modal.innerHTML = `
         <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
             <div class="flex justify-between items-center mb-4">
-                <h3 class="text-lg font-bold text-gray-900">Set Cash Balance</h3>
+                <h3 class="text-lg font-bold text-gray-900">Set Cash Balance ({{ portfolio.currency }})</h3>
                 <button onclick="this.closest('.fixed').remove()" class="text-gray-500 hover:text-gray-700">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
             
             <div class="mb-4">
-                <p class="text-sm text-gray-600 mb-2">Current Cash Balance: <span class="font-semibold">\${{ "{:,.2f}".format(portfolio.cash_balance or 0) }}</span></p>
+                <p class="text-sm text-gray-600 mb-2">Current Cash Balance: <span class="font-semibold">{{ currency_symbol }}{{ "{:,.2f}".format(portfolio.cash_balance or 0) }}</span></p>
                 <p class="text-xs text-gray-500">Enter the actual current cash balance (including any interest earned)</p>
             </div>
             
@@ -562,7 +571,7 @@ function openCashUpdateModal() {
                 <div class="mb-4">
                     <label class="block text-sm font-medium text-gray-700 mb-2">New Cash Balance</label>
                     <div class="relative">
-                        <span class="absolute left-3 top-3 text-gray-500">$</span>
+                        <span class="absolute left-3 top-3 text-gray-500">${currencySymbol}</span>
                         <input type="number" 
                                id="newCashBalance" 
                                step="0.01" 
@@ -574,11 +583,11 @@ function openCashUpdateModal() {
                     </div>
                     <div class="mt-2 flex space-x-2">
                         <button type="button" onclick="addToBalance(100)" 
-                                class="px-2 py-1 text-xs bg-green-100 text-green-800 rounded hover:bg-green-200">+$100</button>
+                                class="px-2 py-1 text-xs bg-green-100 text-green-800 rounded hover:bg-green-200">+${currencySymbol}100</button>
                         <button type="button" onclick="addToBalance(50)" 
-                                class="px-2 py-1 text-xs bg-green-100 text-green-800 rounded hover:bg-green-200">+$50</button>
+                                class="px-2 py-1 text-xs bg-green-100 text-green-800 rounded hover:bg-green-200">+${currencySymbol}50</button>
                         <button type="button" onclick="addToBalance(10)" 
-                                class="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded hover:bg-blue-200">+$10</button>
+                                class="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded hover:bg-blue-200">+${currencySymbol}10</button>
                         <button type="button" onclick="document.getElementById('newCashBalance').value = '${currentBalance.toFixed(2)}'" 
                                 class="px-2 py-1 text-xs bg-gray-100 text-gray-800 rounded hover:bg-gray-200">Reset</button>
                     </div>
@@ -644,10 +653,10 @@ async function updateCashBalance(event) {
         if (result.success) {
             const adjustment = result.adjustment;
             alert(`✅ Cash balance set successfully!\\n\\n` +
-                  `Previous Balance: $${result.old_balance.toFixed(2)}\\n` +
-                  `New Balance: $${result.new_balance.toFixed(2)}\\n` +
-                  `${adjustment !== 0 ? 'Change: ' + (adjustment >= 0 ? '+' : '') + '$' + adjustment.toFixed(2) + '\\n' : ''}` +
-                  `New Total Portfolio Value: $${result.new_total_value.toFixed(2)}`);
+                  `Previous Balance: ${currencySymbol}${result.old_balance.toFixed(2)}\\n` +
+                  `New Balance: ${currencySymbol}${result.new_balance.toFixed(2)}\\n` +
+                  `${adjustment !== 0 ? 'Change: ' + (adjustment >= 0 ? '+' : '') + currencySymbol + adjustment.toFixed(2) + '\\n' : ''}` +
+                  `New Total Portfolio Value: ${currencySymbol}${result.new_total_value.toFixed(2)}`);
             
             // Close modal and reload page
             document.querySelector('.fixed').remove();
