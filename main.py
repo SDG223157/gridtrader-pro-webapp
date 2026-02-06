@@ -1473,23 +1473,43 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
     if not context["is_authenticated"]:
         return RedirectResponse(url="/login", status_code=302)
     
-    # Calculate real portfolio summary
+    # Calculate real portfolio summary grouped by currency
     user_portfolios = db.query(Portfolio).filter(Portfolio.user_id == context["user"].id).all()
 
-    total_value = Decimal("0")
-    total_invested = Decimal("0")
-
+    # Group totals by currency
+    totals_by_currency = {}
     for portfolio in user_portfolios:
+        currency = portfolio.currency or "USD"
+        if currency not in totals_by_currency:
+            totals_by_currency[currency] = {
+                "value": Decimal("0"),
+                "invested": Decimal("0"),
+                "count": 0
+            }
         portfolio_value = calculate_portfolio_value(portfolio, db)
-        total_value += portfolio_value
-        initial_capital = portfolio.initial_capital or Decimal("0")
-        total_invested += initial_capital
-
-    total_return = (
-        float(((total_value - total_invested) / total_invested) * Decimal("100"))
-        if total_invested > 0
-        else 0.0
-    )
+        totals_by_currency[currency]["value"] += portfolio_value
+        totals_by_currency[currency]["invested"] += portfolio.initial_capital or Decimal("0")
+        totals_by_currency[currency]["count"] += 1
+    
+    # Calculate returns for each currency
+    currency_summaries = []
+    for currency, data in totals_by_currency.items():
+        return_pct = (
+            float(((data["value"] - data["invested"]) / data["invested"]) * Decimal("100"))
+            if data["invested"] > 0
+            else 0.0
+        )
+        currency_summaries.append({
+            "currency": currency,
+            "symbol": CURRENCY_SYMBOLS.get(currency, "$"),
+            "total_value": float(data["value"]),
+            "total_invested": float(data["invested"]),
+            "total_return": round(return_pct, 2),
+            "count": data["count"]
+        })
+    
+    # Sort by value (largest first)
+    currency_summaries.sort(key=lambda x: x["total_value"], reverse=True)
     
     # Get active grids count
     active_grids = db.query(Grid).join(Portfolio).filter(
@@ -1505,14 +1525,19 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
     context.update({
         "portfolio_summary": {
             "total_portfolios": len(user_portfolios),
-            "total_value": float(total_value),
-            "total_invested": float(total_invested),
-            "total_return": round(total_return, 2),
-            "active_grids": active_grids
+            "active_grids": active_grids,
+            "currency_summaries": currency_summaries,
+            # Keep backwards compatibility - use first currency as primary
+            "total_value": currency_summaries[0]["total_value"] if currency_summaries else 0,
+            "total_invested": currency_summaries[0]["total_invested"] if currency_summaries else 0,
+            "total_return": currency_summaries[0]["total_return"] if currency_summaries else 0,
+            "primary_currency": currency_summaries[0]["currency"] if currency_summaries else "USD",
+            "primary_symbol": currency_summaries[0]["symbol"] if currency_summaries else "$",
         },
         "recent_alerts": recent_alerts,
         "market_data": {},
-        "portfolios": user_portfolios  # Add portfolios to context for dashboard display
+        "portfolios": user_portfolios,  # Add portfolios to context for dashboard display
+        "currency_symbols": CURRENCY_SYMBOLS
     })
     
     return templates.TemplateResponse("dashboard.html", {"request": request, **context})
@@ -1524,10 +1549,35 @@ async def dashboard_summary(user: User = Depends(require_auth), db: Session = De
         # Get user portfolios
         portfolios = db.query(Portfolio).filter(Portfolio.user_id == user.id).all()
         
-        # Calculate totals
-        total_value = sum([float(p.current_value or 0) for p in portfolios])
-        total_invested = sum([float(p.initial_capital or 0) for p in portfolios])
-        total_return = ((total_value - total_invested) / total_invested * 100) if total_invested > 0 else 0
+        # Group totals by currency
+        totals_by_currency = {}
+        for portfolio in portfolios:
+            currency = portfolio.currency or "USD"
+            if currency not in totals_by_currency:
+                totals_by_currency[currency] = {
+                    "value": 0.0,
+                    "invested": 0.0,
+                    "count": 0
+                }
+            totals_by_currency[currency]["value"] += float(portfolio.current_value or 0)
+            totals_by_currency[currency]["invested"] += float(portfolio.initial_capital or 0)
+            totals_by_currency[currency]["count"] += 1
+        
+        # Calculate returns for each currency
+        currency_summaries = []
+        for currency, data in totals_by_currency.items():
+            return_pct = ((data["value"] - data["invested"]) / data["invested"] * 100) if data["invested"] > 0 else 0
+            currency_summaries.append({
+                "currency": currency,
+                "symbol": CURRENCY_SYMBOLS.get(currency, "$"),
+                "total_value": data["value"],
+                "total_invested": data["invested"],
+                "total_return": round(return_pct, 2),
+                "count": data["count"]
+            })
+        
+        # Sort by value (largest first)
+        currency_summaries.sort(key=lambda x: x["total_value"], reverse=True)
         
         # Get active grids
         active_grids = db.query(Grid).join(Portfolio).filter(
@@ -1537,9 +1587,7 @@ async def dashboard_summary(user: User = Depends(require_auth), db: Session = De
         
         return {
             "success": True,
-            "total_value": total_value,
-            "total_invested": total_invested,
-            "total_return": total_return,
+            "currency_summaries": currency_summaries,
             "total_portfolios": len(portfolios),
             "active_grids": active_grids,
             "last_updated": datetime.now().isoformat()

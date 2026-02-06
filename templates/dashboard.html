@@ -34,31 +34,40 @@
     
     <!-- Portfolio Summary Cards -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <!-- Total Portfolio Value -->
+        <!-- Total Portfolio Value by Currency -->
         <div class="trading-card rounded-xl p-6 transition-all duration-200">
-            <div class="flex items-center">
+            <div class="flex items-start">
                 <div class="flex-shrink-0">
                     <div class="w-12 h-12 bg-gradient-to-r from-green-500 to-emerald-600 rounded-lg flex items-center justify-center">
-                        <i class="fas fa-dollar-sign text-white text-xl"></i>
+                        <i class="fas fa-wallet text-white text-xl"></i>
                     </div>
                 </div>
                 <div class="ml-4 flex-1">
                     <p class="text-sm font-medium text-gray-500">Total Value</p>
-                    <p class="text-2xl font-bold text-gray-900" data-field="total-value">
-                        {{ "${:,.2f}".format(portfolio_summary.total_value) }}
-                    </p>
-                    <p class="text-sm profit-positive">
-                        <i class="fas fa-arrow-up"></i>
-                        +{{ "{:.2f}".format(portfolio_summary.total_return) }}%
-                    </p>
+                    {% if portfolio_summary.currency_summaries %}
+                        {% for summary in portfolio_summary.currency_summaries %}
+                        <div class="{% if not loop.first %}mt-2 pt-2 border-t border-gray-100{% endif %}">
+                            <p class="text-lg font-bold text-gray-900" data-field="total-value-{{ summary.currency }}">
+                                {{ summary.symbol }}{{ "{:,.2f}".format(summary.total_value) }}
+                            </p>
+                            <p class="text-xs {% if summary.total_return >= 0 %}text-green-600{% else %}text-red-600{% endif %}">
+                                {% if summary.total_return >= 0 %}<i class="fas fa-arrow-up"></i>{% else %}<i class="fas fa-arrow-down"></i>{% endif %}
+                                {{ "{:+.2f}".format(summary.total_return) }}%
+                                <span class="text-gray-400 ml-1">({{ summary.currency }})</span>
+                            </p>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <p class="text-2xl font-bold text-gray-900">$0.00</p>
+                    {% endif %}
                 </div>
             </div>
         </div>
         
         <!-- Active Portfolios - Clickable -->
         <a href="/portfolios" class="block">
-            <div class="trading-card rounded-xl p-6 transition-all duration-200 hover:shadow-lg hover:scale-105 cursor-pointer">
-                <div class="flex items-center">
+            <div class="trading-card rounded-xl p-6 transition-all duration-200 hover:shadow-lg hover:scale-105 cursor-pointer h-full">
+                <div class="flex items-center h-full">
                     <div class="flex-shrink-0">
                         <div class="w-12 h-12 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
                             <i class="fas fa-briefcase text-white text-xl"></i>
@@ -78,8 +87,8 @@
         
         <!-- Active Grids - Clickable -->
         <a href="/grids" class="block">
-            <div class="trading-card rounded-xl p-6 transition-all duration-200 hover:shadow-lg hover:scale-105 cursor-pointer">
-                <div class="flex items-center">
+            <div class="trading-card rounded-xl p-6 transition-all duration-200 hover:shadow-lg hover:scale-105 cursor-pointer h-full">
+                <div class="flex items-center h-full">
                     <div class="flex-shrink-0">
                         <div class="w-12 h-12 bg-gradient-to-r from-purple-500 to-pink-600 rounded-lg flex items-center justify-center">
                             <i class="fas fa-th text-white text-xl"></i>
@@ -97,9 +106,9 @@
             </div>
         </a>
         
-        <!-- Total Invested -->
+        <!-- Total Invested by Currency -->
         <div class="trading-card rounded-xl p-6 transition-all duration-200">
-            <div class="flex items-center">
+            <div class="flex items-start">
                 <div class="flex-shrink-0">
                     <div class="w-12 h-12 bg-gradient-to-r from-orange-500 to-red-600 rounded-lg flex items-center justify-center">
                         <i class="fas fa-chart-line text-white text-xl"></i>
@@ -107,10 +116,22 @@
                 </div>
                 <div class="ml-4 flex-1">
                     <p class="text-sm font-medium text-gray-500">Total Invested</p>
-                    <p class="text-2xl font-bold text-gray-900">
-                        {{ "${:,.2f}".format(portfolio_summary.total_invested) }}
-                    </p>
-                    <p class="text-sm text-gray-600">Initial capital</p>
+                    {% if portfolio_summary.currency_summaries %}
+                        {% for summary in portfolio_summary.currency_summaries %}
+                        <div class="{% if not loop.first %}mt-2 pt-2 border-t border-gray-100{% endif %}">
+                            <p class="text-lg font-bold text-gray-900">
+                                {{ summary.symbol }}{{ "{:,.2f}".format(summary.total_invested) }}
+                            </p>
+                            <p class="text-xs text-gray-500">
+                                {{ summary.currency }} capital
+                                <span class="text-gray-400">({{ summary.count }} portfolio{% if summary.count != 1 %}s{% endif %})</span>
+                            </p>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <p class="text-2xl font-bold text-gray-900">$0.00</p>
+                        <p class="text-sm text-gray-600">Initial capital</p>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -614,8 +635,15 @@ setInterval(async () => {
         const response = await fetch('/api/dashboard/summary');
         if (response.ok) {
             const data = await response.json();
-            // Update portfolio summary values
-            document.querySelector('[data-field="total-value"]').textContent = formatCurrency(data.total_value);
+            // Update portfolio summary values by currency
+            if (data.currency_summaries) {
+                data.currency_summaries.forEach(summary => {
+                    const valueEl = document.querySelector(`[data-field="total-value-${summary.currency}"]`);
+                    if (valueEl) {
+                        valueEl.textContent = summary.symbol + summary.total_value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                    }
+                });
+            }
         }
     } catch (error) {
         console.error('Failed to refresh dashboard data:', error);
