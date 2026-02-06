@@ -84,6 +84,9 @@ class UpdateApiTokenRequest(BaseModel):
 class UpdatePortfolioInitiatedDateRequest(BaseModel):
     initiated_date: Optional[str] = None  # ISO format date string (YYYY-MM-DD), None to clear
 
+class UpdatePortfolioMarketRequest(BaseModel):
+    market: str  # US, HK, or CHINA
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -1882,6 +1885,63 @@ async def update_portfolio_initiated_date(
         db.rollback()
         logger.error(f"Error updating portfolio initiated date: {e}")
         raise HTTPException(status_code=500, detail="Failed to update portfolio initiated date")
+
+@app.put("/api/portfolios/{portfolio_id}/market")
+async def update_portfolio_market(
+    portfolio_id: str,
+    request: UpdatePortfolioMarketRequest,
+    user: User = Depends(require_auth),
+    db: Session = Depends(get_db)
+):
+    """Update the market and currency for a portfolio"""
+    try:
+        # Verify portfolio ownership
+        portfolio = db.query(Portfolio).filter(
+            Portfolio.id == portfolio_id,
+            Portfolio.user_id == user.id
+        ).first()
+        
+        if not portfolio:
+            raise HTTPException(status_code=404, detail="Portfolio not found")
+        
+        # Validate market
+        market_str = request.market.upper()
+        if market_str not in ["US", "HK", "CHINA"]:
+            raise HTTPException(status_code=400, detail="Invalid market. Use US, HK, or CHINA")
+        
+        # Get old values
+        old_market = portfolio.market.value if portfolio.market else "US"
+        old_currency = portfolio.currency or "USD"
+        
+        # Update market and currency
+        market_type = MarketType[market_str]
+        currency = MARKET_CURRENCY_MAP[market_type]
+        
+        portfolio.market = market_type
+        portfolio.currency = currency
+        
+        db.commit()
+        db.refresh(portfolio)
+        
+        logger.info(f"Portfolio market updated: {portfolio.name} - Old: {old_market}/{old_currency}, New: {market_str}/{currency}")
+        
+        return {
+            "success": True,
+            "message": f"Portfolio market updated to {market_str} ({currency})",
+            "portfolio_id": portfolio.id,
+            "portfolio_name": portfolio.name,
+            "old_market": old_market,
+            "old_currency": old_currency,
+            "new_market": market_str,
+            "new_currency": currency
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating portfolio market: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update portfolio market")
 
 # Portfolio Detail and Transaction Routes
 @app.get("/portfolios/{portfolio_id}", response_class=HTMLResponse)

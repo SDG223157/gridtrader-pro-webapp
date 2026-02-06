@@ -514,6 +514,25 @@ class GridTraderProMCPServer {
             }
           },
           {
+            name: 'update_portfolio_market',
+            description: 'Update the market and currency of a portfolio. Use this to change the market (US, HK, CHINA) and associated currency (USD, HKD, CNY) for an existing portfolio.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                portfolio_id: {
+                  type: 'string',
+                  description: 'Portfolio ID to update'
+                },
+                market: {
+                  type: 'string',
+                  enum: ['US', 'HK', 'CHINA'],
+                  description: 'Market to set: US (USD), HK (HKD), or CHINA (CNY)'
+                }
+              },
+              required: ['portfolio_id', 'market']
+            }
+          },
+          {
             name: 'create_dynamic_grid',
             description: 'Create a dynamic grid trading strategy that automatically adjusts bounds based on market volatility',
             inputSchema: {
@@ -772,6 +791,9 @@ class GridTraderProMCPServer {
           
           case 'update_portfolio_initiated_date':
             return await this.handleUpdatePortfolioInitiatedDate(args);
+          
+          case 'update_portfolio_market':
+            return await this.handleUpdatePortfolioMarket(args);
           
           case 'delete_portfolio':
             return await this.handleDeletePortfolio(args);
@@ -1838,6 +1860,66 @@ class GridTraderProMCPServer {
               `• Try again in a few moments\n\n` +
               `📅 **Example Usage:**\n` +
               `"Update my portfolio initiated date to 2024-01-15"`
+          }
+        ]
+      };
+    }
+  }
+
+  private async handleUpdatePortfolioMarket(args: any) {
+    try {
+      const updateData = {
+        market: args.market.toUpperCase()
+      };
+
+      const result = await this.makeApiCall(`/api/portfolios/${args.portfolio_id}/market`, 'PUT', updateData);
+      
+      if (result.success) {
+        const marketFlags: Record<string, string> = {
+          'US': '🇺🇸',
+          'HK': '🇭🇰',
+          'CHINA': '🇨🇳'
+        };
+        
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `✅ **Portfolio Market Updated Successfully!**\n\n` +
+                `**Update Details:**\n` +
+                `• Portfolio: **${result.portfolio_name}**\n` +
+                `• Portfolio ID: ${result.portfolio_id}\n` +
+                `• Previous Market: ${marketFlags[result.old_market] || ''} **${result.old_market}** (${result.old_currency})\n` +
+                `• New Market: ${marketFlags[result.new_market] || ''} **${result.new_market}** (${result.new_currency})\n\n` +
+                `💰 **Currency Change:**\n` +
+                `All monetary values will now be displayed in **${result.new_currency}** (${formatCurrency(0, result.new_currency).replace('0.00', '')} symbol).\n\n` +
+                `📋 **Next Steps:**\n` +
+                `• View portfolio details: "Show me portfolio ${result.portfolio_id}"\n` +
+                `• Check all portfolios: "Show me all my portfolios"\n\n` +
+                `🎉 **Market update completed successfully!**`
+            }
+          ]
+        };
+      } else {
+        throw new Error(result.message || result.detail || 'Market update failed');
+      }
+    } catch (error: any) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `❌ **Market Update Failed**\n\n` +
+              `Error: ${error.response?.data?.detail || error.message}\n\n` +
+              `💡 **Common Issues:**\n` +
+              `• Invalid portfolio ID\n` +
+              `• Invalid market (must be US, HK, or CHINA)\n` +
+              `• Authentication error\n\n` +
+              `🔧 **Try:**\n` +
+              `• "Show me all my portfolios" to verify portfolio ID\n` +
+              `• Use valid market values: US, HK, or CHINA\n\n` +
+              `📋 **Example Usage:**\n` +
+              `"Change my portfolio market to CHINA"\n` +
+              `"Set portfolio market to HK"`
           }
         ]
       };
