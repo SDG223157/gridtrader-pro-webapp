@@ -1704,6 +1704,13 @@ async def get_portfolio_details(portfolio_id: str, user: User = Depends(require_
         if not portfolio:
             raise HTTPException(status_code=404, detail="Portfolio not found")
         
+        # BUG FIX: Always recalculate current_value to include holdings + grids
+        calculated_value = calculate_portfolio_value(portfolio, db)
+        portfolio.current_value = calculated_value
+        if portfolio.initial_capital and portfolio.initial_capital > 0:
+            portfolio.total_return = ((calculated_value - portfolio.initial_capital) / portfolio.initial_capital) * 100
+        db.commit()
+        
         # Get holdings
         holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio_id).all()
         holdings_data = []
