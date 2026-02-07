@@ -844,29 +844,42 @@ class GridTraderProMCPServer {
       const data = await this.makeApiCall('/api/portfolios');
       
       const portfolios = Array.isArray(data) ? data : data.portfolios || [];
+      const apiSummary = data.summary || {};
+      const currencySummaries = apiSummary.currency_summaries || [];
       
-      const summary = `📊 **Portfolio Overview**\n\n` +
-        `Found ${portfolios.length} portfolios:\n\n`;
+      // Build header with currency summaries
+      let resultsText = `📊 **Portfolio Overview**\n\n`;
+      resultsText += `Found ${portfolios.length} portfolios\n\n`;
       
-      let resultsText = summary;
+      // Show totals by currency
+      if (currencySummaries.length > 0) {
+        resultsText += `**💰 Totals by Currency:**\n`;
+        currencySummaries.forEach((cs: any) => {
+          const returnStatus = cs.total_return >= 0 ? '📈' : '📉';
+          resultsText += `• **${cs.currency}**: ${cs.symbol}${cs.total_value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} ` +
+            `(${returnStatus} ${cs.total_return >= 0 ? '+' : ''}${cs.total_return.toFixed(2)}%) - ${cs.count} portfolio${cs.count !== 1 ? 's' : ''}\n`;
+        });
+        resultsText += `\n`;
+      }
+      
+      resultsText += `---\n\n`;
       
       if (portfolios.length === 0) {
         resultsText += `No portfolios found. Create your first portfolio to get started!`;
       } else {
         resultsText += portfolios.map((portfolio: any, index: number) => {
-          const performance = portfolio.performance || {};
-          const returnPercent = performance.total_pnl_percent || 0;
+          const returnPercent = portfolio.total_return || 0;
           const returnStatus = returnPercent >= 0 ? '📈' : '📉';
           const currency = portfolio.currency || 'USD';
+          const currencySymbol = portfolio.currency_symbol || '$';
           const market = portfolio.market || 'US';
+          const marketFlag = market === 'US' ? '🇺🇸' : market === 'HK' ? '🇭🇰' : '🇨🇳';
           
-          return `**${index + 1}. ${portfolio.name}** (${market})\n` +
+          return `**${index + 1}. ${portfolio.name}** ${marketFlag} ${market}\n` +
             `   ID: ${portfolio.id}\n` +
-            `   Market: ${market} | Currency: ${currency}\n` +
-            `   Strategy: ${portfolio.strategy_type}\n` +
-            `   Value: ${formatCurrency(portfolio.current_value || 0, currency)}\n` +
-            `   Return: ${returnStatus} ${returnPercent.toFixed(2)}%\n` +
-            `   Created: ${new Date(portfolio.created_at).toLocaleDateString()}\n`;
+            `   Value: ${currencySymbol}${(portfolio.current_value || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}\n` +
+            `   Return: ${returnStatus} ${returnPercent >= 0 ? '+' : ''}${returnPercent.toFixed(2)}%\n` +
+            `   Holdings: ${portfolio.holdings_count || 0}\n`;
         }).join('\n');
       }
       

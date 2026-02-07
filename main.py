@@ -1604,26 +1604,44 @@ async def get_portfolios(user: User = Depends(require_auth), db: Session = Depen
         portfolios = db.query(Portfolio).filter(Portfolio.user_id == user.id).all()
         
         portfolio_list = []
-        total_cash = 0
+        totals_by_currency = {}
         
         for portfolio in portfolios:
             cash_balance = float(portfolio.cash_balance or 0)
-            total_cash += cash_balance
+            currency = portfolio.currency or "USD"
+            market = portfolio.market.value if portfolio.market else "US"
             
             # Calculate current portfolio value including grid allocations
             current_value = float(calculate_portfolio_value(portfolio, db))
+            initial_capital = float(portfolio.initial_capital)
+            
+            # Track totals by currency
+            if currency not in totals_by_currency:
+                totals_by_currency[currency] = {
+                    "value": 0.0,
+                    "invested": 0.0,
+                    "cash": 0.0,
+                    "count": 0
+                }
+            totals_by_currency[currency]["value"] += current_value
+            totals_by_currency[currency]["invested"] += initial_capital
+            totals_by_currency[currency]["cash"] += cash_balance
+            totals_by_currency[currency]["count"] += 1
             
             # Calculate total return based on current calculated value
             total_return = 0.0
-            if float(portfolio.initial_capital) > 0:
-                total_return = ((current_value - float(portfolio.initial_capital)) / float(portfolio.initial_capital)) * 100
+            if initial_capital > 0:
+                total_return = ((current_value - initial_capital) / initial_capital) * 100
             
             portfolio_data = {
                 "id": portfolio.id,
                 "name": portfolio.name,
                 "description": portfolio.description or "",
                 "strategy_type": portfolio.strategy_type.value if portfolio.strategy_type else "balanced",
-                "initial_capital": float(portfolio.initial_capital),
+                "market": market,
+                "currency": currency,
+                "currency_symbol": CURRENCY_SYMBOLS.get(currency, "$"),
+                "initial_capital": initial_capital,
                 "current_value": current_value,  # Use calculated value instead of database value
                 "cash_balance": cash_balance,
                 "total_return": total_return,  # Use calculated return
@@ -1645,13 +1663,28 @@ async def get_portfolios(user: User = Depends(require_auth), db: Session = Depen
             
             portfolio_list.append(portfolio_data)
         
+        # Build currency summaries
+        currency_summaries = []
+        for currency, data in totals_by_currency.items():
+            return_pct = ((data["value"] - data["invested"]) / data["invested"] * 100) if data["invested"] > 0 else 0
+            currency_summaries.append({
+                "currency": currency,
+                "symbol": CURRENCY_SYMBOLS.get(currency, "$"),
+                "total_value": data["value"],
+                "total_invested": data["invested"],
+                "total_cash": data["cash"],
+                "total_return": round(return_pct, 2),
+                "count": data["count"]
+            })
+        
+        # Sort by value (largest first)
+        currency_summaries.sort(key=lambda x: x["total_value"], reverse=True)
+        
         return {
             "portfolios": portfolio_list,
             "summary": {
                 "total_portfolios": len(portfolio_list),
-                "total_cash": total_cash,
-                "total_value": sum(p["current_value"] for p in portfolio_list),
-                "total_invested": sum(p["initial_capital"] for p in portfolio_list)
+                "currency_summaries": currency_summaries
             }
         }
         
@@ -1703,11 +1736,17 @@ async def get_portfolio_details(portfolio_id: str, user: User = Depends(require_
                 "status": grid.status.value
             })
         
+        currency = portfolio.currency or "USD"
+        market = portfolio.market.value if portfolio.market else "US"
+        
         return {
             "id": portfolio.id,
             "name": portfolio.name,
             "description": portfolio.description or "",
             "strategy_type": portfolio.strategy_type.value if portfolio.strategy_type else "balanced",
+            "market": market,
+            "currency": currency,
+            "currency_symbol": CURRENCY_SYMBOLS.get(currency, "$"),
             "initial_capital": float(portfolio.initial_capital),
             "current_value": float(portfolio.current_value or 0),
             "cash_balance": float(portfolio.cash_balance or 0),
