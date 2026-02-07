@@ -851,12 +851,16 @@ class GridTraderProMCPServer {
       let resultsText = `📊 **Portfolio Overview**\n\n`;
       resultsText += `Found ${portfolios.length} portfolios\n\n`;
       
-      // Show totals by currency
+      // IMPORTANT: Add instruction for AI not to convert currencies
+      resultsText += `⚠️ **IMPORTANT**: These portfolios use different currencies (CNY, USD, HKD). DO NOT convert or sum values across currencies. Display each portfolio's value in its ORIGINAL currency with the correct symbol (¥ for CNY, $ for USD, HK$ for HKD).\n\n`;
+      
+      // Show totals by currency - make it very explicit
       if (currencySummaries.length > 0) {
-        resultsText += `**💰 Totals by Currency:**\n`;
+        resultsText += `**💰 Totals by Currency (DO NOT MIX THESE):**\n`;
         currencySummaries.forEach((cs: any) => {
           const returnStatus = cs.total_return >= 0 ? '📈' : '📉';
-          resultsText += `• **${cs.currency}**: ${cs.symbol}${cs.total_value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} ` +
+          const currencyLabel = cs.currency === 'CNY' ? 'Chinese Yuan (¥)' : cs.currency === 'USD' ? 'US Dollar ($)' : 'Hong Kong Dollar (HK$)';
+          resultsText += `• **${currencyLabel}**: ${cs.symbol}${cs.total_value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} ` +
             `(${returnStatus} ${cs.total_return >= 0 ? '+' : ''}${cs.total_return.toFixed(2)}%) - ${cs.count} portfolio${cs.count !== 1 ? 's' : ''}\n`;
         });
         resultsText += `\n`;
@@ -874,10 +878,11 @@ class GridTraderProMCPServer {
           const currencySymbol = portfolio.currency_symbol || '$';
           const market = portfolio.market || 'US';
           const marketFlag = market === 'US' ? '🇺🇸' : market === 'HK' ? '🇭🇰' : '🇨🇳';
+          const currencyName = currency === 'CNY' ? 'Yuan' : currency === 'HKD' ? 'HK Dollar' : 'USD';
           
-          return `**${index + 1}. ${portfolio.name}** ${marketFlag} ${market}\n` +
+          return `**${index + 1}. ${portfolio.name}** ${marketFlag} ${market} (${currencyName})\n` +
             `   ID: ${portfolio.id}\n` +
-            `   Value: ${currencySymbol}${(portfolio.current_value || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}\n` +
+            `   Value: ${currencySymbol}${(portfolio.current_value || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} ${currency}\n` +
             `   Return: ${returnStatus} ${returnPercent >= 0 ? '+' : ''}${returnPercent.toFixed(2)}%\n` +
             `   Holdings: ${portfolio.holdings_count || 0}\n`;
         }).join('\n');
