@@ -403,7 +403,9 @@ setup_security_middleware(app)
 app.add_middleware(
     SessionMiddleware,
     secret_key=os.getenv("SECRET_KEY", "your_super_secret_key_change_this_in_production"),
-    max_age=86400  # 24 hours
+    max_age=86400,  # 24 hours
+    https_only=os.getenv("ENVIRONMENT", "production") == "production",
+    same_site="lax",
 )
 
 # CORS middleware
@@ -1453,8 +1455,10 @@ async def google_callback(request: Request, code: str, db: Session = Depends(get
         return RedirectResponse(url="/dashboard", status_code=302)
         
     except Exception as e:
+        import traceback
         logger.error(f"Google OAuth callback error: {e}")
-        return RedirectResponse(url="/login?error=oauth_failed", status_code=302)
+        logger.error(f"Google OAuth traceback: {traceback.format_exc()}")
+        return RedirectResponse(url=f"/login?error=oauth_failed&detail={str(e)[:100]}", status_code=302)
 
 # Dashboard
 @app.get("/dashboard", response_class=HTMLResponse)

@@ -10,7 +10,7 @@ from fastapi.security import HTTPBearer
 from authlib.integrations.starlette_client import OAuth
 from sqlalchemy.orm import Session
 from jose import JWTError, jwt
-from database import get_db, User, UserProfile
+from database import get_db, User, UserProfile, AuthProvider
 import httpx
 import secrets
 import hashlib
@@ -98,7 +98,7 @@ def create_user(db: Session, email: str, password: str = None, profile_data: dic
         # Create user
         user_data = {
             "email": email,
-            "auth_provider": "local" if password else "google",
+            "auth_provider": AuthProvider.local if password else AuthProvider.google,
             "is_email_verified": not password  # Google users are pre-verified
         }
         
@@ -166,7 +166,7 @@ async def create_or_update_user_from_google(google_user_info: dict, db: Session)
     if existing_user:
         # Update existing user with Google info
         existing_user.google_id = google_id
-        existing_user.auth_provider = "google"
+        existing_user.auth_provider = AuthProvider.google
         
         if existing_user.profile:
             # Update profile with Google data
