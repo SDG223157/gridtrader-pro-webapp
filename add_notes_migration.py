@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 def get_database_url():
     """Get database URL from environment variables"""
-    return f"mysql+mysqlconnector://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT', '3306')}/{os.getenv('DB_NAME')}?charset=utf8mb4"
+    return os.getenv('DATABASE_URL') or f"mysql+mysqlconnector://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT', '3306')}/{os.getenv('DB_NAME')}?charset=utf8mb4"
 
 def add_notes_column():
     """Add notes column to transactions table"""

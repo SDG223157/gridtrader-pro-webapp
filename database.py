@@ -2,7 +2,6 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import Column, Integer, String, Text, DECIMAL, Boolean, DateTime, Date, JSON, Enum, BigInteger, ForeignKey
-from sqlalchemy.dialects.mysql import VARCHAR
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func, text
 import os
@@ -16,15 +15,22 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-# MySQL connection string
-DATABASE_URL = f"mysql+mysqlconnector://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT', '3306')}/{os.getenv('DB_NAME')}?charset=utf8mb4"
+# Database URL: prefer DATABASE_URL env var (Neon/Postgres), fallback to MySQL
+DATABASE_URL = os.getenv('DATABASE_URL') or (
+    f"mysql+mysqlconnector://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}"
+    f"@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT', '3306')}/{os.getenv('DB_NAME')}?charset=utf8mb4"
+)
+
+# Use VARCHAR as String alias (was MySQL-specific import)
+VARCHAR = String
 
 engine = create_engine(
     DATABASE_URL,
     pool_pre_ping=True,
-    pool_recycle=300,
-    pool_size=20,
-    max_overflow=0
+    pool_recycle=300,      # Important for Neon idle connection timeouts
+    pool_size=10,
+    max_overflow=20,
+    pool_timeout=30,
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -332,11 +338,11 @@ def create_tables():
         Base.metadata.create_all(bind=engine)
         logger.info("✅ Database tables created/verified")
         
-        # Verify tables exist
-        with engine.connect() as conn:
-            result = conn.execute(text("SHOW TABLES"))
-            tables = [row[0] for row in result]
-            logger.info(f"📊 Available tables: {', '.join(tables)}")
+        # Verify tables exist (cross-database compatible)
+        from sqlalchemy import inspect
+        inspector = inspect(engine)
+        tables = inspector.get_table_names()
+        logger.info(f"📊 Available tables: {', '.join(tables)}")
             
     except Exception as e:
         logger.error(f"❌ Error creating database tables: {e}")

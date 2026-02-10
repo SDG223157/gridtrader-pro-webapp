@@ -20,7 +20,10 @@ logger = logging.getLogger(__name__)
 
 def get_database_url():
     """Get database URL from environment"""
-    return f"mysql+mysqlconnector://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT', '3306')}/{os.getenv('DB_NAME')}?charset=utf8mb4"
+    return os.getenv('DATABASE_URL') or (
+        f"mysql+mysqlconnector://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}"
+        f"@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT', '3306')}/{os.getenv('DB_NAME')}?charset=utf8mb4"
+    )
 
 def create_database_tables():
     """Create database tables with proper error handling"""
@@ -47,11 +50,11 @@ def create_database_tables():
         Base.metadata.create_all(bind=engine)
         logger.info("✅ Database tables created successfully")
         
-        # Verify tables were created
-        with engine.connect() as conn:
-            result = conn.execute(text("SHOW TABLES"))
-            tables = [row[0] for row in result]
-            logger.info(f"📊 Created tables: {', '.join(tables)}")
+        # Verify tables were created (cross-database compatible)
+        from sqlalchemy import inspect
+        inspector = inspect(engine)
+        tables = inspector.get_table_names()
+        logger.info(f"📊 Created tables: {', '.join(tables)}")
         
         return True
         
@@ -80,9 +83,10 @@ def check_database_status():
             conn.execute(text("SELECT 1"))
             logger.info("✅ Database connection: OK")
             
-            # Check tables
-            result = conn.execute(text("SHOW TABLES"))
-            tables = [row[0] for row in result]
+            # Check tables (cross-database compatible)
+            from sqlalchemy import inspect
+            inspector = inspect(engine)
+            tables = inspector.get_table_names()
             
             expected_tables = ['users', 'user_profiles', 'oauth_sessions', 'portfolios', 
                              'holdings', 'transactions', 'grids', 'grid_orders', 
@@ -106,13 +110,14 @@ if __name__ == "__main__":
     logger.info("=" * 50)
     
     # Check if required environment variables are set
-    required_vars = ['DB_HOST', 'DB_USER', 'DB_PASSWORD', 'DB_NAME']
-    missing_vars = [var for var in required_vars if not os.getenv(var)]
-    
-    if missing_vars:
-        logger.error(f"❌ Missing environment variables: {', '.join(missing_vars)}")
-        logger.error("Please set all required database environment variables")
-        exit(1)
+    if not os.getenv('DATABASE_URL'):
+        required_vars = ['DB_HOST', 'DB_USER', 'DB_PASSWORD', 'DB_NAME']
+        missing_vars = [var for var in required_vars if not os.getenv(var)]
+        
+        if missing_vars:
+            logger.error(f"❌ Missing environment variables: {', '.join(missing_vars)}")
+            logger.error("Please set DATABASE_URL or all required DB_ variables")
+            exit(1)
     
     # Check current database status
     logger.info("🔍 Checking current database status...")

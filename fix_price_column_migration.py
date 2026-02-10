@@ -18,8 +18,8 @@ def main():
     """Run the database migration"""
     load_dotenv()
     
-    # MySQL connection string
-    DATABASE_URL = f"mysql+mysqlconnector://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT', '3306')}/{os.getenv('DB_NAME')}?charset=utf8mb4"
+    # Database connection (prefer DATABASE_URL for Neon/Postgres)
+    DATABASE_URL = os.getenv('DATABASE_URL') or f"mysql+mysqlconnector://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT', '3306')}/{os.getenv('DB_NAME')}?charset=utf8mb4"
     
     try:
         engine = create_engine(DATABASE_URL, pool_pre_ping=True)

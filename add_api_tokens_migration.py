@@ -17,8 +17,8 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Database connection
-DATABASE_URL = f"mysql+mysqlconnector://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT', '3306')}/{os.getenv('DB_NAME')}?charset=utf8mb4"
+# Database connection (prefer DATABASE_URL for Neon/Postgres)
+DATABASE_URL = os.getenv('DATABASE_URL') or f"mysql+mysqlconnector://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT', '3306')}/{os.getenv('DB_NAME')}?charset=utf8mb4"
 
 def run_migration():
     """Run the API tokens table migration"""
@@ -26,9 +26,10 @@ def run_migration():
         engine = create_engine(DATABASE_URL, pool_pre_ping=True)
         
         with engine.connect() as conn:
-            # Check if api_tokens table already exists
-            result = conn.execute(text("SHOW TABLES LIKE 'api_tokens'"))
-            if result.fetchone():
+            # Check if api_tokens table already exists (cross-database compatible)
+            from sqlalchemy import inspect
+            inspector = inspect(engine)
+            if "api_tokens" in inspector.get_table_names():
                 logger.info("✅ api_tokens table already exists, skipping migration")
                 return True
             

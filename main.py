@@ -344,55 +344,45 @@ class EnhancedTickerSearch:
 enhanced_ticker_search = EnhancedTickerSearch()
 
 def run_database_migrations():
-    """Run necessary database migrations"""
+    """Run necessary database migrations (cross-database compatible)"""
     try:
-        with engine.connect() as conn:
-            logger.info("🔄 Checking for database migrations...")
+        from sqlalchemy import inspect as sa_inspect
+        inspector = sa_inspect(engine)
+        
+        if "transactions" not in inspector.get_table_names():
+            logger.info("⏭️ Transactions table not yet created, skipping migrations")
+            return
             
-            # Check current price column type
-            result = conn.execute(text("""
-                SELECT COLUMN_TYPE 
-                FROM INFORMATION_SCHEMA.COLUMNS 
-                WHERE TABLE_SCHEMA = DATABASE() 
-                AND TABLE_NAME = 'transactions' 
-                AND COLUMN_NAME = 'price'
-            """))
+        logger.info("🔄 Checking for database migrations...")
+        
+        # Check price column using SQLAlchemy inspect (works for both MySQL and Postgres)
+        columns = {c["name"]: c for c in inspector.get_columns("transactions")}
+        price_col = columns.get("price")
+        
+        if price_col:
+            col_type = str(price_col["type"])
+            logger.info(f"📊 Current price column type: {col_type}")
             
-            current_type = result.fetchone()
-            if current_type:
-                logger.info(f"📊 Current price column type: {current_type[0]}")
-                
-                if "decimal(10,4)" in current_type[0].lower():
-                    logger.info("🔄 Migrating price column from DECIMAL(10,4) to DECIMAL(15,4)...")
-                    
-                    # Use autocommit for DDL operations
-                    conn.execute(text("SET autocommit = 1"))
-                    
-                    try:
-                        conn.execute(text("""
-                            ALTER TABLE transactions 
-                            MODIFY COLUMN price DECIMAL(15,4) NOT NULL
-                        """))
-                        logger.info("✅ Price column migration completed successfully!")
-                        
-                        # Verify the change
-                        verify_result = conn.execute(text("""
-                            SELECT COLUMN_TYPE 
-                            FROM INFORMATION_SCHEMA.COLUMNS 
-                            WHERE TABLE_SCHEMA = DATABASE() 
-                            AND TABLE_NAME = 'transactions' 
-                            AND COLUMN_NAME = 'price'
-                        """))
-                        new_type = verify_result.fetchone()
-                        logger.info(f"📊 New price column type: {new_type[0]}")
-                        
-                    except Exception as e:
-                        logger.error(f"❌ Price column migration failed: {e}")
-                        raise e
-                else:
-                    logger.info("✅ Price column already has correct size")
+            # For fresh Neon installs the model already defines DECIMAL(15,4)
+            # Migration only needed for legacy MySQL installs with DECIMAL(10,4)
+            if "10" in col_type and "4" in col_type:
+                logger.info("🔄 Migrating price column to DECIMAL(15,4)...")
+                with engine.begin() as conn:
+                    # ALTER COLUMN syntax works for both Postgres and MySQL
+                    db_url = str(engine.url)
+                    if "postgresql" in db_url:
+                        conn.execute(text(
+                            "ALTER TABLE transactions ALTER COLUMN price TYPE NUMERIC(15,4)"
+                        ))
+                    else:
+                        conn.execute(text(
+                            "ALTER TABLE transactions MODIFY COLUMN price DECIMAL(15,4) NOT NULL"
+                        ))
+                logger.info("✅ Price column migration completed successfully!")
             else:
-                logger.error("❌ Price column not found in transactions table!")
+                logger.info("✅ Price column already has correct size")
+        else:
+            logger.error("❌ Price column not found in transactions table!")
                 
     except Exception as e:
         logger.error(f"❌ Database migration error: {e}")
@@ -3891,9 +3881,10 @@ async def debug_test_tokens():
 async def debug_test_tokens_db(db: Session = Depends(get_db)):
     """Debug API tokens database functionality"""
     try:
-        # Check if api_tokens table exists
-        result = db.execute(text("SHOW TABLES LIKE 'api_tokens'"))
-        table_exists = result.fetchone() is not None
+        # Check if api_tokens table exists (cross-database compatible)
+        from sqlalchemy import inspect as sa_inspect
+        inspector = sa_inspect(engine)
+        table_exists = "api_tokens" in inspector.get_table_names()
         
         if not table_exists:
             return {
@@ -3902,9 +3893,8 @@ async def debug_test_tokens_db(db: Session = Depends(get_db)):
                 "coolify_instruction": "Go to Coolify dashboard and restart your GridTrader Pro service"
             }
         
-        # Check table structure
-        result = db.execute(text("DESCRIBE api_tokens"))
-        columns = [row[0] for row in result.fetchall()]
+        # Check table structure (cross-database compatible)
+        columns = [col["name"] for col in inspector.get_columns("api_tokens")]
         
         # Check if ApiToken model can be imported
         try:
@@ -4300,16 +4290,11 @@ async def debug_test_transaction(request: Request, db: Session = Depends(get_db)
 async def migrate_notes_column(db: Session = Depends(get_db)):
     """Add notes column to transactions table"""
     try:
-        # Check if notes column exists
-        result = db.execute(text("""
-            SELECT COLUMN_NAME 
-            FROM INFORMATION_SCHEMA.COLUMNS 
-            WHERE TABLE_SCHEMA = DATABASE() 
-            AND TABLE_NAME = 'transactions' 
-            AND COLUMN_NAME = 'notes'
-        """))
+        from sqlalchemy import inspect as sa_inspect
+        inspector = sa_inspect(engine)
+        columns = [c["name"] for c in inspector.get_columns("transactions")]
         
-        if result.fetchone():
+        if "notes" in columns:
             return {"success": True, "message": "Notes column already exists"}
         
         # Add the notes column
@@ -4326,25 +4311,15 @@ async def migrate_notes_column(db: Session = Depends(get_db)):
 async def migrate_initiated_date_column(db: Session = Depends(get_db)):
     """Add initiated_date column to portfolios table"""
     try:
-        # Check if initiated_date column exists
-        result = db.execute(text("""
-            SELECT COLUMN_NAME 
-            FROM INFORMATION_SCHEMA.COLUMNS 
-            WHERE TABLE_SCHEMA = DATABASE() 
-            AND TABLE_NAME = 'portfolios' 
-            AND COLUMN_NAME = 'initiated_date'
-        """))
+        from sqlalchemy import inspect as sa_inspect
+        inspector = sa_inspect(engine)
+        columns = [c["name"] for c in inspector.get_columns("portfolios")]
         
-        if result.fetchone():
+        if "initiated_date" in columns:
             return {"success": True, "message": "initiated_date column already exists"}
         
-        # Add the initiated_date column
-        db.execute(text("""
-            ALTER TABLE portfolios 
-            ADD COLUMN initiated_date DATE NULL 
-            COMMENT 'Date when portfolio was actually initiated (can differ from created_at)'
-            AFTER last_rebalanced
-        """))
+        # Add the initiated_date column (cross-database compatible)
+        db.execute(text("ALTER TABLE portfolios ADD COLUMN initiated_date DATE NULL"))
         db.commit()
         
         logger.info("✅ Successfully added initiated_date column to portfolios table")

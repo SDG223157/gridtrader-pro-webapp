@@ -1,4 +1,4 @@
-# GridTrader Pro - Single Container Deployment
+# GridTrader Pro - Production Deployment (Neon + Gunicorn)
 FROM python:3.11-slim
 
 # Set environment variables
@@ -6,19 +6,15 @@ ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install system dependencies
+# Install system dependencies (PostgreSQL client libs instead of MySQL)
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
-    default-libmysqlclient-dev \
+    libpq-dev \
     pkg-config \
     curl \
-    redis-tools \
-    supervisor \
-    nginx \
     netcat-openbsd \
-    && rm -rf /var/lib/apt/lists/* \
-    && useradd -m -u 1000 appuser
+    && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app
@@ -31,150 +27,33 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . /app/
 
 # Create necessary directories
-RUN mkdir -p /app/logs \
-    /var/log/supervisor \
-    /var/log/nginx \
-    /app/static \
-    /app/templates
-
-# Set up permissions
-RUN chown -R appuser:appuser /app \
-    && chmod +x /app/start.sh
-
-# Copy configuration files
-COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-COPY docker/nginx.conf /etc/nginx/sites-available/default
-COPY docker/start.sh /start.sh
-RUN chmod +x /start.sh
-
-# Create nginx configuration
-RUN echo 'server { \
-    listen 3000; \
-    server_name _; \
-    client_max_body_size 100M; \
-    \
-    location / { \
-        proxy_pass http://127.0.0.1:8000; \
-        proxy_set_header Host $host; \
-        proxy_set_header X-Real-IP $remote_addr; \
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for; \
-        proxy_set_header X-Forwarded-Proto $scheme; \
-        proxy_connect_timeout 60s; \
-        proxy_send_timeout 60s; \
-        proxy_read_timeout 60s; \
-    } \
-    \
-    location /static/ { \
-        alias /app/static/; \
-        expires 30d; \
-        add_header Cache-Control "public, immutable"; \
-    } \
-    \
-    location /health { \
-        proxy_pass http://127.0.0.1:8000/health; \
-        access_log off; \
-    } \
-}' > /etc/nginx/sites-available/default
-
-# Create supervisor configuration
-RUN echo '[supervisord] \
-nodaemon=true \
-user=root \
-logfile=/var/log/supervisor/supervisord.log \
-pidfile=/var/run/supervisord.pid \
-\
-[program:nginx] \
-command=nginx -g "daemon off;" \
-autostart=true \
-autorestart=true \
-stdout_logfile=/var/log/nginx/access.log \
-stderr_logfile=/var/log/nginx/error.log \
-\
-[program:gridtrader] \
-command=python main.py \
-directory=/app \
-user=appuser \
-autostart=true \
-autorestart=true \
-stdout_logfile=/app/logs/app.log \
-stderr_logfile=/app/logs/app.log \
-environment=PYTHONPATH="/app" \
-\
-[program:celery-worker] \
-command=celery -A tasks worker --loglevel=info \
-directory=/app \
-user=appuser \
-autostart=true \
-autorestart=true \
-stdout_logfile=/app/logs/celery.log \
-stderr_logfile=/app/logs/celery.log \
-environment=PYTHONPATH="/app" \
-\
-[program:celery-beat] \
-command=celery -A tasks beat --loglevel=info \
-directory=/app \
-user=appuser \
-autostart=true \
-autorestart=true \
-stdout_logfile=/app/logs/celery-beat.log \
-stderr_logfile=/app/logs/celery-beat.log \
-environment=PYTHONPATH="/app"' > /etc/supervisor/conf.d/supervisord.conf
+RUN mkdir -p /app/logs /app/static /app/templates
 
 # Create startup script
-RUN echo '#!/bin/bash \
-set -e \
-\
-echo "🚀 Starting GridTrader Pro..." \
-\
-# Wait for database \
-if [ "$DB_HOST" ]; then \
-    echo "⏳ Waiting for database at $DB_HOST:${DB_PORT:-3306}..." \
-    timeout=30 \
-    while ! nc -z "$DB_HOST" "${DB_PORT:-3306}" && [ $timeout -gt 0 ]; do \
-        sleep 1 \
-        timeout=$((timeout - 1)) \
-    done \
-    \
-    if [ $timeout -eq 0 ]; then \
-        echo "❌ Database connection timeout" \
-        exit 1 \
-    fi \
-    echo "✅ Database connection established" \
-fi \
-\
-# Wait for Redis \
-if [ "$REDIS_HOST" ]; then \
-    echo "⏳ Waiting for Redis at $REDIS_HOST:${REDIS_PORT:-6379}..." \
-    timeout=30 \
-    while ! nc -z "$REDIS_HOST" "${REDIS_PORT:-6379}" && [ $timeout -gt 0 ]; do \
-        sleep 1 \
-        timeout=$((timeout - 1)) \
-    done \
-    \
-    if [ $timeout -eq 0 ]; then \
-        echo "❌ Redis connection timeout" \
-        exit 1 \
-    fi \
-    echo "✅ Redis connection established" \
-fi \
-\
-# Create database tables \
-echo "🔧 Setting up database..." \
-python -c "from database import create_tables; create_tables()" \
-\
-# Start supervisor \
-echo "🎬 Starting services..." \
-exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf' > /start.sh
+RUN echo '#!/bin/bash\n\
+set -e\n\
+echo "Starting GridTrader Pro..."\n\
+\n\
+# Create database tables\n\
+echo "Setting up database..."\n\
+python -c "from database import create_tables; create_tables()"\n\
+\n\
+# Start with gunicorn + uvicorn workers\n\
+echo "Starting Gunicorn with Uvicorn workers..."\n\
+exec gunicorn main:app \
+  -k uvicorn.workers.UvicornWorker \
+  --bind 0.0.0.0:${PORT:-3000} \
+  --workers 4 \
+  --timeout 120 \
+  --graceful-timeout 30 \
+  --access-logfile -' > /start.sh && chmod +x /start.sh
 
 # Expose port
 EXPOSE 3000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:3000/health || exit 1
-
-# Switch to app user for runtime
-USER root
+    CMD curl -f http://localhost:${PORT:-3000}/health || exit 1
 
 # Start the application
 CMD ["/start.sh"]
