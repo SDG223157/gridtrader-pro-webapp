@@ -17,8 +17,17 @@ logger = logging.getLogger(__name__)
 
 # Prevent psycopg2/libpq from trying to read stale client certificate files
 # (fixes "could not open certificate file /root/.postgresql/postgresql.crt: Permission denied")
-os.environ.setdefault("PGSSLCERT", "")
-os.environ.setdefault("PGSSLKEY", "")
+os.environ["PGSSLCERT"] = "/dev/null"
+os.environ["PGSSLKEY"] = "/dev/null"
+# Also physically remove the stale cert directory if it exists
+_pg_ssl_dir = os.path.expanduser("~/.postgresql")
+if os.path.isdir(_pg_ssl_dir):
+    import shutil
+    try:
+        shutil.rmtree(_pg_ssl_dir, ignore_errors=True)
+        logger.info(f"Removed stale SSL cert dir: {_pg_ssl_dir}")
+    except Exception:
+        pass
 
 # Database URL: prefer DATABASE_URL env var (Neon/Postgres), fallback to MySQL
 DATABASE_URL = os.getenv('DATABASE_URL') or (

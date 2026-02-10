@@ -3,21 +3,10 @@ set -e
 
 echo "🚀 Starting GridTrader Pro Production..."
 
-# Wait for external database
-if [ "$DB_HOST" ] && [ "$DB_HOST" != "localhost" ]; then
-    echo "⏳ Waiting for database at $DB_HOST:${DB_PORT:-3306}..."
-    timeout=60
-    while ! nc -z "$DB_HOST" "${DB_PORT:-3306}" && [ $timeout -gt 0 ]; do
-        sleep 2
-        timeout=$((timeout - 1))
-    done
-    
-    if [ $timeout -eq 0 ]; then
-        echo "❌ Database connection timeout"
-        exit 1
-    fi
-    echo "✅ Database connection established"
-fi
+# Remove stale SSL client certificates that cause Permission denied errors
+rm -rf /root/.postgresql 2>/dev/null || true
+export PGSSLCERT=/dev/null
+export PGSSLKEY=/dev/null
 
 # Wait for external Redis
 if [ "$REDIS_HOST" ] && [ "$REDIS_HOST" != "localhost" ]; then
