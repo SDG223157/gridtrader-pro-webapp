@@ -3570,6 +3570,29 @@ async def get_market_data(symbol: str, period: str = "1d"):
 async def health_check():
     return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
 
+@app.get("/debug/db-test")
+async def debug_db_test(db: Session = Depends(get_db)):
+    """Test database connection"""
+    try:
+        from database import DATABASE_URL
+        masked_url = DATABASE_URL[:30] + "..." if DATABASE_URL else "NOT SET"
+        result = db.execute(text("SELECT 1"))
+        row = result.fetchone()
+        return {
+            "status": "ok",
+            "db_url_prefix": masked_url,
+            "query_result": row[0] if row else None,
+            "engine_url": str(engine.url.render_as_string(hide_password=True)),
+        }
+    except Exception as e:
+        import traceback
+        return {
+            "status": "error",
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+            "db_url_prefix": (DATABASE_URL[:30] + "...") if DATABASE_URL else "NOT SET",
+        }
+
 @app.get("/debug/security-status")
 async def security_status():
     """Get current security middleware status"""
