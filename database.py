@@ -21,12 +21,15 @@ DATABASE_URL = os.getenv('DATABASE_URL') or (
     f"@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT', '3306')}/{os.getenv('DB_NAME')}?charset=utf8mb4"
 )
 
-# Strip params not supported by psycopg2 (channel_binding from Neon pooler)
+# Clean up Neon/Postgres connection URL
 if DATABASE_URL and "postgresql" in DATABASE_URL:
     from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
     _parsed = urlparse(DATABASE_URL)
     _params = parse_qs(_parsed.query)
-    _params.pop("channel_binding", None)
+    _params.pop("channel_binding", None)       # Not supported by psycopg2
+    _params.setdefault("sslmode", ["require"])  # Ensure SSL for Neon
+    _params["sslcert"] = [""]                   # Disable client cert (avoids Permission denied)
+    _params["sslkey"] = [""]                    # Disable client key
     _cleaned_query = urlencode(_params, doseq=True)
     DATABASE_URL = urlunparse(_parsed._replace(query=_cleaned_query))
 
