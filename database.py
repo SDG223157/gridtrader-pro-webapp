@@ -16,16 +16,15 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 # Prevent psycopg2/libpq from trying to read stale client certificate files
-# (fixes "could not open certificate file /root/.postgresql/postgresql.crt: Permission denied")
-os.environ["PGSSLCERT"] = "/dev/null"
-os.environ["PGSSLKEY"] = "/dev/null"
+# Point to non-existent paths so libpq skips client cert auth entirely
+os.environ["PGSSLCERT"] = "/tmp/.postgresql/nonexistent.crt"
+os.environ["PGSSLKEY"] = "/tmp/.postgresql/nonexistent.key"
 # Also physically remove the stale cert directory if it exists
 _pg_ssl_dir = os.path.expanduser("~/.postgresql")
 if os.path.isdir(_pg_ssl_dir):
     import shutil
     try:
         shutil.rmtree(_pg_ssl_dir, ignore_errors=True)
-        logger.info(f"Removed stale SSL cert dir: {_pg_ssl_dir}")
     except Exception:
         pass
 

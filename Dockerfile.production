@@ -6,8 +6,8 @@ ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV DEBIAN_FRONTEND=noninteractive
 # Prevent libpq from reading stale client SSL certs
-ENV PGSSLCERT=""
-ENV PGSSLKEY=""
+ENV PGSSLCERT=/tmp/.postgresql/nonexistent.crt
+ENV PGSSLKEY=/tmp/.postgresql/nonexistent.key
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \

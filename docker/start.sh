@@ -5,8 +5,8 @@ echo "🚀 Starting GridTrader Pro Production..."
 
 # Remove stale SSL client certificates that cause Permission denied errors
 rm -rf /root/.postgresql 2>/dev/null || true
-export PGSSLCERT=/dev/null
-export PGSSLKEY=/dev/null
+export PGSSLCERT=/tmp/.postgresql/nonexistent.crt
+export PGSSLKEY=/tmp/.postgresql/nonexistent.key
 
 # Wait for external Redis
 if [ "$REDIS_HOST" ] && [ "$REDIS_HOST" != "localhost" ]; then
