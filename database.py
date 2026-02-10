@@ -15,6 +15,11 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
+# Prevent psycopg2/libpq from trying to read stale client certificate files
+# (fixes "could not open certificate file /root/.postgresql/postgresql.crt: Permission denied")
+os.environ.setdefault("PGSSLCERT", "")
+os.environ.setdefault("PGSSLKEY", "")
+
 # Database URL: prefer DATABASE_URL env var (Neon/Postgres), fallback to MySQL
 DATABASE_URL = os.getenv('DATABASE_URL') or (
     f"mysql+mysqlconnector://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}"
