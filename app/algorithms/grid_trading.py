@@ -242,6 +242,311 @@ class MartingaleGridStrategy(GridTradingStrategy):
         
         return orders
 
+class AdaptiveGridStrategy:
+    """
+    Adaptive Dual-Zone Grid Strategy with volatility-based optimization.
+    A-Zone: Active trading grid with linear position sizing.
+    B-Zone: Defense zone (hold, no new buys).
+    Includes stop-loss and overflow lines.
+    """
+
+    def __init__(self, symbol: str, investment_amount: float,
+                 price_data: pd.DataFrame, lot_size: int = 100):
+        self.symbol = symbol
+        self.investment_amount = float(investment_amount)
+        self.lot_size = lot_size
+        self.price_data = price_data
+
+        closes = price_data['close'].values.astype(float)
+        highs = price_data['high'].values.astype(float)
+        lows = price_data['low'].values.astype(float)
+        self.current_price = float(closes[-1])
+
+        returns = np.diff(np.log(closes))
+        self.annual_vol = float(np.std(returns) * np.sqrt(245) * 100)
+
+        tr_list = []
+        for i in range(1, len(closes)):
+            tr = max(highs[i] - lows[i],
+                     abs(highs[i] - closes[i - 1]),
+                     abs(lows[i] - closes[i - 1]))
+            tr_list.append(tr)
+        atr14 = pd.Series(tr_list).rolling(14).mean().dropna().values
+        atr14_pct = atr14 / closes[14:14 + len(atr14)] * 100
+        self.atr14_median_pct = float(np.median(atr14_pct))
+
+        self.p5 = float(np.percentile(closes, 5))
+        self.p10 = float(np.percentile(closes, 10))
+        self.p20 = float(np.percentile(closes, 20))
+        self.p50 = float(np.percentile(closes, 50))
+        self.p80 = float(np.percentile(closes, 80))
+        self.p90 = float(np.percentile(closes, 90))
+        self.p95 = float(np.percentile(closes, 95))
+        self.close_high = float(np.max(closes))
+        self.close_low = float(np.min(closes))
+
+        vol_20d = pd.Series(returns).rolling(20).std().dropna().values * np.sqrt(245) * 100
+        self.vol_20d_current = float(vol_20d[-1]) if len(vol_20d) > 0 else self.annual_vol
+
+        self._design()
+        logger.info(f"AdaptiveGrid for {symbol}: A[{self.a_lower:.2f}-{self.a_upper:.2f}] "
+                     f"step={self.step:.4f} grids={self.n_grids_a}")
+
+    def _design(self):
+        price = self.current_price
+
+        step_pct_target = max(1.0, min(2.0, self.atr14_median_pct * 1.1))
+        step_raw = price * step_pct_target / 100
+        tick = 0.01
+        step = round(round(step_raw / tick) * tick, 4)
+        if step < tick:
+            step = tick
+
+        range_factor = self.annual_vol / 100 * 0.8
+        half_range = price * range_factor / 2
+        raw_upper = price + half_range * 1.2
+        raw_lower = price - half_range * 0.8
+
+        a_upper = round(min(raw_upper, self.p80 * 1.02), 4)
+        a_lower = round(max(raw_lower, self.p20 * 0.98), 4)
+
+        if a_upper <= price:
+            a_upper = round(price * 1.05, 4)
+        if a_lower >= price:
+            a_lower = round(price * 0.95, 4)
+        if a_upper - a_lower < step * 3:
+            a_upper = round(price + step * 3, 4)
+            a_lower = round(price - step * 2, 4)
+
+        n_a = max(3, min(10, int(round((a_upper - a_lower) / step))))
+        step = round((a_upper - a_lower) / n_a, 4)
+
+        n_b = 2
+        b_lower = round(a_lower - step * n_b, 4)
+        stop_loss = round(b_lower - step * 1.5, 4)
+        overflow = round(a_upper + step, 4)
+
+        max_shares = int(self.investment_amount / a_lower)
+        if self.lot_size > 1:
+            max_shares = (max_shares // self.lot_size) * self.lot_size
+        shares_per_grid = int(max_shares / n_a)
+        if self.lot_size > 1:
+            shares_per_grid = max(self.lot_size, (shares_per_grid // self.lot_size) * self.lot_size)
+        max_shares = shares_per_grid * n_a
+
+        self.a_upper = a_upper
+        self.a_lower = a_lower
+        self.b_lower = b_lower
+        self.stop_loss = stop_loss
+        self.overflow = overflow
+        self.step = step
+        self.step_pct = step / price * 100
+        self.n_grids_a = n_a
+        self.n_grids_b = n_b
+        self.max_shares = max_shares
+        self.shares_per_grid = shares_per_grid
+
+        self.grid_lines = []
+        self.target_positions = []
+        self.zone_labels = []
+
+        self.grid_lines.append(overflow)
+        self.target_positions.append(0.0)
+        self.zone_labels.append("overflow")
+
+        for i in range(n_a + 1):
+            p = round(a_upper - i * step, 4)
+            pos = i / n_a
+            self.grid_lines.append(p)
+            self.target_positions.append(pos)
+            self.zone_labels.append("a_zone")
+
+        for i in range(1, n_b + 1):
+            p = round(a_lower - i * step, 4)
+            self.grid_lines.append(p)
+            self.target_positions.append(1.0)
+            self.zone_labels.append("b_zone")
+
+        self.grid_lines.append(stop_loss)
+        self.target_positions.append(-1.0)
+        self.zone_labels.append("stop_loss")
+
+    def get_target_position(self, price: float) -> float:
+        if price >= self.overflow:
+            return 0.0
+        if price <= self.stop_loss:
+            return -1.0
+        for i in range(len(self.grid_lines) - 1):
+            if self.grid_lines[i] >= price > self.grid_lines[i + 1]:
+                return self.target_positions[i]
+        if price > self.grid_lines[0]:
+            return 0.0
+        return 1.0
+
+    def generate_grid_levels(self) -> List[Dict]:
+        levels = []
+        for i in range(len(self.grid_lines)):
+            p = self.grid_lines[i]
+            pos = self.target_positions[i]
+            zone = self.zone_labels[i]
+            if pos < 0:
+                shares = 0
+                action = "stop_loss"
+            elif pos == 0:
+                shares = 0
+                action = "sell_all"
+            else:
+                shares = int(pos * self.max_shares)
+                if self.lot_size > 1:
+                    shares = (shares // self.lot_size) * self.lot_size
+                action = "hold"
+
+            levels.append({
+                "level": i,
+                "price": round(p, 4),
+                "target_position_pct": round(pos * 100, 1) if pos >= 0 else 0,
+                "target_shares": shares,
+                "zone": zone,
+                "action": action,
+            })
+        return levels
+
+    def generate_orders(self) -> List[Dict]:
+        target = self.get_target_position(self.current_price)
+        init_shares = int(target * self.max_shares) if target > 0 else 0
+        if self.lot_size > 1:
+            init_shares = (init_shares // self.lot_size) * self.lot_size
+        max_affordable = int(self.investment_amount * 0.99 / self.current_price)
+        if self.lot_size > 1:
+            max_affordable = (max_affordable // self.lot_size) * self.lot_size
+        init_shares = min(init_shares, max_affordable)
+
+        orders = []
+        if init_shares > 0:
+            orders.append({
+                "type": "buy", "price": round(self.current_price, 4),
+                "quantity": init_shares, "action": "initial_build",
+                "target_pct": round(target * 100, 1),
+            })
+
+        for i in range(len(self.grid_lines)):
+            p = self.grid_lines[i]
+            pos = self.target_positions[i]
+            zone = self.zone_labels[i]
+            if p > self.current_price and zone in ("a_zone", "overflow") and pos < target:
+                tgt = max(0, int(pos * self.max_shares))
+                if self.lot_size > 1:
+                    tgt = (tgt // self.lot_size) * self.lot_size
+                diff = init_shares - tgt
+                if diff > 0:
+                    orders.append({
+                        "type": "sell", "price": round(p, 4),
+                        "quantity": diff, "action": "grid_sell",
+                        "target_pct": round(pos * 100, 1),
+                    })
+                    init_shares = tgt
+
+        init_shares_buy = int(target * self.max_shares) if target > 0 else 0
+        if self.lot_size > 1:
+            init_shares_buy = (init_shares_buy // self.lot_size) * self.lot_size
+        init_shares_buy = min(init_shares_buy, max_affordable)
+
+        for i in range(len(self.grid_lines)):
+            p = self.grid_lines[i]
+            pos = self.target_positions[i]
+            zone = self.zone_labels[i]
+            if p < self.current_price and zone == "a_zone" and pos > target:
+                tgt = int(pos * self.max_shares)
+                if self.lot_size > 1:
+                    tgt = (tgt // self.lot_size) * self.lot_size
+                diff = tgt - init_shares_buy
+                if diff > 0:
+                    orders.append({
+                        "type": "buy", "price": round(p, 4),
+                        "quantity": diff, "action": "grid_buy",
+                        "target_pct": round(pos * 100, 1),
+                    })
+                    init_shares_buy = tgt
+
+        return orders
+
+    def get_strategy_config(self) -> Dict:
+        return {
+            "strategy_type": "adaptive_dual_zone",
+            "symbol": self.symbol,
+            "current_price": self.current_price,
+            "annual_volatility": round(self.annual_vol, 2),
+            "atr14_median_pct": round(self.atr14_median_pct, 2),
+            "vol_20d_current": round(self.vol_20d_current, 2),
+            "a_zone_upper": self.a_upper,
+            "a_zone_lower": self.a_lower,
+            "b_zone_lower": self.b_lower,
+            "stop_loss": self.stop_loss,
+            "overflow_line": self.overflow,
+            "step": self.step,
+            "step_pct": round(self.step_pct, 2),
+            "n_grids_a": self.n_grids_a,
+            "n_grids_b": self.n_grids_b,
+            "max_shares": self.max_shares,
+            "shares_per_grid": self.shares_per_grid,
+            "lot_size": self.lot_size,
+            "investment_amount": self.investment_amount,
+            "percentiles": {
+                "p5": self.p5, "p20": self.p20, "p50": self.p50,
+                "p80": self.p80, "p95": self.p95,
+            },
+            "price_range": {
+                "high": self.close_high, "low": self.close_low,
+                "amplitude_pct": round((self.close_high / self.close_low - 1) * 100, 1),
+            },
+            "grid_levels": self.generate_grid_levels(),
+            "orders": self.generate_orders(),
+            "created_at": datetime.now().isoformat(),
+        }
+
+    def get_backtest_summary(self) -> Dict:
+        """Quick backtest on the historical data used for design."""
+        closes = self.price_data['close'].values.astype(float)
+        cash = self.investment_amount
+        shares = 0
+        n_trades = 0
+
+        for price in closes:
+            target = self.get_target_position(price)
+            if target < 0:
+                if shares > 0:
+                    cash += shares * price * 0.999
+                    shares = 0
+                    n_trades += 1
+            elif target >= 0:
+                tgt_shares = int(target * self.max_shares)
+                if self.lot_size > 1:
+                    tgt_shares = (tgt_shares // self.lot_size) * self.lot_size
+                diff = tgt_shares - shares
+                if abs(diff) >= (self.lot_size if self.lot_size > 1 else 1):
+                    if diff > 0:
+                        cost = diff * price * 1.0005
+                        if cash >= cost:
+                            cash -= cost
+                            shares += diff
+                            n_trades += 1
+                    elif diff < 0:
+                        cash += abs(diff) * price * 0.999
+                        shares += diff
+                        n_trades += 1
+
+        final_equity = cash + shares * closes[-1]
+        bnh_shares = int(self.investment_amount / closes[0])
+        bnh_equity = (self.investment_amount - bnh_shares * closes[0]) + bnh_shares * closes[-1]
+
+        return {
+            "grid_return_pct": round((final_equity / self.investment_amount - 1) * 100, 2),
+            "bnh_return_pct": round((bnh_equity / self.investment_amount - 1) * 100, 2),
+            "n_trades": n_trades,
+            "final_equity": round(final_equity, 2),
+        }
+
+
 class GridBacktester:
     """Backtest grid trading strategies"""
     

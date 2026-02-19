@@ -15,10 +15,29 @@
         {% for grid in grids %}
         <div class="bg-white overflow-hidden shadow rounded-lg">
             <div class="p-6">
-                <h3 class="text-lg font-medium text-gray-900 mb-2">{{ grid.name }}</h3>
+                <div class="flex items-center justify-between mb-2">
+                    <h3 class="text-lg font-medium text-gray-900">{{ grid.name }}</h3>
+                    {% if grid.strategy_config and grid.strategy_config.get('strategy_type') == 'adaptive_dual_zone' %}
+                    <span class="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full bg-indigo-100 text-indigo-700">Adaptive</span>
+                    {% endif %}
+                </div>
                 <p class="text-sm text-gray-500 mb-4">{{ grid.symbol }}</p>
                 
                 <div class="space-y-2">
+                    {% if grid.strategy_config and grid.strategy_config.get('strategy_type') == 'adaptive_dual_zone' %}
+                    <div class="flex justify-between">
+                        <span class="text-sm text-gray-600">A-Zone:</span>
+                        <span class="text-sm font-medium">${{ "%.2f"|format(grid.strategy_config.get('a_zone_lower', grid.lower_price)) }} ~ ${{ "%.2f"|format(grid.strategy_config.get('a_zone_upper', grid.upper_price)) }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-sm text-gray-600">Step:</span>
+                        <span class="text-sm font-medium">${{ "%.4f"|format(grid.strategy_config.get('step', grid.grid_spacing)) }} ({{ "%.1f"|format(grid.strategy_config.get('step_pct', 0)) }}%)</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-sm text-gray-600">Stop Loss:</span>
+                        <span class="text-sm font-medium text-red-600">${{ "%.2f"|format(grid.strategy_config.get('stop_loss', 0)) }}</span>
+                    </div>
+                    {% else %}
                     <div class="flex justify-between">
                         <span class="text-sm text-gray-600">Upper Price:</span>
                         <span class="text-sm font-medium">${{ "%.2f"|format(grid.upper_price) }}</span>
@@ -27,11 +46,6 @@
                         <span class="text-sm text-gray-600">Lower Price:</span>
                         <span class="text-sm font-medium">${{ "%.2f"|format(grid.lower_price) }}</span>
                     </div>
-                    {% if grid.current_price %}
-                    <div class="flex justify-between">
-                        <span class="text-sm text-gray-600">Current Price:</span>
-                        <span class="text-sm font-medium">${{ "%.2f"|format(grid.current_price) }}</span>
-                    </div>
                     {% endif %}
                     <div class="flex justify-between">
                         <span class="text-sm text-gray-600">Investment:</span>
@@ -39,8 +53,8 @@
                     </div>
                     <div class="flex justify-between">
                         <span class="text-sm text-gray-600">Status:</span>
-                        <span class="text-sm font-medium {% if grid.status == 'active' %}text-green-600{% else %}text-gray-600{% endif %}">
-                            {{ grid.status|title }}
+                        <span class="text-sm font-medium {% if grid.status.value == 'active' %}text-green-600{% elif grid.status.value == 'paused' %}text-yellow-600{% else %}text-gray-600{% endif %}">
+                            {{ grid.status.value|title }}
                         </span>
                     </div>
                 </div>

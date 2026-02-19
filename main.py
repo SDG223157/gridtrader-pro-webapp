@@ -20,6 +20,7 @@ from auth_simple import (
 from email_alert_service import EmailAlertService, send_grid_alert_to_user
 from data_provider import YFinanceDataProvider
 from app.systematic_trading import systematic_trading_engine, AlertLevel, MarketRegime
+from app.algorithms.grid_trading import AdaptiveGridStrategy
 from security_middleware import setup_security_middleware, get_security_status
 import httpx
 from datetime import datetime, timedelta
@@ -30,6 +31,8 @@ import re
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 import yfinance as yf
+import pandas as pd
+import numpy as np
 import time
 import asyncio
 import sys
@@ -56,6 +59,14 @@ class CreateGridRequest(BaseModel):
     lower_price: float
     grid_count: int = 10
     investment_amount: float
+    optimize: bool = False
+    lot_size: int = 100
+
+class OptimizeGridRequest(BaseModel):
+    symbol: str
+    investment_amount: float = 100000
+    days: int = 250
+    lot_size: int = 100
 
 class CreateTransactionRequest(BaseModel):
     portfolio_id: str
@@ -2786,6 +2797,52 @@ async def create_grid_page(request: Request, db: Session = Depends(get_db)):
     context["portfolios"] = portfolios
     return templates.TemplateResponse("create_grid.html", {"request": request, **context})
 
+@app.post("/api/grids/optimize")
+async def optimize_grid(request: OptimizeGridRequest, user: User = Depends(require_auth)):
+    """Analyze a symbol and return optimized adaptive grid parameters."""
+    try:
+        symbol_yf = normalize_symbol_for_yfinance(request.symbol.upper())
+        end = datetime.now()
+        start = end - timedelta(days=int(request.days * 1.6))
+        ticker_obj = yf.Ticker(symbol_yf)
+        df_raw = ticker_obj.history(start=start.strftime("%Y-%m-%d"),
+                                     end=end.strftime("%Y-%m-%d"), auto_adjust=True)
+        if df_raw.empty:
+            raise HTTPException(status_code=400, detail=f"No data for {symbol_yf}")
+
+        df_raw = df_raw.reset_index()
+        if isinstance(df_raw.columns, pd.MultiIndex):
+            df_raw.columns = [c[0].lower() if isinstance(c, tuple) else c.lower() for c in df_raw.columns]
+        else:
+            df_raw.columns = [c.lower() for c in df_raw.columns]
+
+        for col in ['open', 'high', 'low', 'close', 'volume']:
+            if col in df_raw.columns:
+                df_raw[col] = pd.to_numeric(df_raw[col], errors='coerce')
+        df_raw = df_raw.dropna(subset=['close'])
+        df_raw = df_raw.tail(request.days).reset_index(drop=True)
+
+        if len(df_raw) < 30:
+            raise HTTPException(status_code=400, detail=f"Insufficient data for {symbol_yf}: {len(df_raw)} days")
+
+        strategy = AdaptiveGridStrategy(
+            symbol=symbol_yf,
+            investment_amount=request.investment_amount,
+            price_data=df_raw,
+            lot_size=request.lot_size,
+        )
+        config = strategy.get_strategy_config()
+        backtest = strategy.get_backtest_summary()
+        config["backtest"] = backtest
+
+        return {"success": True, "optimization": config}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Grid optimization error: {e}")
+        raise HTTPException(status_code=500, detail=f"Optimization failed: {str(e)}")
+
 @app.post("/api/grids")
 async def create_grid(request: CreateGridRequest, user: User = Depends(require_auth), db: Session = Depends(get_db)):
     try:
@@ -2827,53 +2884,85 @@ async def create_grid(request: CreateGridRequest, user: User = Depends(require_a
             if current_price > request.upper_price or current_price < request.lower_price:
                 logger.warning(f"Current price {current_price} is outside grid range [{request.lower_price}, {request.upper_price}]")
         
-        # Calculate grid spacing and strategy configuration (fix Decimal/float arithmetic)
-        upper_decimal = Decimal(str(request.upper_price))
-        lower_decimal = Decimal(str(request.lower_price))
-        grid_count_decimal = Decimal(str(request.grid_count))
         investment_decimal = Decimal(str(request.investment_amount))
-        
-        grid_spacing = (upper_decimal - lower_decimal) / grid_count_decimal
-        price_per_grid = investment_decimal / grid_count_decimal
-        
-        # Create strategy configuration
-        strategy_config = {
-            "grid_count": request.grid_count,
-            "price_per_grid": float(price_per_grid),
-            "current_price": current_price,
-            "created_at": datetime.now().isoformat(),
-            "grid_levels": []
-        }
-        
-        # Generate grid levels (fix Decimal arithmetic)
-        for i in range(request.grid_count + 1):
-            level_price_decimal = lower_decimal + (Decimal(str(i)) * grid_spacing)
-            level_price = float(level_price_decimal)
-            
-            # Calculate quantity using Decimal arithmetic
-            if level_price > 0:
-                quantity_decimal = price_per_grid / level_price_decimal
-                quantity = float(quantity_decimal)
-            else:
-                quantity = 0
-            
-            strategy_config["grid_levels"].append({
-                "level": i,
-                "price": level_price,
-                "type": "buy" if level_price < current_price else "sell",
-                "quantity": quantity
-            })
-        
-        logger.info(f"📊 Strategy config created with {len(strategy_config['grid_levels'])} levels")
-        logger.info(f"🔧 Strategy config type: {type(strategy_config)}")
-        logger.info(f"🔧 Strategy config content: {strategy_config}")
-        
-        # Create grid with explicit field assignment
+        symbol_yf = normalize_symbol_for_yfinance(request.symbol.upper())
+
+        if request.optimize:
+            logger.info(f"🔬 Using AdaptiveGridStrategy for {symbol_yf}")
+            try:
+                end_dt = datetime.now()
+                start_dt = end_dt - timedelta(days=400)
+                ticker_obj = yf.Ticker(symbol_yf)
+                df_raw = ticker_obj.history(start=start_dt.strftime("%Y-%m-%d"),
+                                             end=end_dt.strftime("%Y-%m-%d"), auto_adjust=True)
+                if df_raw.empty:
+                    raise ValueError(f"No data for {symbol_yf}")
+                df_raw = df_raw.reset_index()
+                if isinstance(df_raw.columns, pd.MultiIndex):
+                    df_raw.columns = [c[0].lower() if isinstance(c, tuple) else c.lower() for c in df_raw.columns]
+                else:
+                    df_raw.columns = [c.lower() for c in df_raw.columns]
+                for col in ['open', 'high', 'low', 'close', 'volume']:
+                    if col in df_raw.columns:
+                        df_raw[col] = pd.to_numeric(df_raw[col], errors='coerce')
+                df_raw = df_raw.dropna(subset=['close']).tail(250).reset_index(drop=True)
+
+                adaptive = AdaptiveGridStrategy(
+                    symbol=symbol_yf,
+                    investment_amount=float(request.investment_amount),
+                    price_data=df_raw,
+                    lot_size=request.lot_size,
+                )
+                strategy_config = adaptive.get_strategy_config()
+                strategy_config["backtest"] = adaptive.get_backtest_summary()
+                upper_decimal = Decimal(str(adaptive.a_upper))
+                lower_decimal = Decimal(str(adaptive.a_lower))
+                grid_spacing = Decimal(str(adaptive.step))
+            except Exception as opt_err:
+                logger.warning(f"⚠️ Optimization failed, falling back to linear: {opt_err}")
+                request.optimize = False
+
+        if not request.optimize:
+            upper_decimal = Decimal(str(request.upper_price))
+            lower_decimal = Decimal(str(request.lower_price))
+            grid_count_decimal = Decimal(str(request.grid_count))
+
+            grid_spacing = (upper_decimal - lower_decimal) / grid_count_decimal
+            price_per_grid = investment_decimal / grid_count_decimal
+
+            strategy_config = {
+                "strategy_type": "linear",
+                "grid_count": request.grid_count,
+                "price_per_grid": float(price_per_grid),
+                "current_price": current_price,
+                "created_at": datetime.now().isoformat(),
+                "grid_levels": []
+            }
+
+            for i in range(request.grid_count + 1):
+                level_price_decimal = lower_decimal + (Decimal(str(i)) * grid_spacing)
+                level_price = float(level_price_decimal)
+
+                if level_price > 0:
+                    quantity_decimal = price_per_grid / level_price_decimal
+                    quantity = float(quantity_decimal)
+                else:
+                    quantity = 0
+
+                strategy_config["grid_levels"].append({
+                    "level": i,
+                    "price": level_price,
+                    "type": "buy" if level_price < current_price else "sell",
+                    "quantity": quantity
+                })
+
+        logger.info(f"📊 Strategy config: type={strategy_config.get('strategy_type', 'linear')}, levels={len(strategy_config.get('grid_levels', []))}")
+
         grid = Grid()
         grid.portfolio_id = request.portfolio_id
-        grid.symbol = normalize_symbol_for_yfinance(request.symbol.upper())
+        grid.symbol = symbol_yf
         grid.name = request.name
-        grid.strategy_config = strategy_config  # Explicit assignment
+        grid.strategy_config = strategy_config
         grid.upper_price = upper_decimal
         grid.lower_price = lower_decimal
         grid.grid_spacing = grid_spacing
@@ -2895,13 +2984,16 @@ async def create_grid(request: CreateGridRequest, user: User = Depends(require_a
         # Create initial grid orders (buy orders below current price, sell orders above)
         await create_initial_grid_orders(grid, current_price, db)
         
-        logger.info(f"✅ Grid created: {grid.name} for {request.symbol} with {request.grid_count} levels")
+        stype = strategy_config.get('strategy_type', 'linear')
+        n_levels = len(strategy_config.get("grid_levels", []))
+        logger.info(f"✅ Grid created: {grid.name} for {request.symbol} type={stype} levels={n_levels}")
         return {
             "success": True, 
             "grid_id": grid.id, 
-            "message": f"Grid trading strategy '{request.name}' created successfully with {request.grid_count} levels",
+            "message": f"Grid '{request.name}' created ({stype}) with {n_levels} levels",
             "current_price": current_price,
-            "grid_levels": len(strategy_config["grid_levels"])
+            "grid_levels": n_levels,
+            "strategy_type": stype,
         }
     
     except HTTPException:
@@ -2916,8 +3008,28 @@ async def create_initial_grid_orders(grid: Grid, current_price: float, db: Sessi
     try:
         orders_created = 0
         symbol = grid.symbol
-        
-        # Check if this is a China/HK stock (no short selling allowed)
+
+        if grid.strategy_config.get('strategy_type') == 'adaptive_dual_zone':
+            adaptive_orders = grid.strategy_config.get('orders', [])
+            for ao in adaptive_orders:
+                order_type = TransactionType.buy if ao['type'] == 'buy' else TransactionType.sell
+                order = GridOrder(
+                    grid_id=grid.id,
+                    order_type=order_type,
+                    target_price=Decimal(str(ao['price'])),
+                    quantity=Decimal(str(ao['quantity'])),
+                    status=OrderStatus.pending,
+                )
+                db.add(order)
+                orders_created += 1
+                logger.info(f"  {'BUY' if ao['type']=='buy' else 'SELL'} ${ao['price']:.4f} x {ao['quantity']} ({ao.get('action','')})")
+
+            grid.active_orders = orders_created
+            grid.strategy_config['market_type'] = 'china_hk' if (symbol.endswith('.SS') or symbol.endswith('.SZ') or symbol.endswith('.HK')) else 'us'
+            db.commit()
+            logger.info(f"✅ Created {orders_created} adaptive grid orders for {grid.name}")
+            return
+
         is_china_hk_stock = (symbol.endswith('.SS') or symbol.endswith('.SZ') or symbol.endswith('.HK'))
         
         if is_china_hk_stock:

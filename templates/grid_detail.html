@@ -69,7 +69,74 @@
 
     <!-- Grid Configuration -->
     <div class="bg-white rounded-lg shadow-md p-6 mb-8">
-        <h2 class="text-xl font-bold text-gray-900 mb-4">Grid Configuration</h2>
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-bold text-gray-900">Grid Configuration</h2>
+            {% if grid.strategy_config.get('strategy_type') == 'adaptive_dual_zone' %}
+            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-800">
+                Adaptive Dual-Zone
+            </span>
+            {% endif %}
+        </div>
+
+        {% if grid.strategy_config.get('strategy_type') == 'adaptive_dual_zone' %}
+        <!-- Adaptive Strategy Details -->
+        <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+            <div class="bg-indigo-50 rounded-lg p-3">
+                <div class="text-xs text-indigo-600 font-medium">Annual Volatility</div>
+                <div class="text-lg font-bold text-indigo-900">{{ "%.1f"|format(grid.strategy_config.get('annual_volatility', 0)) }}%</div>
+            </div>
+            <div class="bg-indigo-50 rounded-lg p-3">
+                <div class="text-xs text-indigo-600 font-medium">ATR14 Median</div>
+                <div class="text-lg font-bold text-indigo-900">{{ "%.2f"|format(grid.strategy_config.get('atr14_median_pct', 0)) }}%</div>
+            </div>
+            <div class="bg-indigo-50 rounded-lg p-3">
+                <div class="text-xs text-indigo-600 font-medium">Step Size</div>
+                <div class="text-lg font-bold text-indigo-900">${{ "%.4f"|format(grid.strategy_config.get('step', 0)) }} ({{ "%.1f"|format(grid.strategy_config.get('step_pct', 0)) }}%)</div>
+            </div>
+            <div class="bg-indigo-50 rounded-lg p-3">
+                <div class="text-xs text-indigo-600 font-medium">Max Shares</div>
+                <div class="text-lg font-bold text-indigo-900">{{ "{:,}".format(grid.strategy_config.get('max_shares', 0)) }}</div>
+            </div>
+        </div>
+
+        <div class="space-y-2 mb-4">
+            <div class="flex items-center justify-between p-2 rounded bg-red-50 border-l-4 border-red-400">
+                <span class="text-sm font-medium">Overflow (Sell All)</span>
+                <span class="font-mono font-bold text-red-600">${{ "%.2f"|format(grid.strategy_config.get('overflow_line', 0)) }}</span>
+            </div>
+            <div class="flex items-center justify-between p-2 rounded bg-emerald-50 border-l-4 border-emerald-500">
+                <span class="text-sm font-medium">A-Zone (Active Grid)</span>
+                <span class="font-mono font-bold text-emerald-700">${{ "%.2f"|format(grid.strategy_config.get('a_zone_lower', 0)) }} ~ ${{ "%.2f"|format(grid.strategy_config.get('a_zone_upper', 0)) }} ({{ grid.strategy_config.get('n_grids_a', 0) }} grids)</span>
+            </div>
+            <div class="flex items-center justify-between p-2 rounded bg-amber-50 border-l-4 border-amber-500">
+                <span class="text-sm font-medium">B-Zone (Defense — hold only)</span>
+                <span class="font-mono font-bold text-amber-700">${{ "%.2f"|format(grid.strategy_config.get('b_zone_lower', 0)) }} ~ ${{ "%.2f"|format(grid.strategy_config.get('a_zone_lower', 0)) }}</span>
+            </div>
+            <div class="flex items-center justify-between p-2 rounded bg-red-50 border-l-4 border-red-600">
+                <span class="text-sm font-medium">Stop Loss</span>
+                <span class="font-mono font-bold text-red-700">${{ "%.2f"|format(grid.strategy_config.get('stop_loss', 0)) }}</span>
+            </div>
+        </div>
+
+        {% if grid.strategy_config.get('backtest') %}
+        <div class="grid grid-cols-3 gap-3 mb-4">
+            <div class="text-center p-2 bg-green-50 rounded-lg">
+                <div class="text-xs text-green-600">Grid Return (backtest)</div>
+                <div class="text-sm font-bold text-green-700">{{ "%+.2f"|format(grid.strategy_config.backtest.grid_return_pct) }}%</div>
+            </div>
+            <div class="text-center p-2 bg-gray-50 rounded-lg">
+                <div class="text-xs text-gray-600">Buy & Hold</div>
+                <div class="text-sm font-bold text-gray-700">{{ "%+.2f"|format(grid.strategy_config.backtest.bnh_return_pct) }}%</div>
+            </div>
+            <div class="text-center p-2 bg-blue-50 rounded-lg">
+                <div class="text-xs text-blue-600">Trades (backtest)</div>
+                <div class="text-sm font-bold text-blue-700">{{ grid.strategy_config.backtest.n_trades }}</div>
+            </div>
+        </div>
+        {% endif %}
+
+        {% else %}
+        <!-- Original Linear Grid Details -->
         <div class="grid md:grid-cols-3 gap-6">
             <div>
                 <h4 class="font-semibold text-gray-700">Price Range</h4>
@@ -80,14 +147,8 @@
             <div>
                 <h4 class="font-semibold text-gray-700">Grid Setup</h4>
                 {% if grid.symbol.endswith('.SS') or grid.symbol.endswith('.SZ') or grid.symbol.endswith('.HK') %}
-                    <p class="text-sm text-gray-600">Total Levels: {{ orders|list|length }} ({{ orders|selectattr("order_type.value", "equalto", "buy")|list|length }} buy + {{ orders|selectattr("order_type.value", "equalto", "sell")|list|length }} sell)</p>
-                    {% set buy_orders = orders|selectattr("order_type.value", "equalto", "buy")|list %}
-                    {% if buy_orders %}
-                        <p class="text-sm text-gray-600">Per Buy Level: ${{ "{:,.0f}".format((buy_orders[0].target_price * buy_orders[0].quantity)) }}</p>
-                    {% else %}
-                        <p class="text-sm text-gray-600">Per Buy Level: ${{ "{:,.0f}".format(grid.investment_amount / 6) }}</p>
-                    {% endif %}
-                    <p class="text-xs text-blue-600">🇨🇳 Full grid, buy-funded only</p>
+                    <p class="text-sm text-gray-600">Total Levels: {{ orders|list|length }}</p>
+                    <p class="text-xs text-blue-600">Full grid, buy-funded only</p>
                 {% else %}
                     <p class="text-sm text-gray-600">Levels: {{ grid.strategy_config.grid_count }}</p>
                     <p class="text-sm text-gray-600">Per Level: ${{ "{:,.2f}".format(grid.strategy_config.price_per_grid) }}</p>
@@ -99,6 +160,7 @@
                 <p class="text-sm text-gray-600">Completed: {{ grid.completed_orders }}</p>
             </div>
         </div>
+        {% endif %}
     </div>
 
     <!-- Grid Orders Table -->
