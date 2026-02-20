@@ -289,8 +289,119 @@ class AdaptiveGridStrategy:
         self.vol_20d_current = float(vol_20d[-1]) if len(vol_20d) > 0 else self.annual_vol
 
         self._design()
+        self.trend = self._analyze_trend()
         logger.info(f"AdaptiveGrid for {symbol}: A[{self.a_lower:.2f}-{self.a_upper:.2f}] "
-                     f"step={self.step:.4f} grids={self.n_grids_a}")
+                     f"step={self.step:.4f} grids={self.n_grids_a} "
+                     f"trend={self.trend['label']}({self.trend['score']})")
+
+    def _analyze_trend(self) -> Dict:
+        """
+        Score the current trend using MA, RSI, momentum and percentile position.
+        Returns trend score (0-100), label, key signals, and recommended
+        initial position percentage for generate_orders().
+        """
+        closes = self.price_data['close'].values.astype(float)
+        price = self.current_price
+        signals = {}
+        score = 0
+
+        # ── Moving averages ───────────────────────────────────────────────────
+        ma20 = float(pd.Series(closes).rolling(20).mean().iloc[-1]) if len(closes) >= 20 else price
+        ma50 = float(pd.Series(closes).rolling(50).mean().iloc[-1]) if len(closes) >= 50 else price
+        ma200 = float(pd.Series(closes).rolling(200).mean().iloc[-1]) if len(closes) >= 200 else None
+
+        above_ma20 = price > ma20
+        above_ma50 = price > ma50
+        golden_cross = ma20 > ma50  # short MA above long MA
+
+        signals["price_vs_ma20"] = f"${price:.2f} {'>' if above_ma20 else '<'} MA20(${ma20:.2f})"
+        signals["price_vs_ma50"] = f"${price:.2f} {'>' if above_ma50 else '<'} MA50(${ma50:.2f})"
+        signals["ma20_vs_ma50"] = "Golden Cross ✓" if golden_cross else "Death Cross ✗"
+
+        if above_ma20:  score += 18
+        if above_ma50:  score += 18
+        if golden_cross: score += 14
+        if ma200 is not None:
+            above_ma200 = price > ma200
+            signals["price_vs_ma200"] = f"${price:.2f} {'>' if above_ma200 else '<'} MA200(${ma200:.2f})"
+            if above_ma200: score += 10
+
+        # ── RSI (14-day) ──────────────────────────────────────────────────────
+        rsi_n = 14
+        if len(closes) >= rsi_n + 1:
+            deltas = np.diff(closes[-(rsi_n + 1):])
+            gains = np.where(deltas > 0, deltas, 0.0)
+            losses = np.where(deltas < 0, -deltas, 0.0)
+            avg_gain = np.mean(gains)
+            avg_loss = np.mean(losses)
+            rsi = 100.0 if avg_loss == 0 else 100.0 - 100.0 / (1.0 + avg_gain / avg_loss)
+        else:
+            rsi = 50.0
+        signals["rsi14"] = f"{rsi:.1f}"
+        if 50 <= rsi <= 70:   score += 20   # healthy uptrend
+        elif rsi > 70:         score += 12   # strong but possibly overbought
+        elif 40 <= rsi < 50:   score += 8
+        elif 30 <= rsi < 40:   score += 3
+
+        # ── 20-day momentum ───────────────────────────────────────────────────
+        if len(closes) >= 21:
+            mom20 = (price / float(closes[-21]) - 1) * 100
+        else:
+            mom20 = 0.0
+        signals["momentum_20d"] = f"{mom20:+.1f}%"
+        if mom20 > 5:          score += 20
+        elif mom20 > 1:        score += 14
+        elif mom20 >= -1:      score += 8
+        elif mom20 >= -5:      score += 3
+
+        # ── Percentile position in 250-day range ─────────────────────────────
+        price_range = self.close_high - self.close_low
+        pct_in_range = (price - self.close_low) / price_range if price_range > 0 else 0.5
+        signals["pct_in_range"] = f"{pct_in_range * 100:.0f}th percentile (250-day)"
+        if pct_in_range >= 0.75:   score += 10
+        elif pct_in_range >= 0.50: score += 7
+        elif pct_in_range >= 0.25: score += 3
+
+        # Normalize to 0-100 (max raw = 110 with MA200, 100 without)
+        max_raw = 100 if ma200 is None else 110
+        score = min(100, int(round(score / max_raw * 100)))
+
+        # ── Trend label ───────────────────────────────────────────────────────
+        if score >= 72:
+            label, emoji, color = "Strong Uptrend",  "🚀", "green"
+        elif score >= 55:
+            label, emoji, color = "Uptrend",         "📈", "green"
+        elif score >= 40:
+            label, emoji, color = "Sideways",        "↔️",  "gray"
+        elif score >= 25:
+            label, emoji, color = "Downtrend",       "📉", "red"
+        else:
+            label, emoji, color = "Strong Downtrend","🔻", "red"
+
+        # ── Recommended initial position % ───────────────────────────────────
+        # Uptrend → hold more shares (higher initial %).
+        # Downtrend → hold fewer, keep cash to buy dips.
+        if score >= 72:    init_pct = 60
+        elif score >= 60:  init_pct = 50
+        elif score >= 50:  init_pct = 42
+        elif score >= 40:  init_pct = 35
+        elif score >= 28:  init_pct = 25
+        elif score >= 15:  init_pct = 18
+        else:              init_pct = 12
+
+        return {
+            "score": score,
+            "label": label,
+            "emoji": emoji,
+            "color": color,
+            "initial_position_pct": init_pct,
+            "signals": signals,
+            "ma20": round(ma20, 4),
+            "ma50": round(ma50, 4),
+            "ma200": round(ma200, 4) if ma200 is not None else None,
+            "rsi14": round(rsi, 1),
+            "momentum_20d": round(mom20, 2),
+        }
 
     def _design(self):
         price = self.current_price
@@ -412,8 +523,17 @@ class AdaptiveGridStrategy:
         return levels
 
     def generate_orders(self) -> List[Dict]:
-        target = self.get_target_position(self.current_price)
-        init_shares = int(target * self.max_shares) if target > 0 else 0
+        # Use trend-adjusted initial position instead of the pure grid-math target.
+        # Clamp to the range implied by the grid so we never buy above overflow
+        # or below stop-loss territory.
+        grid_target = self.get_target_position(self.current_price)
+        if grid_target < 0:
+            grid_target = 0.0
+        trend_target = self.trend["initial_position_pct"] / 100.0
+        # Stay within [grid_target * 0.5, 1.0] so we respect the zone logic
+        target = max(min(trend_target, 1.0), 0.0)
+
+        init_shares = int(target * self.max_shares)
         if self.lot_size > 1:
             init_shares = (init_shares // self.lot_size) * self.lot_size
         max_affordable = int(self.investment_amount * 0.99 / self.current_price)
@@ -505,6 +625,7 @@ class AdaptiveGridStrategy:
                 "high": self.close_high, "low": self.close_low,
                 "amplitude_pct": round((self.close_high / self.close_low - 1) * 100, 1),
             },
+            "trend": self.trend,
             "grid_levels": self.generate_grid_levels(),
             "orders": self.generate_orders(),
             "created_at": datetime.now().isoformat(),

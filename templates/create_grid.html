@@ -153,6 +153,37 @@
                             </div>
                         </div>
 
+                        <!-- Trend Analysis -->
+                        <div id="opt-trend-panel" class="border rounded-lg overflow-hidden">
+                            <div class="px-4 py-2 flex items-center justify-between">
+                                <span class="text-sm font-semibold text-gray-700">Trend Analysis</span>
+                                <span id="opt-trend-badge" class="text-sm font-bold px-3 py-0.5 rounded-full">-</span>
+                            </div>
+                            <div class="px-4 pb-3 space-y-3">
+                                <!-- Score bar -->
+                                <div>
+                                    <div class="flex justify-between text-xs text-gray-500 mb-1">
+                                        <span>Bearish</span>
+                                        <span id="opt-trend-score-label" class="font-semibold text-gray-700">Score: -</span>
+                                        <span>Bullish</span>
+                                    </div>
+                                    <div class="w-full bg-gray-200 rounded-full h-2.5">
+                                        <div id="opt-trend-bar" class="h-2.5 rounded-full transition-all duration-500" style="width:0%"></div>
+                                    </div>
+                                </div>
+                                <!-- Initial position recommendation -->
+                                <div class="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
+                                    <div class="text-xs text-gray-600">
+                                        <span class="font-semibold">Recommended Initial Position</span>
+                                        <div class="text-gray-400 mt-0.5">Trend-adjusted allocation at grid creation</div>
+                                    </div>
+                                    <div id="opt-init-pct" class="text-2xl font-bold text-indigo-700">-</div>
+                                </div>
+                                <!-- Key signals -->
+                                <div class="grid grid-cols-2 gap-2" id="opt-trend-signals"></div>
+                            </div>
+                        </div>
+
                         <!-- Zone Layout -->
                         <div class="border border-gray-200 rounded-lg overflow-hidden">
                             <div class="bg-gray-50 px-4 py-2 text-sm font-semibold text-gray-700">Dual-Zone Grid</div>
@@ -329,6 +360,51 @@ function renderOptimization(opt) {
     if (opt.backtest) {
         document.getElementById('opt-grid-ret').textContent = (opt.backtest.grid_return_pct >= 0 ? '+' : '') + opt.backtest.grid_return_pct.toFixed(2) + '%';
         document.getElementById('opt-bnh-ret').textContent = (opt.backtest.bnh_return_pct >= 0 ? '+' : '') + opt.backtest.bnh_return_pct.toFixed(2) + '%';
+    }
+
+    // Trend analysis panel
+    if (opt.trend) {
+        const t = opt.trend;
+        const score = t.score;
+
+        // Color theme
+        const isUp   = t.color === 'green';
+        const isDown = t.color === 'red';
+        const panelBorder = isUp ? 'border-green-300' : isDown ? 'border-red-300' : 'border-gray-300';
+        const barColor    = isUp ? 'bg-green-500'  : isDown ? 'bg-red-500'  : 'bg-gray-400';
+        const badgeCls    = isUp
+            ? 'bg-green-100 text-green-800'
+            : isDown ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-700';
+
+        const panel = document.getElementById('opt-trend-panel');
+        panel.className = `border ${panelBorder} rounded-lg overflow-hidden`;
+
+        document.getElementById('opt-trend-badge').textContent = `${t.emoji} ${t.label}`;
+        document.getElementById('opt-trend-badge').className = `text-sm font-bold px-3 py-0.5 rounded-full ${badgeCls}`;
+        document.getElementById('opt-trend-score-label').textContent = `Score: ${score}/100`;
+        document.getElementById('opt-trend-bar').style.width = score + '%';
+        document.getElementById('opt-trend-bar').className = `h-2.5 rounded-full transition-all duration-500 ${barColor}`;
+        document.getElementById('opt-init-pct').textContent = t.initial_position_pct + '%';
+
+        // Signal pills
+        const sigDiv = document.getElementById('opt-trend-signals');
+        sigDiv.innerHTML = '';
+        const sigLabels = {
+            price_vs_ma20: 'vs MA20', price_vs_ma50: 'vs MA50',
+            ma20_vs_ma50: 'MA Cross', price_vs_ma200: 'vs MA200',
+            rsi14: 'RSI(14)', momentum_20d: 'Momentum 20d', pct_in_range: '250d Range'
+        };
+        Object.entries(t.signals || {}).forEach(([key, val]) => {
+            const isBull = val.includes('>') || val.includes('✓') || val.includes('+') || val.includes('Golden');
+            const isBear = val.includes('<') || val.includes('✗') || val.includes('Death');
+            const cls = isBull ? 'bg-green-50 border-green-200 text-green-700'
+                       : isBear ? 'bg-red-50 border-red-200 text-red-700'
+                       : 'bg-gray-50 border-gray-200 text-gray-600';
+            const pill = document.createElement('div');
+            pill.className = `border rounded px-2 py-1.5 text-xs ${cls}`;
+            pill.innerHTML = `<div class="font-semibold text-gray-500 mb-0.5">${sigLabels[key] || key}</div><div>${val}</div>`;
+            sigDiv.appendChild(pill);
+        });
     }
 
     const tbody = document.getElementById('opt-levels-body');
