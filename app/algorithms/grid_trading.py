@@ -429,44 +429,50 @@ class AdaptiveGridStrategy:
                 "target_pct": round(target * 100, 1),
             })
 
-        for i in range(len(self.grid_lines)):
-            p = self.grid_lines[i]
-            pos = self.target_positions[i]
-            zone = self.zone_labels[i]
-            if p > self.current_price and zone in ("a_zone", "overflow") and pos < target:
-                tgt = max(0, int(pos * self.max_shares))
-                if self.lot_size > 1:
-                    tgt = (tgt // self.lot_size) * self.lot_size
-                diff = init_shares - tgt
-                if diff > 0:
-                    orders.append({
-                        "type": "sell", "price": round(p, 4),
-                        "quantity": diff, "action": "grid_sell",
-                        "target_pct": round(pos * 100, 1),
-                    })
-                    init_shares = tgt
+        # Sell orders: iterate ASCENDING (lowest price first) so each grid level
+        # only sells the incremental diff, not everything in one hit.
+        # grid_lines is stored descending (overflow first), so we reverse-sort.
+        above = sorted(
+            [(p, pos, zone) for p, pos, zone
+             in zip(self.grid_lines, self.target_positions, self.zone_labels)
+             if p > self.current_price and zone in ("a_zone", "overflow")],
+            key=lambda x: x[0]  # ascending price
+        )
+        running_sell = init_shares
+        for p, pos, zone in above:
+            tgt = max(0, int(pos * self.max_shares))
+            if self.lot_size > 1:
+                tgt = (tgt // self.lot_size) * self.lot_size
+            diff = running_sell - tgt
+            if diff > 0:
+                orders.append({
+                    "type": "sell", "price": round(p, 4),
+                    "quantity": diff, "action": "grid_sell",
+                    "target_pct": round(pos * 100, 1),
+                })
+                running_sell = tgt
 
-        init_shares_buy = int(target * self.max_shares) if target > 0 else 0
-        if self.lot_size > 1:
-            init_shares_buy = (init_shares_buy // self.lot_size) * self.lot_size
-        init_shares_buy = min(init_shares_buy, max_affordable)
-
-        for i in range(len(self.grid_lines)):
-            p = self.grid_lines[i]
-            pos = self.target_positions[i]
-            zone = self.zone_labels[i]
-            if p < self.current_price and zone == "a_zone" and pos > target:
-                tgt = int(pos * self.max_shares)
-                if self.lot_size > 1:
-                    tgt = (tgt // self.lot_size) * self.lot_size
-                diff = tgt - init_shares_buy
-                if diff > 0:
-                    orders.append({
-                        "type": "buy", "price": round(p, 4),
-                        "quantity": diff, "action": "grid_buy",
-                        "target_pct": round(pos * 100, 1),
-                    })
-                    init_shares_buy = tgt
+        # Buy orders: iterate DESCENDING (highest price first = closest to current price)
+        # so each grid level only buys the incremental diff.
+        below = sorted(
+            [(p, pos, zone) for p, pos, zone
+             in zip(self.grid_lines, self.target_positions, self.zone_labels)
+             if p < self.current_price and zone == "a_zone" and pos > target],
+            key=lambda x: -x[0]  # descending price
+        )
+        running_buy = init_shares
+        for p, pos, zone in below:
+            tgt = int(pos * self.max_shares)
+            if self.lot_size > 1:
+                tgt = (tgt // self.lot_size) * self.lot_size
+            diff = tgt - running_buy
+            if diff > 0:
+                orders.append({
+                    "type": "buy", "price": round(p, 4),
+                    "quantity": diff, "action": "grid_buy",
+                    "target_pct": round(pos * 100, 1),
+                })
+                running_buy = tgt
 
         return orders
 
