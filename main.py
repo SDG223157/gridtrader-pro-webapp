@@ -2934,6 +2934,115 @@ async def optimize_grid(request: OptimizeGridRequest, user: User = Depends(requi
         logger.error(f"Grid optimization error: {e}")
         raise HTTPException(status_code=500, detail=f"Optimization failed: {str(e)}")
 
+class CreateOptimizedGridRequest(BaseModel):
+    portfolio_id: str
+    symbol: str
+    name: str
+    investment_amount: float
+    days: int = 250
+    lot_size: Optional[int] = None   # None = auto-detect from portfolio market
+
+
+@app.post("/api/grids/optimized")
+async def create_optimized_grid(
+    request: CreateOptimizedGridRequest,
+    user: User = Depends(require_auth),
+    db: Session = Depends(get_db)
+):
+    """
+    Create an Adaptive Dual-Zone grid using full auto-optimization.
+    Requires only symbol + investment_amount; all grid parameters
+    (zones, step, lot size) are derived automatically from volatility analysis.
+    """
+    try:
+        portfolio = db.query(Portfolio).filter(
+            Portfolio.id == request.portfolio_id,
+            Portfolio.user_id == user.id
+        ).first()
+        if not portfolio:
+            raise HTTPException(status_code=404, detail="Portfolio not found")
+
+        # Auto-detect lot size from portfolio market
+        lot_size = request.lot_size
+        if lot_size is None:
+            if portfolio.market and portfolio.market.value in ("CHINA", "HK"):
+                lot_size = 100
+            else:
+                lot_size = 1
+
+        # Run optimization preview first so we can return full params
+        symbol_yf = normalize_symbol_for_yfinance(request.symbol.upper())
+        end = datetime.now()
+        start = end - timedelta(days=int(request.days * 1.6))
+        ticker_obj = yf.Ticker(symbol_yf)
+        df_raw = ticker_obj.history(start=start.strftime("%Y-%m-%d"),
+                                     end=end.strftime("%Y-%m-%d"), auto_adjust=True)
+        if df_raw.empty:
+            raise HTTPException(status_code=400, detail=f"No price data for {symbol_yf}")
+
+        df_raw = df_raw.reset_index()
+        if isinstance(df_raw.columns, pd.MultiIndex):
+            df_raw.columns = [c[0].lower() if isinstance(c, tuple) else c.lower() for c in df_raw.columns]
+        else:
+            df_raw.columns = [c.lower() for c in df_raw.columns]
+        for col in ['open', 'high', 'low', 'close', 'volume']:
+            if col in df_raw.columns:
+                df_raw[col] = pd.to_numeric(df_raw[col], errors='coerce')
+        df_raw = df_raw.dropna(subset=['close']).tail(request.days).reset_index(drop=True)
+        if len(df_raw) < 30:
+            raise HTTPException(status_code=400, detail=f"Insufficient data for {symbol_yf}")
+
+        strategy = AdaptiveGridStrategy(
+            symbol=symbol_yf,
+            investment_amount=request.investment_amount,
+            price_data=df_raw,
+            lot_size=lot_size,
+        )
+        config = strategy.get_strategy_config()
+        backtest = strategy.get_backtest_summary()
+        config["backtest"] = backtest
+
+        # Delegate to the main create_grid endpoint with optimize=True
+        grid_request = CreateGridRequest(
+            portfolio_id=request.portfolio_id,
+            symbol=request.symbol,
+            name=request.name,
+            upper_price=config["a_zone_upper"],
+            lower_price=config["a_zone_lower"],
+            grid_count=config["n_grids_a"],
+            investment_amount=request.investment_amount,
+            optimize=True,
+            lot_size=lot_size,
+        )
+        result = await create_grid(grid_request, user, db)
+
+        # Enrich response with full strategy summary
+        result["optimization"] = {
+            "trend": config.get("trend", {}),
+            "a_zone_upper": config["a_zone_upper"],
+            "a_zone_lower": config["a_zone_lower"],
+            "b_zone_lower": config["b_zone_lower"],
+            "stop_loss": config["stop_loss"],
+            "overflow_line": config["overflow_line"],
+            "step": config["step"],
+            "step_pct": config["step_pct"],
+            "n_grids_a": config["n_grids_a"],
+            "max_shares": config["max_shares"],
+            "lot_size": lot_size,
+            "annual_volatility": config["annual_volatility"],
+            "atr14_median_pct": config["atr14_median_pct"],
+            "backtest": backtest,
+            "initial_orders": config["orders"],
+        }
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Create optimized grid error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create optimized grid: {str(e)}")
+
+
 @app.post("/api/grids")
 async def create_grid(request: CreateGridRequest, user: User = Depends(require_auth), db: Session = Depends(get_db)):
     try:
