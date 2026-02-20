@@ -1649,12 +1649,24 @@ async def get_portfolios(user: User = Depends(require_auth), db: Session = Depen
             holdings_count = db.query(Holding).filter(Holding.portfolio_id == portfolio.id).count()
             portfolio_data["holdings_count"] = holdings_count
             
-            # Get active grids count
-            active_grids_count = db.query(Grid).filter(
+            # Get active grids with summary
+            active_grids = db.query(Grid).filter(
                 Grid.portfolio_id == portfolio.id,
                 Grid.status == GridStatus.active
-            ).count()
-            portfolio_data["active_grids"] = active_grids_count
+            ).all()
+            portfolio_data["active_grids"] = len(active_grids)
+            portfolio_data["grid_allocations"] = [
+                {
+                    "id": g.id,
+                    "symbol": g.symbol,
+                    "name": g.name,
+                    "investment_amount": float(g.investment_amount) if g.investment_amount else 0,
+                    "upper_price": float(g.upper_price) if g.upper_price else None,
+                    "lower_price": float(g.lower_price) if g.lower_price else None,
+                    "is_dynamic": g.is_dynamic if hasattr(g, 'is_dynamic') else False,
+                }
+                for g in active_grids
+            ]
             
             portfolio_list.append(portfolio_data)
         
@@ -2866,6 +2878,43 @@ async def update_china_etfs(
         raise HTTPException(status_code=500, detail=f"Failed to update China ETFs: {str(e)}")
 
 # Grid Trading Routes
+@app.get("/api/grids")
+async def list_grids(
+    portfolio_id: str = None,
+    user: User = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    """List all grids, optionally filtered by portfolio_id"""
+    try:
+        query = db.query(Grid).join(Portfolio).filter(
+            Portfolio.user_id == user.id,
+            Grid.status != GridStatus.cancelled,
+        )
+        if portfolio_id:
+            query = query.filter(Grid.portfolio_id == portfolio_id)
+        grids = query.all()
+
+        results = []
+        for g in grids:
+            results.append({
+                "id": g.id,
+                "portfolio_id": g.portfolio_id,
+                "symbol": g.symbol,
+                "name": g.name,
+                "status": g.status.value if g.status else "unknown",
+                "upper_price": float(g.upper_price) if g.upper_price else None,
+                "lower_price": float(g.lower_price) if g.lower_price else None,
+                "grid_count": g.grid_count,
+                "investment_amount": float(g.investment_amount) if g.investment_amount else None,
+                "is_dynamic": g.is_dynamic if hasattr(g, 'is_dynamic') else False,
+                "created_at": g.created_at.isoformat() if g.created_at else None,
+            })
+        return {"grids": results, "count": len(results)}
+    except Exception as e:
+        logger.error(f"List grids error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to list grids")
+
+
 @app.get("/grids", response_class=HTMLResponse)
 async def grids_page(request: Request, db: Session = Depends(get_db)):
     context = get_user_context(request, db)
