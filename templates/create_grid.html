@@ -42,10 +42,31 @@
                 </div>
             </div>
 
+            <!-- Existing Position Banner (auto-populated when portfolio + symbol are selected) -->
+            <div id="existing-position-banner" class="hidden rounded-lg border p-4">
+                <div class="flex items-start justify-between">
+                    <div class="flex items-center gap-2">
+                        <svg class="w-5 h-5 mt-0.5 flex-shrink-0" id="position-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        <div>
+                            <div class="text-sm font-semibold" id="position-title">Existing Position Detected</div>
+                            <div class="text-xs mt-1 space-y-0.5" id="position-details"></div>
+                        </div>
+                    </div>
+                    <button type="button" id="btn-use-suggested"
+                            class="ml-4 flex-shrink-0 text-xs font-semibold px-3 py-1.5 rounded-md hidden"
+                            onclick="applySuggestedInvestment()">
+                        Use Suggested Amount
+                    </button>
+                </div>
+            </div>
+
             <div>
                 <label for="investment_amount" class="block text-sm font-medium text-gray-700">Investment Amount ($)</label>
                 <input type="number" id="investment_amount" name="investment_amount" required min="0" step="0.01"
                        class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                <div id="investment-hint" class="mt-1 text-xs text-gray-400 hidden"></div>
             </div>
 
             <!-- Mode Toggle -->
@@ -403,6 +424,86 @@ symbolInput.addEventListener('click', function(e) {
     e.stopPropagation();
     if (this.value.trim().length > 0) { suggestionsDiv.style.display = 'block'; suggestionsDiv.classList.remove('hidden'); }
 });
+
+// ── Existing Position Check ─────────────────────────────────────────────────
+let suggestedInvestment = null;
+
+function applySuggestedInvestment() {
+    if (suggestedInvestment) {
+        document.getElementById('investment_amount').value = suggestedInvestment;
+    }
+}
+
+async function checkExistingPosition() {
+    const portfolioId = document.getElementById('portfolio_id').value;
+    const symbol = symbolInput.value.trim().toUpperCase();
+    const banner = document.getElementById('existing-position-banner');
+    const hint = document.getElementById('investment-hint');
+    hint.classList.add('hidden');
+
+    if (!portfolioId || symbol.length < 1) {
+        banner.classList.add('hidden');
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/portfolios/${portfolioId}/holdings/${encodeURIComponent(symbol)}`);
+        if (!res.ok) { banner.classList.add('hidden'); return; }
+        const data = await res.json();
+
+        if (!data.exists) {
+            // No position — neutral info banner
+            banner.className = 'rounded-lg border border-blue-200 bg-blue-50 p-4';
+            document.getElementById('position-icon').classList.remove('text-green-600', 'text-amber-600');
+            document.getElementById('position-icon').classList.add('text-blue-500');
+            document.getElementById('position-title').textContent = `No existing ${symbol} position`;
+            document.getElementById('position-title').className = 'text-sm font-semibold text-blue-700';
+            document.getElementById('position-details').innerHTML =
+                `<span class="text-blue-600">The grid will open a fresh position using the investment amount you specify.</span>`;
+            document.getElementById('btn-use-suggested').classList.add('hidden');
+            suggestedInvestment = null;
+            banner.classList.remove('hidden');
+            return;
+        }
+
+        // Position exists
+        suggestedInvestment = data.suggested_investment;
+        const pnlPositive = data.pnl >= 0;
+        const pnlColor = pnlPositive ? 'text-green-600' : 'text-red-600';
+        const pnlSign = pnlPositive ? '+' : '';
+
+        banner.className = 'rounded-lg border border-amber-300 bg-amber-50 p-4';
+        document.getElementById('position-icon').className = 'w-5 h-5 mt-0.5 flex-shrink-0 text-amber-500';
+        document.getElementById('position-title').textContent = `Existing ${symbol} Position Detected`;
+        document.getElementById('position-title').className = 'text-sm font-semibold text-amber-800';
+        document.getElementById('position-details').innerHTML = `
+            <div class="text-amber-700 space-y-0.5">
+                <div><span class="font-medium">Shares:</span> ${data.quantity.toLocaleString()} @ avg $${data.average_cost.toFixed(2)}</div>
+                <div><span class="font-medium">Market Value:</span> $${data.market_value.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}
+                    &nbsp;<span class="${pnlColor} font-medium">(${pnlSign}$${Math.abs(data.pnl).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})} / ${pnlSign}${data.pnl_pct.toFixed(1)}%)</span>
+                </div>
+                <div class="text-xs text-amber-600 mt-1">
+                    💡 Suggested investment: <strong>$${data.suggested_investment.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</strong>
+                    (market value × 1.2 — aligns grid initial position with your existing shares)
+                </div>
+            </div>`;
+
+        const btn = document.getElementById('btn-use-suggested');
+        btn.className = 'ml-4 flex-shrink-0 text-xs font-semibold px-3 py-1.5 rounded-md bg-amber-600 hover:bg-amber-700 text-white';
+        btn.classList.remove('hidden');
+
+        hint.textContent = `Tip: Using $${data.suggested_investment.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})} aligns the grid's initial position (~25%) with your ${data.quantity.toLocaleString()} existing shares.`;
+        hint.classList.remove('hidden');
+        banner.classList.remove('hidden');
+    } catch (err) {
+        banner.classList.add('hidden');
+    }
+}
+
+// Trigger check when both portfolio and symbol are set
+document.getElementById('portfolio_id').addEventListener('change', checkExistingPosition);
+symbolInput.addEventListener('change', checkExistingPosition);
+// Also trigger after autocomplete selection (already dispatches 'change')
 
 // Form submission
 document.getElementById('gridForm').addEventListener('submit', async (e) => {

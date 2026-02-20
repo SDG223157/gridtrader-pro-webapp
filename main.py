@@ -2381,6 +2381,56 @@ async def get_portfolio_holdings(
         logger.error(f"❌ Get portfolio holdings error: {e}")
         raise HTTPException(status_code=500, detail="Failed to get holdings")
 
+@app.get("/api/portfolios/{portfolio_id}/holdings/{symbol}")
+async def get_portfolio_holding_by_symbol(
+    portfolio_id: str,
+    symbol: str,
+    user: User = Depends(require_auth),
+    db: Session = Depends(get_db)
+):
+    """Get a single holding by symbol in a portfolio (for pre-fill on grid creation)"""
+    try:
+        portfolio = db.query(Portfolio).filter(
+            Portfolio.id == portfolio_id,
+            Portfolio.user_id == user.id
+        ).first()
+        if not portfolio:
+            raise HTTPException(status_code=404, detail="Portfolio not found")
+
+        holding = db.query(Holding).filter(
+            Holding.portfolio_id == portfolio_id,
+            Holding.symbol == symbol.upper()
+        ).first()
+
+        if not holding:
+            return {"exists": False, "symbol": symbol.upper()}
+
+        quantity = float(holding.quantity)
+        avg_cost = float(holding.average_cost)
+        current_price = float(holding.current_price or 0)
+        market_value = quantity * current_price
+        cost_basis = quantity * avg_cost
+        suggested_investment = round(market_value * 1.2, 2) if market_value > 0 else round(cost_basis * 1.2, 2)
+
+        return {
+            "exists": True,
+            "symbol": symbol.upper(),
+            "quantity": quantity,
+            "average_cost": avg_cost,
+            "current_price": current_price,
+            "market_value": market_value,
+            "cost_basis": cost_basis,
+            "pnl": market_value - cost_basis,
+            "pnl_pct": ((market_value - cost_basis) / cost_basis * 100) if cost_basis > 0 else 0,
+            "suggested_investment": suggested_investment,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Get holding by symbol error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get holding")
+
+
 @app.get("/api/portfolios/{portfolio_id}/transactions")
 async def get_portfolio_transactions(
     portfolio_id: str, 
