@@ -660,24 +660,12 @@ def get_current_stock_price_trendwise_pattern(symbol: str) -> float:
         except Exception as e:
             logger.error(f"❌ TrendWise yfinance setup error for {symbol}: {e}")
         
-        # Use real current market prices (updated with your correct values)
-        real_market_prices = {
-            "AAPL": 232.14,  # Real current AAPL price
-            "DIS": 118.38,   # Real current Disney price
-        }
-        
-        if ticker_symbol in real_market_prices:
-            current_price = real_market_prices[ticker_symbol]
-            logger.info(f"📈 Using verified market price for {symbol}: ${current_price}")
-            price_cache[cache_key] = (current_price, current_time)
-            return current_price
-        
         logger.warning(f"⚠️ No price source available for {symbol}")
         return 0.0
         
     except Exception as e:
         logger.error(f"❌ Error in TrendWise pattern for {symbol}: {e}")
-        return 232.14 if "AAPL" in symbol else 118.38 if "DIS" in symbol else 100.0
+        return 0.0
 
 def update_holdings_current_prices(db: Session, portfolio_id: str = None):
     """Update current prices for all holdings using existing data provider"""
