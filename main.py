@@ -70,10 +70,11 @@ class OptimizeGridRequest(BaseModel):
 
 class CreateTransactionRequest(BaseModel):
     portfolio_id: str
-    symbol: str
-    transaction_type: str  # "buy" or "sell"
-    quantity: float
-    price: float
+    symbol: str = "CASH"
+    transaction_type: str  # "buy", "sell", "deposit", "withdrawal"
+    quantity: float = 1.0
+    price: float = 0.0
+    amount: Optional[float] = None  # used for deposit/withdrawal
     fees: float = 0.00
     notes: str = ""
 
@@ -2467,7 +2468,57 @@ async def create_transaction(request: CreateTransactionRequest, user: User = Dep
         if not portfolio:
             raise HTTPException(status_code=404, detail="Portfolio not found")
         
-        # Calculate total amount using Decimal for precision
+        is_capital_flow = request.transaction_type in ("deposit", "withdrawal")
+
+        if is_capital_flow:
+            # Capital deposits / withdrawals: no symbol or share quantity needed
+            capital_amount = Decimal(str(request.amount or request.price or 0))
+            if capital_amount <= 0:
+                raise HTTPException(status_code=400, detail="Amount must be positive")
+            if request.transaction_type == "withdrawal":
+                if (portfolio.cash_balance or Decimal('0')) < capital_amount:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Insufficient cash. Available: {portfolio.cash_balance}, Requested: {capital_amount}"
+                    )
+
+            transaction = Transaction(
+                portfolio_id=request.portfolio_id,
+                symbol="CASH",
+                transaction_type=TransactionType(request.transaction_type),
+                quantity=Decimal('1'),
+                price=capital_amount,
+                total_amount=capital_amount,
+                fees=Decimal('0'),
+                notes=request.notes or (
+                    f"Capital deposit: +{capital_amount}" if request.transaction_type == "deposit"
+                    else f"Capital withdrawal: -{capital_amount}"
+                ),
+                executed_at=datetime.utcnow()
+            )
+            db.add(transaction)
+
+            if request.transaction_type == "deposit":
+                portfolio.cash_balance = (portfolio.cash_balance or Decimal('0')) + capital_amount
+                portfolio.initial_capital = (portfolio.initial_capital or Decimal('0')) + capital_amount
+            else:
+                portfolio.cash_balance = (portfolio.cash_balance or Decimal('0')) - capital_amount
+                portfolio.initial_capital = (portfolio.initial_capital or Decimal('0')) - capital_amount
+
+            portfolio.current_value = calculate_portfolio_value(portfolio, db)
+            db.commit()
+            db.refresh(transaction)
+
+            logger.info(f"✅ Capital {request.transaction_type}: {capital_amount} for portfolio {portfolio.name}")
+            action = "deposited into" if request.transaction_type == "deposit" else "withdrawn from"
+            return {
+                "success": True,
+                "transaction_id": transaction.id,
+                "message": f"{capital_amount} {portfolio.currency} {action} portfolio. New cash balance: {portfolio.cash_balance}",
+                "new_cash_balance": float(portfolio.cash_balance),
+            }
+
+        # Regular buy / sell flow
         quantity_decimal = Decimal(str(request.quantity))
         price_decimal = Decimal(str(request.price))
         fees_decimal = Decimal(str(request.fees))

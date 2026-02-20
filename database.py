@@ -126,6 +126,8 @@ class TransactionType(enum.Enum):
     sell = "sell"
     dividend = "dividend"
     fee = "fee"
+    deposit = "deposit"
+    withdrawal = "withdrawal"
 
 class AlertType(enum.Enum):
     price = "price"

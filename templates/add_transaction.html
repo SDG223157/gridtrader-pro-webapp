@@ -10,98 +10,155 @@
             <div class="mb-6">
                 <h1 class="text-3xl font-bold text-gray-900">Add Transaction</h1>
                 <div class="flex items-center gap-3 mt-2">
-                    <p class="text-gray-600">Portfolio: {{ portfolio.name }}</p>
+                    <p class="text-gray-600">Portfolio: <strong>{{ portfolio.name }}</strong></p>
                     <span class="text-xs px-2 py-1 rounded-full {% if portfolio.market.value == 'US' %}bg-blue-100 text-blue-800{% elif portfolio.market.value == 'HK' %}bg-purple-100 text-purple-800{% else %}bg-red-100 text-red-800{% endif %}">
                         {% if portfolio.market.value == 'US' %}🇺🇸{% elif portfolio.market.value == 'HK' %}🇭🇰{% else %}🇨🇳{% endif %} {{ portfolio.currency }}
                     </span>
                 </div>
-                <p class="text-sm text-gray-500">Cash Balance: {{ currency_symbol }}{{ "%.2f"|format(portfolio.cash_balance or 0) }}</p>
+                <p class="text-sm text-gray-500 mt-1">
+                    Cash Balance: <span class="font-semibold text-green-700">{{ currency_symbol }}{{ "%.2f"|format(portfolio.cash_balance or 0) }}</span>
+                </p>
             </div>
-            
-            <form id="transactionForm" class="space-y-6">
+
+            <!-- Transaction Type Tabs -->
+            <div class="mb-6">
+                <div class="flex rounded-lg border border-gray-200 overflow-hidden">
+                    <button type="button" data-type="buy"
+                        class="type-tab flex-1 py-3 text-sm font-semibold text-center transition-colors bg-green-600 text-white">
+                        Buy
+                    </button>
+                    <button type="button" data-type="sell"
+                        class="type-tab flex-1 py-3 text-sm font-semibold text-center transition-colors bg-white text-gray-600 hover:bg-gray-50 border-l border-gray-200">
+                        Sell
+                    </button>
+                    <button type="button" data-type="deposit"
+                        class="type-tab flex-1 py-3 text-sm font-semibold text-center transition-colors bg-white text-gray-600 hover:bg-gray-50 border-l border-gray-200">
+                        Add Capital
+                    </button>
+                    <button type="button" data-type="withdrawal"
+                        class="type-tab flex-1 py-3 text-sm font-semibold text-center transition-colors bg-white text-gray-600 hover:bg-gray-50 border-l border-gray-200">
+                        Withdraw
+                    </button>
+                </div>
+            </div>
+
+            <form id="transactionForm" class="space-y-5">
                 <input type="hidden" name="portfolio_id" value="{{ portfolio.id }}">
-                
-                <!-- Transaction Type -->
-                <div>
-                    <label for="transaction_type" class="block text-sm font-medium text-gray-700">Transaction Type</label>
-                    <select id="transaction_type" name="transaction_type" required 
-                            class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-                        <option value="buy">Buy</option>
-                        <option value="sell">Sell</option>
-                    </select>
-                </div>
-                
-                <!-- Symbol with Autocomplete -->
-                <div>
-                    <label for="symbol" class="block text-sm font-medium text-gray-700">Stock Symbol</label>
-                    <div class="ticker-input-container relative">
-                        <input type="text" id="symbol" name="symbol" required placeholder="e.g., AAPL, 600298, TSLA"
-                               autocomplete="off"
-                               class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 uppercase">
-                        <div class="suggestions absolute w-full bg-white border border-gray-300 rounded-md shadow-lg mt-1 z-50 hidden max-h-48 overflow-y-auto"></div>
+                <input type="hidden" id="transaction_type" name="transaction_type" value="buy">
+
+                <!-- ── CAPITAL FLOW SECTION (deposit / withdrawal) ── -->
+                <div id="capital-section" class="hidden space-y-4">
+                    <div id="capital-info-deposit" class="p-3 rounded-lg bg-blue-50 border border-blue-200 text-sm text-blue-800 hidden">
+                        <strong>Add Capital</strong> — Increases cash balance and total invested capital.
                     </div>
-                    <p class="mt-1 text-sm text-gray-500">Enter the stock ticker symbol</p>
-                </div>
-                
-                <!-- Quantity -->
-                <div>
-                    <label for="quantity" class="block text-sm font-medium text-gray-700">Quantity</label>
-                    <input type="number" id="quantity" name="quantity" required min="0" step="0.01"
-                           class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-                    <p class="mt-1 text-sm text-gray-500">Number of shares</p>
-                </div>
-                
-                <!-- Price -->
-                <div>
-                    <label for="price" class="block text-sm font-medium text-gray-700">Price per Share ({{ currency_symbol }})</label>
-                    <input type="number" id="price" name="price" required min="0" step="0.01"
-                           class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-                    <p class="mt-1 text-sm text-gray-500">Execution price per share in {{ portfolio.currency }}</p>
-                </div>
-                
-                <!-- Fees -->
-                <div>
-                    <label for="fees" class="block text-sm font-medium text-gray-700">Transaction Fees ({{ currency_symbol }})</label>
-                    <input type="number" id="fees" name="fees" min="0" step="0.01" value="0.00"
-                           class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-                    <p class="mt-1 text-sm text-gray-500">Brokerage fees and commissions</p>
-                </div>
-                
-                <!-- Notes -->
-                <div>
-                    <label for="notes" class="block text-sm font-medium text-gray-700">Notes (Optional)</label>
-                    <textarea id="notes" name="notes" rows="3" 
-                              class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                              placeholder="Investment reasoning, market analysis, etc..."></textarea>
-                </div>
-                
-                <!-- Transaction Summary -->
-                <div class="bg-gray-50 rounded-lg p-4">
-                    <h3 class="text-lg font-medium text-gray-900 mb-2">Transaction Summary ({{ portfolio.currency }})</h3>
-                    <div class="space-y-2">
-                        <div class="flex justify-between">
-                            <span class="text-sm text-gray-600">Shares × Price:</span>
-                            <span class="text-sm font-medium" id="subtotal">{{ currency_symbol }}0.00</span>
+                    <div id="capital-info-withdrawal" class="p-3 rounded-lg bg-orange-50 border border-orange-200 text-sm text-orange-800 hidden">
+                        <strong>Withdraw Capital</strong> — Reduces cash balance and total invested capital.
+                        Available: <strong>{{ currency_symbol }}{{ "%.2f"|format(portfolio.cash_balance or 0) }}</strong>
+                    </div>
+
+                    <div>
+                        <label for="capital_amount" class="block text-sm font-medium text-gray-700">
+                            Amount (<span class="currency-label">{{ currency_symbol }}</span>)
+                        </label>
+                        <input type="number" id="capital_amount" min="0.01" step="0.01"
+                               class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-lg"
+                               placeholder="0.00">
+                    </div>
+
+                    <div>
+                        <label for="capital_notes" class="block text-sm font-medium text-gray-700">Notes (Optional)</label>
+                        <textarea id="capital_notes" rows="2"
+                                  class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                                  placeholder="Reason, reference, etc."></textarea>
+                    </div>
+
+                    <!-- Capital Summary -->
+                    <div id="capital-summary" class="rounded-lg p-4 bg-gray-50 border border-gray-200 hidden">
+                        <div class="flex justify-between text-sm mb-1">
+                            <span class="text-gray-600">Current Cash Balance:</span>
+                            <span class="font-medium">{{ currency_symbol }}{{ "%.2f"|format(portfolio.cash_balance or 0) }}</span>
                         </div>
-                        <div class="flex justify-between">
-                            <span class="text-sm text-gray-600">Fees:</span>
-                            <span class="text-sm font-medium" id="fees-display">{{ currency_symbol }}0.00</span>
+                        <div class="flex justify-between text-sm mb-1">
+                            <span id="capital-delta-label" class="text-gray-600">Amount:</span>
+                            <span id="capital-delta" class="font-medium">{{ currency_symbol }}0.00</span>
                         </div>
-                        <div class="flex justify-between border-t pt-2">
-                            <span class="text-base font-medium text-gray-900">Total Amount:</span>
-                            <span class="text-base font-bold text-gray-900" id="total-amount">{{ currency_symbol }}0.00</span>
+                        <div class="flex justify-between text-base font-bold border-t pt-2 mt-1">
+                            <span>New Cash Balance:</span>
+                            <span id="capital-new-balance">{{ currency_symbol }}{{ "%.2f"|format(portfolio.cash_balance or 0) }}</span>
                         </div>
                     </div>
                 </div>
-                
-                <!-- Submit Buttons -->
-                <div class="flex justify-end space-x-3">
-                    <a href="/portfolios/{{ portfolio.id }}" 
-                       class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded">
+
+                <!-- ── TRADE SECTION (buy / sell) ── -->
+                <div id="trade-section" class="space-y-4">
+                    <!-- Symbol -->
+                    <div>
+                        <label for="symbol" class="block text-sm font-medium text-gray-700">Stock Symbol</label>
+                        <div class="ticker-input-container relative">
+                            <input type="text" id="symbol" name="symbol" placeholder="e.g., AAPL, 600298, TSLA"
+                                   autocomplete="off"
+                                   class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 uppercase">
+                            <div class="suggestions absolute w-full bg-white border border-gray-300 rounded-md shadow-lg mt-1 z-50 hidden max-h-48 overflow-y-auto"></div>
+                        </div>
+                    </div>
+
+                    <!-- Quantity -->
+                    <div>
+                        <label for="quantity" class="block text-sm font-medium text-gray-700">Quantity (shares)</label>
+                        <input type="number" id="quantity" name="quantity" min="0" step="0.01"
+                               class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+
+                    <!-- Price -->
+                    <div>
+                        <label for="price" class="block text-sm font-medium text-gray-700">Price per Share ({{ currency_symbol }})</label>
+                        <input type="number" id="price" name="price" min="0" step="0.0001"
+                               class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+
+                    <!-- Fees -->
+                    <div>
+                        <label for="fees" class="block text-sm font-medium text-gray-700">Transaction Fees ({{ currency_symbol }})</label>
+                        <input type="number" id="fees" name="fees" min="0" step="0.01" value="0.00"
+                               class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+
+                    <!-- Notes -->
+                    <div>
+                        <label for="notes" class="block text-sm font-medium text-gray-700">Notes (Optional)</label>
+                        <textarea id="notes" name="notes" rows="2"
+                                  class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                                  placeholder="Investment reasoning, analysis..."></textarea>
+                    </div>
+
+                    <!-- Trade Summary -->
+                    <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                        <h3 class="text-sm font-semibold text-gray-700 mb-2">Transaction Summary ({{ portfolio.currency }})</h3>
+                        <div class="space-y-1">
+                            <div class="flex justify-between text-sm">
+                                <span class="text-gray-500">Shares × Price:</span>
+                                <span id="subtotal">{{ currency_symbol }}0.00</span>
+                            </div>
+                            <div class="flex justify-between text-sm">
+                                <span class="text-gray-500">Fees:</span>
+                                <span id="fees-display">{{ currency_symbol }}0.00</span>
+                            </div>
+                            <div class="flex justify-between text-base font-bold border-t pt-2 mt-1">
+                                <span>Total:</span>
+                                <span id="total-amount">{{ currency_symbol }}0.00</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Submit -->
+                <div class="flex justify-end space-x-3 pt-2">
+                    <a href="/portfolios/{{ portfolio.id }}"
+                       class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-5 rounded">
                         Cancel
                     </a>
-                    <button type="submit" 
-                            class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                    <button type="submit" id="btn-submit"
+                            class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-5 rounded transition-colors">
                         Add Transaction
                     </button>
                 </div>
@@ -111,177 +168,215 @@
 </div>
 
 <script>
-// Currency symbol for this portfolio
 const currencySymbol = '{{ currency_symbol }}';
+const currentCash = {{ portfolio.cash_balance or 0 }};
 
-// Calculate transaction totals in real-time
-function updateTransactionSummary() {
-    const quantity = parseFloat(document.getElementById('quantity').value) || 0;
+const tabs = document.querySelectorAll('.type-tab');
+const typeInput = document.getElementById('transaction_type');
+const capitalSection = document.getElementById('capital-section');
+const tradeSection = document.getElementById('trade-section');
+const btnSubmit = document.getElementById('btn-submit');
+
+const TAB_STYLES = {
+    buy:        { bg: 'bg-green-600 text-white',  btn: 'bg-green-600 hover:bg-green-700', label: 'Buy' },
+    sell:       { bg: 'bg-red-600 text-white',    btn: 'bg-red-600 hover:bg-red-700',    label: 'Sell' },
+    deposit:    { bg: 'bg-blue-600 text-white',   btn: 'bg-blue-600 hover:bg-blue-700',  label: 'Add Capital' },
+    withdrawal: { bg: 'bg-orange-600 text-white', btn: 'bg-orange-600 hover:bg-orange-700', label: 'Withdraw' },
+};
+
+function switchType(type) {
+    typeInput.value = type;
+
+    tabs.forEach(t => {
+        const style = TAB_STYLES[t.dataset.type];
+        if (t.dataset.type === type) {
+            t.className = `type-tab flex-1 py-3 text-sm font-semibold text-center transition-colors ${style.bg}`;
+        } else {
+            t.className = 'type-tab flex-1 py-3 text-sm font-semibold text-center transition-colors bg-white text-gray-600 hover:bg-gray-50 border-l border-gray-200';
+        }
+    });
+
+    const s = TAB_STYLES[type];
+    btnSubmit.className = `${s.btn} text-white font-bold py-2 px-5 rounded transition-colors`;
+    btnSubmit.textContent = s.label;
+
+    const isCapital = type === 'deposit' || type === 'withdrawal';
+    capitalSection.classList.toggle('hidden', !isCapital);
+    tradeSection.classList.toggle('hidden', isCapital);
+
+    document.getElementById('capital-info-deposit').classList.toggle('hidden', type !== 'deposit');
+    document.getElementById('capital-info-withdrawal').classList.toggle('hidden', type !== 'withdrawal');
+
+    if (isCapital) {
+        const label = document.getElementById('capital-delta-label');
+        label.textContent = type === 'deposit' ? 'Deposit Amount:' : 'Withdrawal Amount:';
+        updateCapitalSummary();
+    }
+}
+
+tabs.forEach(t => t.addEventListener('click', () => switchType(t.dataset.type)));
+
+// Capital summary live update
+const capitalAmountInput = document.getElementById('capital_amount');
+capitalAmountInput.addEventListener('input', updateCapitalSummary);
+
+function updateCapitalSummary() {
+    const type = typeInput.value;
+    const amt = parseFloat(capitalAmountInput.value) || 0;
+    if (amt <= 0) { document.getElementById('capital-summary').classList.add('hidden'); return; }
+
+    const newBalance = type === 'deposit' ? currentCash + amt : currentCash - amt;
+    document.getElementById('capital-delta').textContent = `${type === 'withdrawal' ? '-' : '+'}${currencySymbol}${amt.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+    document.getElementById('capital-delta').className = type === 'deposit' ? 'font-medium text-green-600' : 'font-medium text-red-600';
+    document.getElementById('capital-new-balance').textContent = currencySymbol + newBalance.toLocaleString('en-US', {minimumFractionDigits: 2});
+    document.getElementById('capital-new-balance').className = newBalance < 0 ? 'font-bold text-red-600' : 'font-bold text-green-700';
+    document.getElementById('capital-summary').classList.remove('hidden');
+}
+
+// Trade summary live update
+function updateTradeSummary() {
+    const qty = parseFloat(document.getElementById('quantity').value) || 0;
     const price = parseFloat(document.getElementById('price').value) || 0;
     const fees = parseFloat(document.getElementById('fees').value) || 0;
-    
-    const subtotal = quantity * price;
-    const total = subtotal + fees;
-    
-    document.getElementById('subtotal').textContent = currencySymbol + subtotal.toFixed(2);
+    const sub = qty * price;
+    const total = sub + fees;
+    document.getElementById('subtotal').textContent = currencySymbol + sub.toFixed(2);
     document.getElementById('fees-display').textContent = currencySymbol + fees.toFixed(2);
     document.getElementById('total-amount').textContent = currencySymbol + total.toFixed(2);
 }
 
-// Add event listeners
-document.getElementById('quantity').addEventListener('input', updateTransactionSummary);
-document.getElementById('price').addEventListener('input', updateTransactionSummary);
-document.getElementById('fees').addEventListener('input', updateTransactionSummary);
+['quantity', 'price', 'fees'].forEach(id => {
+    document.getElementById(id)?.addEventListener('input', updateTradeSummary);
+});
 
 // Form submission
 document.getElementById('transactionForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const formData = new FormData(e.target);
-    const data = Object.fromEntries(formData);
-    
-    // Convert numeric fields
-    data.quantity = parseFloat(data.quantity);
-    data.price = parseFloat(data.price);
-    data.fees = parseFloat(data.fees) || 0;
-    
+    const type = typeInput.value;
+    const isCapital = type === 'deposit' || type === 'withdrawal';
+
+    let data = { portfolio_id: document.querySelector('[name=portfolio_id]').value, transaction_type: type };
+
+    if (isCapital) {
+        const amt = parseFloat(capitalAmountInput.value) || 0;
+        if (amt <= 0) { alert('Please enter a valid amount.'); return; }
+        if (type === 'withdrawal' && amt > currentCash) {
+            alert(`Cannot withdraw ${currencySymbol}${amt.toFixed(2)}. Available cash: ${currencySymbol}${currentCash.toFixed(2)}`);
+            return;
+        }
+        data.amount = amt;
+        data.notes = document.getElementById('capital_notes').value;
+        data.symbol = 'CASH';
+        data.quantity = 1;
+        data.price = amt;
+    } else {
+        const symbol = document.getElementById('symbol').value.trim();
+        if (!symbol) { alert('Please enter a stock symbol.'); return; }
+        const qty = parseFloat(document.getElementById('quantity').value);
+        const price = parseFloat(document.getElementById('price').value);
+        if (!qty || qty <= 0) { alert('Please enter a valid quantity.'); return; }
+        if (!price || price <= 0) { alert('Please enter a valid price.'); return; }
+        data.symbol = symbol;
+        data.quantity = qty;
+        data.price = price;
+        data.fees = parseFloat(document.getElementById('fees').value) || 0;
+        data.notes = document.getElementById('notes').value;
+    }
+
+    btnSubmit.disabled = true;
+    btnSubmit.textContent = 'Processing...';
+
     try {
-        const response = await fetch('/api/transactions', {
+        const resp = await fetch('/api/transactions', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
+            headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(data)
         });
-        
-        const result = await response.json();
-        
+        const result = await resp.json();
         if (result.success) {
-            alert('Transaction added successfully!');
+            const msg = isCapital
+                ? `${TAB_STYLES[type].label} of ${currencySymbol}${(data.amount||data.price).toFixed(2)} recorded.\n${result.message}`
+                : 'Transaction added successfully!';
+            alert(msg);
             window.location.href = '/portfolios/{{ portfolio.id }}';
         } else {
             alert(result.detail || 'Failed to add transaction');
         }
-    } catch (error) {
-        alert('Failed to add transaction. Please try again.');
+    } catch(err) {
+        alert('Request failed: ' + err.message);
+    } finally {
+        btnSubmit.disabled = false;
+        switchType(typeInput.value);
     }
 });
 
-// TrendWise-style ticker autocomplete
+// Ticker autocomplete
 const symbolInput = document.getElementById('symbol');
 const suggestionsDiv = document.querySelector('.suggestions');
 let debounceTimeout;
 
-function formatCompanyName(name) {
-    return name.replace(/\\'/g, "'");
-}
-
-// Clear input on double click
-symbolInput.addEventListener('dblclick', function() {
-    if (this.value) {
-        this.value = '';
-        suggestionsDiv.style.display = 'none';
-        suggestionsDiv.classList.add('hidden');
-    }
+symbolInput?.addEventListener('dblclick', function() {
+    this.value = '';
+    suggestionsDiv.style.display = 'none';
+    suggestionsDiv.classList.add('hidden');
 });
 
-symbolInput.addEventListener('input', function() {
+symbolInput?.addEventListener('input', function() {
     clearTimeout(debounceTimeout);
     const query = this.value.trim();
-    
-    // Auto-uppercase
     this.value = this.value.toUpperCase();
-    
-    if (query.length < 1) {
-        suggestionsDiv.style.display = 'none';
-        suggestionsDiv.classList.add('hidden');
-        return;
-    }
-    
+    if (query.length < 1) { suggestionsDiv.style.display = 'none'; suggestionsDiv.classList.add('hidden'); return; }
     debounceTimeout = setTimeout(() => {
         fetch(`/search_ticker?query=${encodeURIComponent(query)}`)
-            .then(response => response.json())
+            .then(r => r.json())
             .then(data => {
                 suggestionsDiv.innerHTML = '';
-                
                 if (data.length > 0) {
-                    // Show multiple results with enhanced display
                     data.slice(0, 6).forEach(item => {
                         if (item.symbol.toUpperCase() !== item.name.toUpperCase()) {
                             const div = document.createElement('div');
                             div.className = 'suggestion-item p-3 cursor-pointer hover:bg-blue-50 border-b border-gray-100 last:border-b-0 flex justify-between items-center';
-                            const formattedName = formatCompanyName(item.name);
-                            
-                            // Create symbol span
                             const symbolSpan = document.createElement('span');
                             symbolSpan.className = 'symbol font-bold text-blue-600 text-sm';
                             symbolSpan.textContent = item.symbol;
-                            
-                            // Create name container with inline metadata
-                            const nameContainer = document.createElement('div');
-                            nameContainer.className = 'name flex-1 ml-3';
-                            
-                            const companyNameSpan = document.createElement('span');
-                            companyNameSpan.className = 'company-name text-gray-800 text-sm font-medium';
-                            companyNameSpan.textContent = formattedName;
-                            nameContainer.appendChild(companyNameSpan);
-                            
-                            // Add asset type and exchange info inline after name
+                            const nc = document.createElement('div');
+                            nc.className = 'name flex-1 ml-3';
+                            const ns = document.createElement('span');
+                            ns.className = 'company-name text-gray-800 text-sm font-medium';
+                            ns.textContent = item.name.replace(/\\'/g, "'");
+                            nc.appendChild(ns);
                             if (item.type || item.exchange) {
-                                const metaSpan = document.createElement('span');
-                                metaSpan.className = 'meta text-xs text-gray-500 ml-2 bg-gray-100 px-2 py-1 rounded';
-                                let metaText = [];
-                                if (item.type) metaText.push(item.type);
-                                if (item.exchange && item.exchange !== item.type) metaText.push(item.exchange);
-                                metaSpan.textContent = metaText.join(' • ');
-                                nameContainer.appendChild(metaSpan);
+                                const ms = document.createElement('span');
+                                ms.className = 'text-xs text-gray-500 ml-2 bg-gray-100 px-2 py-1 rounded';
+                                ms.textContent = [item.type, item.exchange !== item.type && item.exchange].filter(Boolean).join(' · ');
+                                nc.appendChild(ms);
                             }
-                            
                             div.appendChild(symbolSpan);
-                            div.appendChild(nameContainer);
-                           
-                            div.addEventListener('click', function() {
-                                // Set input value to just the symbol
+                            div.appendChild(nc);
+                            div.addEventListener('click', () => {
                                 symbolInput.value = item.symbol;
                                 suggestionsDiv.style.display = 'none';
                                 suggestionsDiv.classList.add('hidden');
-                                
-                                // Trigger change event to update calculations
                                 symbolInput.dispatchEvent(new Event('change'));
                             });
-                            
                             suggestionsDiv.appendChild(div);
                         }
                     });
                     suggestionsDiv.style.display = 'block';
                     suggestionsDiv.classList.remove('hidden');
-                } else {
-                    suggestionsDiv.style.display = 'none';
-                    suggestionsDiv.classList.add('hidden');
-                }
+                } else { suggestionsDiv.style.display = 'none'; suggestionsDiv.classList.add('hidden'); }
             })
-            .catch(error => {
-                console.error('Search error:', error);
-                suggestionsDiv.style.display = 'none';
-                suggestionsDiv.classList.add('hidden');
-            });
+            .catch(() => { suggestionsDiv.style.display = 'none'; suggestionsDiv.classList.add('hidden'); });
     }, 300);
 });
-
-// Close suggestions when clicking outside
-document.addEventListener('click', function(e) {
-    if (!symbolInput.contains(e.target) && !suggestionsDiv.contains(e.target)) {
-        suggestionsDiv.style.display = 'none';
-        suggestionsDiv.classList.add('hidden');
+document.addEventListener('click', e => {
+    if (symbolInput && !symbolInput.contains(e.target) && !suggestionsDiv.contains(e.target)) {
+        suggestionsDiv.style.display = 'none'; suggestionsDiv.classList.add('hidden');
     }
 });
-
-// Prevent suggestions from closing when clicking inside the input
-symbolInput.addEventListener('click', function(e) {
+symbolInput?.addEventListener('click', e => {
     e.stopPropagation();
-    if (this.value.trim().length > 0) {
-        suggestionsDiv.style.display = 'block';
-        suggestionsDiv.classList.remove('hidden');
-    }
+    if (symbolInput.value.trim().length > 0) { suggestionsDiv.style.display = 'block'; suggestionsDiv.classList.remove('hidden'); }
 });
 </script>
 {% endblock %}
