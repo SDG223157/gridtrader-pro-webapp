@@ -353,6 +353,27 @@ async def connect_with_retry(max_retries=5, delay=5):
                 logger.error("❌ All database connection attempts failed")
                 raise e
 
+def _run_enum_migrations(conn):
+    """Add new enum values to existing PostgreSQL ENUM types (safe, idempotent)."""
+    is_postgres = "postgresql" in DATABASE_URL or "postgres" in DATABASE_URL
+    if not is_postgres:
+        return
+    migrations = [
+        ("transactiontype", "deposit"),
+        ("transactiontype", "withdrawal"),
+    ]
+    for type_name, value in migrations:
+        try:
+            conn.execute(text(
+                f"ALTER TYPE {type_name} ADD VALUE IF NOT EXISTS :val"
+            ), {"val": value})
+            logger.info(f"✅ Enum migration: {type_name} += '{value}'")
+        except Exception as e:
+            # Value may already exist on older Postgres without IF NOT EXISTS;
+            # safe to continue.
+            logger.warning(f"⚠️  Enum migration skipped ({type_name}.{value}): {e}")
+
+
 def create_tables():
     """Create all database tables with proper UUID handling"""
     try:
@@ -360,7 +381,11 @@ def create_tables():
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         logger.info("✅ Database connection verified")
-        
+
+        # Run enum migrations BEFORE create_all so new enum values are present
+        with engine.begin() as conn:
+            _run_enum_migrations(conn)
+
         # Create tables
         Base.metadata.create_all(bind=engine)
         logger.info("✅ Database tables created/verified")

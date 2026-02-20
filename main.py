@@ -2596,10 +2596,12 @@ async def create_transaction(request: CreateTransactionRequest, user: User = Dep
     
     except HTTPException:
         raise
+    except HTTPException:
+        raise
     except Exception as e:
         db.rollback()
         logger.error(f"Error creating transaction: {e}")
-        raise HTTPException(status_code=500, detail="Failed to create transaction")
+        raise HTTPException(status_code=500, detail=f"Failed to create transaction: {str(e)}")
 
 @app.post("/api/portfolios/{portfolio_id}/update-cash")
 async def update_portfolio_cash_balance(
