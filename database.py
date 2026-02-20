@@ -261,6 +261,7 @@ class Grid(Base):
     lower_price = Column(DECIMAL(10, 4), nullable=False)
     grid_spacing = Column(DECIMAL(10, 4), nullable=False)
     investment_amount = Column(DECIMAL(15, 2), nullable=False)
+    is_dynamic = Column(Boolean, default=False, nullable=False)
     status = Column(Enum(GridStatus), default=GridStatus.active)
     total_profit = Column(DECIMAL(15, 2), default=0.00)
     completed_orders = Column(Integer, default=0)
@@ -270,6 +271,31 @@ class Grid(Base):
 
     portfolio = relationship("Portfolio", back_populates="grids")
     orders = relationship("GridOrder", back_populates="grid")
+    migrations = relationship("GridMigration", back_populates="grid", order_by="GridMigration.migrated_at")
+
+
+class GridMigration(Base):
+    """Records every time a dynamic grid shifts its boundaries."""
+    __tablename__ = "grid_migrations"
+
+    id = Column(VARCHAR(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    grid_id = Column(VARCHAR(36), ForeignKey("grids.id"), nullable=False)
+    direction = Column(String(4), nullable=False)          # 'up' | 'down'
+    trigger_price = Column(DECIMAL(10, 4), nullable=False)
+    delta = Column(DECIMAL(10, 4), nullable=False)
+    old_a_lower = Column(DECIMAL(10, 4), nullable=False)
+    old_a_upper = Column(DECIMAL(10, 4), nullable=False)
+    old_overflow = Column(DECIMAL(10, 4), nullable=False)
+    old_stop_loss = Column(DECIMAL(10, 4), nullable=False)
+    new_a_lower = Column(DECIMAL(10, 4), nullable=False)
+    new_a_upper = Column(DECIMAL(10, 4), nullable=False)
+    new_overflow = Column(DECIMAL(10, 4), nullable=False)
+    new_stop_loss = Column(DECIMAL(10, 4), nullable=False)
+    orders_cancelled = Column(Integer, default=0)
+    orders_created = Column(Integer, default=0)
+    migrated_at = Column(DateTime, server_default=func.current_timestamp())
+
+    grid = relationship("Grid", back_populates="migrations")
 
 class GridOrder(Base):
     __tablename__ = "grid_orders"
@@ -374,6 +400,29 @@ def _run_enum_migrations(conn):
             logger.warning(f"⚠️  Enum migration skipped ({type_name}.{value}): {e}")
 
 
+def _run_column_migrations(eng):
+    """Add new columns to existing tables if they don't exist (idempotent)."""
+    from sqlalchemy import inspect, text as sa_text
+    inspector = inspect(eng)
+    existing_tables = inspector.get_table_names()
+
+    column_migrations = [
+        # (table, column, ddl)
+        ("grids", "is_dynamic", "ALTER TABLE grids ADD COLUMN IF NOT EXISTS is_dynamic BOOLEAN NOT NULL DEFAULT FALSE"),
+    ]
+    with eng.begin() as conn:
+        for table, col, ddl in column_migrations:
+            if table not in existing_tables:
+                continue
+            existing_cols = [c["name"] for c in inspector.get_columns(table)]
+            if col not in existing_cols:
+                try:
+                    conn.execute(sa_text(ddl))
+                    logger.info(f"✅ Column migration: {table}.{col} added")
+                except Exception as e:
+                    logger.warning(f"⚠️  Column migration skipped ({table}.{col}): {e}")
+
+
 def create_tables():
     """Create all database tables with proper UUID handling"""
     try:
@@ -386,7 +435,10 @@ def create_tables():
         with engine.begin() as conn:
             _run_enum_migrations(conn)
 
-        # Create tables
+        # Add new columns to existing tables (idempotent)
+        _run_column_migrations(engine)
+
+        # Create tables (new ones like grid_migrations)
         Base.metadata.create_all(bind=engine)
         logger.info("✅ Database tables created/verified")
         

@@ -17,9 +17,17 @@
             <div class="p-6">
                 <div class="flex items-center justify-between mb-2">
                     <h3 class="text-lg font-medium text-gray-900">{{ grid.name }}</h3>
-                    {% if grid.strategy_config and grid.strategy_config.get('strategy_type') == 'adaptive_dual_zone' %}
-                    <span class="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full bg-indigo-100 text-indigo-700">Adaptive</span>
-                    {% endif %}
+                    <div class="flex items-center gap-1">
+                        {% if grid.strategy_config and grid.strategy_config.get('strategy_type') == 'adaptive_dual_zone' %}
+                        <span class="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full bg-indigo-100 text-indigo-700">Adaptive</span>
+                        {% endif %}
+                        {% if grid.is_dynamic %}
+                        <span class="inline-flex items-center gap-0.5 px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-100 text-emerald-700">
+                            <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"/></svg>
+                            Dynamic
+                        </span>
+                        {% endif %}
+                    </div>
                 </div>
                 <p class="text-sm text-gray-500 mb-4">{{ grid.symbol }}</p>
                 

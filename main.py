@@ -12,7 +12,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import text, desc
-from database import get_db, create_tables, User, UserProfile, Portfolio, Grid, Holding, Alert, Transaction, TransactionType, GridStatus, GridOrder, OrderStatus, ApiToken, SessionLocal, engine, MarketType, MARKET_CURRENCY_MAP, CURRENCY_SYMBOLS
+from database import get_db, create_tables, User, UserProfile, Portfolio, Grid, GridMigration, Holding, Alert, Transaction, TransactionType, GridStatus, GridOrder, OrderStatus, ApiToken, SessionLocal, engine, MarketType, MARKET_CURRENCY_MAP, CURRENCY_SYMBOLS
 from auth_simple import (
     setup_oauth, create_access_token, get_current_user, require_auth, 
     create_user, authenticate_user, create_or_update_user_from_google
@@ -61,6 +61,7 @@ class CreateGridRequest(BaseModel):
     investment_amount: float
     optimize: bool = False
     lot_size: int = 100
+    dynamic: bool = False
 
 class OptimizeGridRequest(BaseModel):
     symbol: str
@@ -2941,6 +2942,7 @@ class CreateOptimizedGridRequest(BaseModel):
     investment_amount: float
     days: int = 250
     lot_size: Optional[int] = None   # None = auto-detect from portfolio market
+    dynamic: bool = True             # enable trailing grid migration by default
 
 
 @app.post("/api/grids/optimized")
@@ -3013,6 +3015,7 @@ async def create_optimized_grid(
             investment_amount=request.investment_amount,
             optimize=True,
             lot_size=lot_size,
+            dynamic=request.dynamic,
         )
         result = await create_grid(grid_request, user, db)
 
@@ -3167,6 +3170,7 @@ async def create_grid(request: CreateGridRequest, user: User = Depends(require_a
         grid.lower_price = lower_decimal
         grid.grid_spacing = grid_spacing
         grid.investment_amount = investment_decimal
+        grid.is_dynamic = getattr(request, 'dynamic', False)
         grid.status = GridStatus.active
         grid.total_profit = Decimal('0.00')
         grid.completed_orders = 0
@@ -3952,6 +3956,235 @@ async def configure_grid_alerts(
     except Exception as e:
         logger.error(f"Error configuring grid alerts: {e}")
         raise HTTPException(status_code=500, detail="Failed to configure alerts")
+
+@app.post("/api/grids/{grid_id}/migrate")
+async def migrate_grid(
+    grid_id: str,
+    user: User = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    """
+    Check whether a dynamic grid needs to shift (price outside A-zone) and
+    perform the migration if so.  Safe to call at any time — returns a no-op
+    response if the price is still inside the current boundaries.
+    """
+    try:
+        grid = db.query(Grid).join(Portfolio).filter(
+            Grid.id == grid_id,
+            Portfolio.user_id == user.id,
+        ).first()
+        if not grid:
+            raise HTTPException(status_code=404, detail="Grid not found")
+        if not grid.is_dynamic:
+            raise HTTPException(status_code=400, detail="Grid is not configured as dynamic")
+        if grid.status != GridStatus.active:
+            raise HTTPException(status_code=400, detail="Grid is not active")
+
+        sc = grid.strategy_config
+        if sc.get("strategy_type") != "adaptive_dual_zone":
+            raise HTTPException(status_code=400, detail="Migration is only supported for adaptive dual-zone grids")
+
+        # Reconstruct strategy from stored config (no live data fetch needed)
+        current_price = get_current_stock_price_trendwise_pattern(grid.symbol)
+        if not current_price or current_price <= 0:
+            raise HTTPException(status_code=503, detail="Could not fetch current price")
+
+        # Rebuild a minimal strategy shell from stored config so we can call migrate()
+        class _StoredStrategy:
+            """Thin wrapper that exposes the migrate/check interface from persisted config."""
+            def __init__(self, cfg, price_data_closes):
+                import copy
+                self.overflow    = float(cfg["overflow_line"])
+                self.a_upper     = float(cfg["a_zone_upper"])
+                self.a_lower     = float(cfg["a_zone_lower"])
+                self.b_lower     = float(cfg["b_zone_lower"])
+                self.stop_loss   = float(cfg["stop_loss"])
+                self.step        = float(cfg["step"])
+                self.n_grids_a   = int(cfg["n_grids_a"])
+                self.max_shares  = int(cfg["max_shares"])
+                self.grid_lines  = [float(gl["price"]) for gl in cfg.get("grid_levels", [])]
+                self.target_positions = [float(gl["target_position_pct"]) / 100.0
+                                          for gl in cfg.get("grid_levels", [])]
+                self.zone_labels = [gl["zone"] for gl in cfg.get("grid_levels", [])]
+                self.lot_size    = int(cfg.get("lot_size", 100))
+                self.investment_amount = float(cfg.get("investment_amount", 0))
+                self.current_price = float(cfg.get("current_price", 0))
+                self._closes     = price_data_closes
+
+            def check_migration_needed(self, price):
+                if price >= self.overflow:  return "up"
+                if price <= self.stop_loss: return "down"
+                return None
+
+            def migrate(self, price):
+                centre    = (self.a_upper + self.a_lower) / 2
+                raw_delta = price - centre
+                delta     = round(raw_delta / self.step) * self.step
+                direction = "up" if price >= self.overflow else "down"
+                old = dict(overflow=self.overflow, a_upper=self.a_upper,
+                           a_lower=self.a_lower, stop_loss=self.stop_loss)
+                self.overflow   += delta
+                self.a_upper    += delta
+                self.a_lower    += delta
+                self.b_lower    += delta
+                self.stop_loss  += delta
+                self.grid_lines  = [p + delta for p in self.grid_lines]
+                self.current_price = price
+                return dict(direction=direction, trigger_price=round(price, 4),
+                            delta=round(delta, 4),
+                            old_a_lower=round(old["a_lower"], 4),
+                            old_a_upper=round(old["a_upper"], 4),
+                            old_overflow=round(old["overflow"], 4),
+                            old_stop_loss=round(old["stop_loss"], 4),
+                            new_a_lower=round(self.a_lower, 4),
+                            new_a_upper=round(self.a_upper, 4),
+                            new_overflow=round(self.overflow, 4),
+                            new_stop_loss=round(self.stop_loss, 4))
+
+            def get_target_position(self, price):
+                if price >= self.overflow:  return 0.0
+                if price <= self.stop_loss: return -1.0
+                for i in range(len(self.grid_lines) - 1):
+                    if self.grid_lines[i] >= price > self.grid_lines[i + 1]:
+                        return self.target_positions[i]
+                return 1.0
+
+            def generate_orders(self):
+                target = self.get_target_position(self.current_price)
+                if target < 0: target = 0.0
+                trend_init = float(sc.get("trend", {}).get("initial_position_pct", 35)) / 100.0
+                use_target = max(min(trend_init, 1.0), 0.0)
+                init_shares = int(use_target * self.max_shares)
+                if self.lot_size > 1:
+                    init_shares = (init_shares // self.lot_size) * self.lot_size
+                max_aff = int(self.investment_amount * 0.99 / self.current_price)
+                if self.lot_size > 1:
+                    max_aff = (max_aff // self.lot_size) * self.lot_size
+                init_shares = min(init_shares, max_aff)
+                orders = []
+                if init_shares > 0:
+                    orders.append({"type":"buy","price":round(self.current_price,4),
+                                   "quantity":init_shares,"action":"initial_build",
+                                   "target_pct":round(use_target*100,1)})
+                above = sorted([(p,pos,z) for p,pos,z in
+                                zip(self.grid_lines, self.target_positions, self.zone_labels)
+                                if p > self.current_price and z in ("a_zone","overflow")],
+                               key=lambda x: x[0])
+                running = init_shares
+                for p, pos, z in above:
+                    tgt = max(0, int(pos * self.max_shares))
+                    if self.lot_size > 1: tgt = (tgt // self.lot_size) * self.lot_size
+                    diff = running - tgt
+                    if diff > 0:
+                        orders.append({"type":"sell","price":round(p,4),"quantity":diff,
+                                       "action":"grid_sell","target_pct":round(pos*100,1)})
+                        running = tgt
+                below = sorted([(p,pos,z) for p,pos,z in
+                                zip(self.grid_lines, self.target_positions, self.zone_labels)
+                                if p < self.current_price and z == "a_zone" and pos > use_target],
+                               key=lambda x: -x[0])
+                running_buy = init_shares
+                for p, pos, z in below:
+                    tgt = int(pos * self.max_shares)
+                    if self.lot_size > 1: tgt = (tgt // self.lot_size) * self.lot_size
+                    diff = tgt - running_buy
+                    if diff > 0:
+                        orders.append({"type":"buy","price":round(p,4),"quantity":diff,
+                                       "action":"grid_buy","target_pct":round(pos*100,1)})
+                        running_buy = tgt
+                return orders
+
+        strategy = _StoredStrategy(sc, [])
+        needs = strategy.check_migration_needed(current_price)
+
+        if not needs:
+            return {
+                "migrated": False,
+                "message": f"Price HK${current_price:.2f} is within A-Zone "
+                           f"[{strategy.a_lower:.2f}–{strategy.a_upper:.2f}]. No migration needed.",
+                "current_price": current_price,
+                "a_lower": strategy.a_lower,
+                "a_upper": strategy.a_upper,
+            }
+
+        # ── Perform migration ──────────────────────────────────
+        migration_info = strategy.migrate(current_price)
+
+        # Cancel all pending orders
+        pending_orders = db.query(GridOrder).filter(
+            GridOrder.grid_id == grid_id,
+            GridOrder.status == OrderStatus.pending,
+        ).all()
+        for o in pending_orders:
+            o.status = OrderStatus.cancelled
+        n_cancelled = len(pending_orders)
+
+        # Create new orders at shifted levels
+        new_orders_data = strategy.generate_orders()
+        n_created = 0
+        for o in new_orders_data:
+            order = GridOrder(
+                grid_id=grid_id,
+                order_type=TransactionType.buy if o["type"] == "buy" else TransactionType.sell,
+                target_price=Decimal(str(o["price"])),
+                quantity=Decimal(str(o["quantity"])),
+                status=OrderStatus.pending,
+            )
+            db.add(order)
+            n_created += 1
+
+        # Update strategy_config boundaries to reflect the new zone
+        sc["overflow_line"]  = strategy.overflow
+        sc["a_zone_upper"]   = strategy.a_upper
+        sc["a_zone_lower"]   = strategy.a_lower
+        sc["b_zone_lower"]   = strategy.b_lower
+        sc["stop_loss"]      = strategy.stop_loss
+        sc["current_price"]  = current_price
+        sc["orders"]         = new_orders_data
+        grid.strategy_config = sc
+        grid.upper_price     = Decimal(str(round(strategy.a_upper, 4)))
+        grid.lower_price     = Decimal(str(round(strategy.a_lower, 4)))
+
+        # Record migration
+        record = GridMigration(
+            grid_id=grid_id,
+            direction=migration_info["direction"],
+            trigger_price=Decimal(str(migration_info["trigger_price"])),
+            delta=Decimal(str(migration_info["delta"])),
+            old_a_lower=Decimal(str(migration_info["old_a_lower"])),
+            old_a_upper=Decimal(str(migration_info["old_a_upper"])),
+            old_overflow=Decimal(str(migration_info["old_overflow"])),
+            old_stop_loss=Decimal(str(migration_info["old_stop_loss"])),
+            new_a_lower=Decimal(str(migration_info["new_a_lower"])),
+            new_a_upper=Decimal(str(migration_info["new_a_upper"])),
+            new_overflow=Decimal(str(migration_info["new_overflow"])),
+            new_stop_loss=Decimal(str(migration_info["new_stop_loss"])),
+            orders_cancelled=n_cancelled,
+            orders_created=n_created,
+        )
+        db.add(record)
+        db.commit()
+
+        logger.info(f"✅ Grid {grid_id} migrated {migration_info['direction']} "
+                    f"by {migration_info['delta']:+.4f} at price {current_price}")
+
+        return {
+            "migrated": True,
+            "migration": migration_info,
+            "orders_cancelled": n_cancelled,
+            "orders_created": n_created,
+            "message": f"Grid shifted {migration_info['direction'].upper()} by "
+                       f"{migration_info['delta']:+.4f}. "
+                       f"New A-Zone: [{strategy.a_lower:.4f}–{strategy.a_upper:.4f}]",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Grid migration error {grid_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Migration failed: {str(e)}")
+
 
 @app.get("/api/grids/{grid_id}/alerts")
 async def get_grid_alerts(
@@ -4742,14 +4975,111 @@ async def refresh_prices(user: User = Depends(require_auth), db: Session = Depen
                 portfolio.current_value = calculate_portfolio_value(portfolio, db)
         
         db.commit()
-        
+
+        # ── Auto-migrate dynamic grids ─────────────────────────────────────
+        dynamic_grids = db.query(Grid).join(Portfolio).filter(
+            Portfolio.user_id == user.id,
+            Grid.is_dynamic == True,
+            Grid.status == GridStatus.active,
+        ).all()
+
+        migrations_triggered = []
+        for dg in dynamic_grids:
+            try:
+                sc = dg.strategy_config or {}
+                if sc.get("strategy_type") != "adaptive_dual_zone":
+                    continue
+                overflow   = float(sc.get("overflow_line", 0))
+                stop_loss  = float(sc.get("stop_loss", 0))
+                step       = float(sc.get("step", 0))
+                a_upper    = float(sc.get("a_zone_upper", 0))
+                a_lower    = float(sc.get("a_zone_lower", 0))
+                b_lower    = float(sc.get("b_zone_lower", 0))
+                cur_price  = get_current_stock_price_trendwise_pattern(dg.symbol)
+                if not cur_price or cur_price <= 0:
+                    continue
+                needs = None
+                if cur_price >= overflow:   needs = "up"
+                elif cur_price <= stop_loss: needs = "down"
+                if not needs:
+                    continue
+
+                # Compute shift delta
+                centre    = (a_upper + a_lower) / 2
+                raw_delta = cur_price - centre
+                delta     = round(raw_delta / step) * step
+
+                # Shift boundaries
+                new_overflow  = overflow  + delta
+                new_a_upper   = a_upper   + delta
+                new_a_lower   = a_lower   + delta
+                new_b_lower   = b_lower   + delta
+                new_stop_loss = stop_loss + delta
+
+                # Cancel pending orders
+                pending = db.query(GridOrder).filter(
+                    GridOrder.grid_id == dg.id,
+                    GridOrder.status == OrderStatus.pending,
+                ).all()
+                n_cancelled = len(pending)
+                for o in pending:
+                    o.status = OrderStatus.cancelled
+
+                # Update strategy_config
+                sc["overflow_line"]  = new_overflow
+                sc["a_zone_upper"]   = new_a_upper
+                sc["a_zone_lower"]   = new_a_lower
+                sc["b_zone_lower"]   = new_b_lower
+                sc["stop_loss"]      = new_stop_loss
+                sc["current_price"]  = cur_price
+                if "grid_levels" in sc:
+                    for gl in sc["grid_levels"]:
+                        gl["price"] = round(float(gl["price"]) + delta, 4)
+                dg.strategy_config = sc
+                dg.upper_price = Decimal(str(round(new_a_upper, 4)))
+                dg.lower_price = Decimal(str(round(new_a_lower, 4)))
+
+                # Log migration
+                record = GridMigration(
+                    grid_id=dg.id,
+                    direction=needs,
+                    trigger_price=Decimal(str(round(cur_price, 4))),
+                    delta=Decimal(str(round(delta, 4))),
+                    old_a_lower=Decimal(str(round(a_lower, 4))),
+                    old_a_upper=Decimal(str(round(a_upper, 4))),
+                    old_overflow=Decimal(str(round(overflow, 4))),
+                    old_stop_loss=Decimal(str(round(stop_loss, 4))),
+                    new_a_lower=Decimal(str(round(new_a_lower, 4))),
+                    new_a_upper=Decimal(str(round(new_a_upper, 4))),
+                    new_overflow=Decimal(str(round(new_overflow, 4))),
+                    new_stop_loss=Decimal(str(round(new_stop_loss, 4))),
+                    orders_cancelled=n_cancelled,
+                    orders_created=0,
+                )
+                db.add(record)
+                migrations_triggered.append({
+                    "grid_id": dg.id,
+                    "symbol": dg.symbol,
+                    "direction": needs,
+                    "delta": round(delta, 4),
+                    "new_a_lower": round(new_a_lower, 4),
+                    "new_a_upper": round(new_a_upper, 4),
+                })
+                logger.info(f"⚡ Auto-migrated dynamic grid {dg.id} ({dg.symbol}) "
+                            f"{needs} by {delta:+.4f}")
+            except Exception as mig_err:
+                logger.warning(f"⚠️ Auto-migration failed for grid {dg.id}: {mig_err}")
+
+        db.commit()
+
         return {
             "success": True,
             "message": f"Updated prices for {total_holdings_updated} holdings with fresh market data",
             "holdings_updated": total_holdings_updated,
-            "cache_cleared": cache_cleared
+            "cache_cleared": cache_cleared,
+            "dynamic_migrations": migrations_triggered,
         }
-        
+
     except Exception as e:
         db.rollback()
         return {"success": False, "error": str(e)}

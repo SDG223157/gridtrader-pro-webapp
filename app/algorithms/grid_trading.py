@@ -596,6 +596,60 @@ class AdaptiveGridStrategy:
 
         return orders
 
+    def check_migration_needed(self, current_price: float) -> Optional[str]:
+        """Return 'up', 'down', or None depending on whether the price has
+        breached the overflow or stop-loss boundary."""
+        if current_price >= self.overflow:
+            return "up"
+        if current_price <= self.stop_loss:
+            return "down"
+        return None
+
+    def migrate(self, current_price: float) -> Dict:
+        """
+        Shift all grid boundaries so the A-zone re-centres on current_price.
+        Returns a dict describing what changed.
+        """
+        old = {
+            "overflow":   self.overflow,
+            "a_upper":    self.a_upper,
+            "a_lower":    self.a_lower,
+            "b_lower":    self.b_lower,
+            "stop_loss":  self.stop_loss,
+        }
+        direction = "up" if current_price >= self.overflow else "down"
+
+        # Shift by the distance between current price and the A-zone centre,
+        # rounded to the nearest step to keep prices clean.
+        centre = (self.a_upper + self.a_lower) / 2
+        raw_delta = current_price - centre
+        delta = round(raw_delta / self.step) * self.step
+
+        self.overflow    += delta
+        self.a_upper     += delta
+        self.a_lower     += delta
+        self.b_lower     += delta
+        self.stop_loss   += delta
+        self.grid_lines   = [p + delta for p in self.grid_lines]
+        self.current_price = current_price
+
+        # Re-analyse trend at the new price level (no new data — just update signals)
+        self.trend = self._analyze_trend()
+
+        return {
+            "direction":       direction,
+            "trigger_price":   round(current_price, 4),
+            "delta":           round(delta, 4),
+            "old_a_lower":     round(old["a_lower"], 4),
+            "old_a_upper":     round(old["a_upper"], 4),
+            "old_overflow":    round(old["overflow"], 4),
+            "old_stop_loss":   round(old["stop_loss"], 4),
+            "new_a_lower":     round(self.a_lower, 4),
+            "new_a_upper":     round(self.a_upper, 4),
+            "new_overflow":    round(self.overflow, 4),
+            "new_stop_loss":   round(self.stop_loss, 4),
+        }
+
     def get_strategy_config(self) -> Dict:
         return {
             "strategy_type": "adaptive_dual_zone",

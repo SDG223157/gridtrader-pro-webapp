@@ -71,11 +71,23 @@
     <div class="bg-white rounded-lg shadow-md p-6 mb-8">
         <div class="flex items-center justify-between mb-4">
             <h2 class="text-xl font-bold text-gray-900">Grid Configuration</h2>
-            {% if grid.strategy_config.get('strategy_type') == 'adaptive_dual_zone' %}
-            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-800">
-                Adaptive Dual-Zone
-            </span>
-            {% endif %}
+            <div class="flex items-center gap-2">
+                {% if grid.strategy_config.get('strategy_type') == 'adaptive_dual_zone' %}
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-800">
+                    Adaptive Dual-Zone
+                </span>
+                {% endif %}
+                {% if grid.is_dynamic %}
+                <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"/></svg>
+                    Dynamic Trailing
+                </span>
+                <button onclick="triggerMigration()" class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 hover:bg-blue-200 transition-colors cursor-pointer border-0">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    Check & Migrate
+                </button>
+                {% endif %}
+            </div>
         </div>
 
         {% if grid.strategy_config.get('strategy_type') == 'adaptive_dual_zone' %}
@@ -162,6 +174,56 @@
         </div>
         {% endif %}
     </div>
+
+    <!-- Migration History (dynamic grids only) -->
+    {% if grid.is_dynamic and grid.migrations %}
+    <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-bold text-gray-900">Migration History</h2>
+            <span class="text-sm text-gray-500">{{ grid.migrations|length }} migration{{ 's' if grid.migrations|length != 1 }}</span>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="bg-gray-50 text-left">
+                        <th class="px-3 py-2 text-gray-600 font-medium">Date</th>
+                        <th class="px-3 py-2 text-gray-600 font-medium">Direction</th>
+                        <th class="px-3 py-2 text-gray-600 font-medium">Trigger Price</th>
+                        <th class="px-3 py-2 text-gray-600 font-medium">Shift</th>
+                        <th class="px-3 py-2 text-gray-600 font-medium">Old A-Zone</th>
+                        <th class="px-3 py-2 text-gray-600 font-medium">New A-Zone</th>
+                        <th class="px-3 py-2 text-gray-600 font-medium text-right">Orders</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                    {% for m in grid.migrations|reverse %}
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-3 py-2 text-gray-700 font-mono text-xs">{{ m.migrated_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                        <td class="px-3 py-2">
+                            {% if m.direction == 'up' %}
+                            <span class="inline-flex items-center gap-1 text-emerald-700 font-semibold">▲ UP</span>
+                            {% else %}
+                            <span class="inline-flex items-center gap-1 text-red-600 font-semibold">▼ DOWN</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-3 py-2 font-mono">${{ "%.4f"|format(m.trigger_price) }}</td>
+                        <td class="px-3 py-2 font-mono {% if m.delta > 0 %}text-emerald-700{% else %}text-red-600{% endif %}">
+                            {{ "%+.4f"|format(m.delta) }}
+                        </td>
+                        <td class="px-3 py-2 font-mono text-xs text-gray-500">${{ "%.2f"|format(m.old_a_lower) }} ~ ${{ "%.2f"|format(m.old_a_upper) }}</td>
+                        <td class="px-3 py-2 font-mono text-xs font-semibold">${{ "%.2f"|format(m.new_a_lower) }} ~ ${{ "%.2f"|format(m.new_a_upper) }}</td>
+                        <td class="px-3 py-2 text-right text-xs text-gray-500">-{{ m.orders_cancelled }} / +{{ m.orders_created }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% elif grid.is_dynamic %}
+    <div class="bg-emerald-50 border border-emerald-200 rounded-lg p-4 mb-8 text-sm text-emerald-700">
+        <strong>Dynamic Trailing Grid</strong> — No migrations yet. The grid will automatically shift when price breaks above the overflow or below the stop-loss. Click <em>Refresh Prices</em> to trigger a check.
+    </div>
+    {% endif %}
 
     <!-- Grid Orders Table -->
     <div class="bg-white rounded-lg shadow-md p-6 mb-8">
@@ -403,6 +465,38 @@ async function deleteGrid(gridId) {
         }
     } catch (error) {
         alert('Failed to delete grid. Please try again.');
+    }
+}
+
+async function triggerMigration() {
+    const gridId = '{{ grid.id }}';
+    const btn = event.currentTarget;
+    btn.disabled = true;
+    btn.textContent = 'Checking…';
+    try {
+        const resp = await fetch(`/api/grids/${gridId}/migrate`, { method: 'POST' });
+        const result = await resp.json();
+        if (!resp.ok) {
+            alert(result.detail || 'Migration check failed');
+            return;
+        }
+        if (result.migrated) {
+            const m = result.migration;
+            alert(`✅ Grid migrated ${m.direction.toUpperCase()}!\n\n` +
+                  `Trigger price: $${m.trigger_price}\n` +
+                  `Shift: ${m.delta > 0 ? '+' : ''}${m.delta}\n` +
+                  `New A-Zone: $${m.new_a_lower} ~ $${m.new_a_upper}\n` +
+                  `Orders cancelled: ${result.orders_cancelled}\n` +
+                  `Orders created: ${result.orders_created}`);
+            window.location.reload();
+        } else {
+            alert(`ℹ️ No migration needed.\n\n${result.message}`);
+        }
+    } catch (e) {
+        alert('Migration request failed: ' + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<svg class="w-3 h-3 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> Check & Migrate';
     }
 }
 </script>
