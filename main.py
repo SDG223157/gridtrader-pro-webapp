@@ -500,6 +500,75 @@ templates = Jinja2Templates(directory="templates")
 # Initialize data provider (existing working implementation)
 data_provider = YFinanceDataProvider()
 
+# ── Currency exchange rate utilities ──────────────────────────────────────
+
+_fx_cache: Dict[str, Tuple[float, float]] = {}
+_FX_CACHE_TTL = 3600  # 1 hour
+
+def get_symbol_currency(symbol: str) -> str:
+    """Detect native currency of a stock from its ticker suffix."""
+    s = symbol.upper()
+    if s.endswith(".HK"):
+        return "HKD"
+    if s.endswith(".SS") or s.endswith(".SZ"):
+        return "CNY"
+    if s.endswith(".T"):
+        return "JPY"
+    if s.endswith(".L"):
+        return "GBP"
+    return "USD"
+
+
+def get_exchange_rate(from_currency: str, to_currency: str) -> float:
+    """Get exchange rate from_currency -> to_currency. Returns multiplier.
+    e.g. get_exchange_rate("HKD", "CNY") ≈ 0.92
+    """
+    if from_currency == to_currency:
+        return 1.0
+
+    import time
+    cache_key = f"{from_currency}{to_currency}"
+    now = time.time()
+
+    if cache_key in _fx_cache:
+        rate, ts = _fx_cache[cache_key]
+        if now - ts < _FX_CACHE_TTL:
+            return rate
+
+    try:
+        import yfinance as yf
+        pair = f"{from_currency}{to_currency}=X"
+        t = yf.Ticker(pair)
+        info = t.info
+        rate = info.get("regularMarketPrice") or info.get("previousClose")
+        if rate and rate > 0:
+            _fx_cache[cache_key] = (float(rate), now)
+            logger.info(f"💱 FX rate {from_currency}->{to_currency}: {rate}")
+            return float(rate)
+    except Exception as e:
+        logger.warning(f"⚠️ FX rate fetch failed for {from_currency}->{to_currency}: {e}")
+
+    # Hardcoded fallbacks
+    fallbacks = {
+        "HKDCNY": 0.92, "CNYHKD": 1.087,
+        "USDCNY": 7.25, "CNYUSD": 0.138,
+        "USDHKD": 7.80, "HKDUSD": 0.128,
+    }
+    rate = fallbacks.get(cache_key, 1.0)
+    _fx_cache[cache_key] = (rate, now)
+    logger.info(f"💱 FX rate {from_currency}->{to_currency}: {rate} (fallback)")
+    return rate
+
+
+def convert_price_to_portfolio_currency(price: float, symbol: str, portfolio_currency: str) -> float:
+    """Convert a stock price from its native currency to the portfolio's currency."""
+    stock_currency = get_symbol_currency(symbol)
+    if stock_currency == portfolio_currency:
+        return price
+    rate = get_exchange_rate(stock_currency, portfolio_currency)
+    return round(price * rate, 4)
+
+
 def normalize_symbol_for_yfinance(symbol: str) -> str:
     """Convert any symbol format to proper yfinance ticker symbol"""
     # Remove common prefixes that yfinance doesn't need
@@ -669,38 +738,54 @@ def get_current_stock_price_trendwise_pattern(symbol: str) -> float:
         return 0.0
 
 def update_holdings_current_prices(db: Session, portfolio_id: str = None):
-    """Update current prices for all holdings using existing data provider"""
+    """Update current prices for all holdings, converting to portfolio currency."""
     try:
         if portfolio_id:
             holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio_id).all()
         else:
             holdings = db.query(Holding).all()
         
+        # Build portfolio currency lookup
+        portfolio_currencies = {}
+        if portfolio_id:
+            p = db.query(Portfolio).filter(Portfolio.id == portfolio_id).first()
+            if p:
+                portfolio_currencies[portfolio_id] = p.currency or "USD"
+        else:
+            for p in db.query(Portfolio).all():
+                portfolio_currencies[p.id] = p.currency or "USD"
+        
         updated_count = 0
         
         for i, holding in enumerate(holdings):
-            # Reduced delay for better performance - only for large portfolios
             if i > 0 and len(holdings) > 10:
-                time.sleep(0.1)  # Reduced to 0.1 second for large portfolios
+                time.sleep(0.1)
             
-            # Use data provider for consistent pricing
             current_price = data_provider.get_current_price(holding.symbol)
             
-            # If alternative APIs failed, use intelligent fallback
             if not current_price or current_price <= 0:
                 if holding.symbol == "AAPL":
                     current_price = 230.0
-                elif holding.symbol.endswith('.SS'):
+                elif holding.symbol.endswith('.SS') or holding.symbol.endswith('.SZ'):
                     current_price = 36.0
                 else:
                     current_price = 100.0
-                logger.info(f"📈 Using fallback price for {holding.symbol}: ${current_price}")
+                logger.info(f"📈 Using fallback price for {holding.symbol}: {current_price}")
             
             if current_price > 0:
+                # Convert to portfolio currency
+                port_currency = portfolio_currencies.get(holding.portfolio_id, "USD")
+                converted = convert_price_to_portfolio_currency(current_price, holding.symbol, port_currency)
+                
                 old_price = float(holding.current_price or 0)
-                holding.current_price = Decimal(str(current_price))
+                holding.current_price = Decimal(str(converted))
                 updated_count += 1
-                logger.info(f"✅ Updated {holding.symbol} price: ${old_price} → ${current_price}")
+                
+                stock_cur = get_symbol_currency(holding.symbol)
+                if stock_cur != port_currency:
+                    logger.info(f"✅ Updated {holding.symbol}: {current_price} {stock_cur} → {converted} {port_currency}")
+                else:
+                    logger.info(f"✅ Updated {holding.symbol}: {old_price} → {converted}")
             else:
                 logger.warning(f"⚠️ Failed to update price for {holding.symbol}")
         
@@ -2571,12 +2656,21 @@ async def create_transaction(request: CreateTransactionRequest, user: User = Dep
 
         # Regular buy / sell flow
         quantity_decimal = Decimal(str(request.quantity))
-        price_decimal = Decimal(str(request.price))
+        raw_price = float(request.price)
         fees_decimal = Decimal(str(request.fees))
-        total_amount = (quantity_decimal * price_decimal) + fees_decimal
         
         # Normalize symbol for consistent storage and yfinance compatibility
         normalized_symbol = normalize_symbol_for_yfinance(request.symbol.upper())
+        
+        # Auto-convert price to portfolio currency if different
+        portfolio_currency = portfolio.currency or "USD"
+        converted_price = convert_price_to_portfolio_currency(raw_price, normalized_symbol, portfolio_currency)
+        stock_currency = get_symbol_currency(normalized_symbol)
+        if stock_currency != portfolio_currency:
+            logger.info(f"💱 Price conversion: {raw_price} {stock_currency} → {converted_price} {portfolio_currency} for {normalized_symbol}")
+        
+        price_decimal = Decimal(str(converted_price))
+        total_amount = (quantity_decimal * price_decimal) + fees_decimal
         
         # Create transaction
         transaction = Transaction(
