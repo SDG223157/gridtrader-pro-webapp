@@ -2202,6 +2202,17 @@ async def portfolio_detail(portfolio_id: str, request: Request, db: Session = De
     # Get paginated holdings with sorting
     holdings = holdings_query.offset(holdings_offset).limit(holdings_per_page).all()
     
+    # Fetch latest buy transaction notes for each holding (buy reason)
+    holding_notes = {}
+    for h in holdings:
+        latest_buy = db.query(Transaction).filter(
+            Transaction.portfolio_id == portfolio_id,
+            Transaction.symbol == h.symbol,
+            Transaction.transaction_type == TransactionType.buy
+        ).order_by(Transaction.executed_at.desc()).first()
+        if latest_buy and latest_buy.notes:
+            holding_notes[h.symbol] = latest_buy.notes
+    
     # Holdings pagination info
     holdings_pagination_info = {
         "current_page": holdings_page,
@@ -2253,6 +2264,7 @@ async def portfolio_detail(portfolio_id: str, request: Request, db: Session = De
     context.update({
         "portfolio": portfolio,
         "holdings": holdings,
+        "holding_notes": holding_notes,
         "holdings_pagination": holdings_pagination_info,
         "transactions": transactions,
         "pagination": pagination_info,

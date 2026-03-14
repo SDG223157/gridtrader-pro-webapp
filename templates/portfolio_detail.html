@@ -166,6 +166,9 @@
                                 {% endif %}
                             </a>
                         </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Buy Reason
+                        </th>
                     </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200">
@@ -186,6 +189,9 @@
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ currency_symbol }}{{ "%.2f"|format(market_value) }}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm {% if pnl >= 0 %}text-green-600{% else %}text-red-600{% endif %}">
                             {{ currency_symbol }}{{ "%.2f"|format(pnl) }} ({{ "%.1f"|format(pnl_pct) }}%)
+                        </td>
+                        <td class="px-6 py-4 text-xs text-gray-500 max-w-xs truncate" title="{{ holding_notes.get(holding.symbol, '') }}">
+                            {{ holding_notes.get(holding.symbol, '') }}
                         </td>
                     </tr>
                     {% endfor %}
