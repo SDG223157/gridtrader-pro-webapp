@@ -5,19 +5,4 @@ services:
     build: .
     container_name: gridtrader-web
     env_file: .env
-    environment:
-      - REDIS_URL=redis://redis:6379/0
-    depends_on:
-      - redis
     restart: unless-stopped
-
-  redis:
-    image: redis:7-alpine
-    container_name: gridtrader-redis
-    volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
-    restart: unless-stopped
-
-volumes:
-  redis_data:

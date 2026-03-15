@@ -18,7 +18,6 @@ RUN apt-get update && apt-get install -y \
     pkg-config \
     curl \
     supervisor \
-    netcat-openbsd \
     && rm -rf /var/lib/apt/lists/* \
     && useradd -m -u 1000 appuser
 
@@ -41,9 +40,8 @@ RUN mkdir -p /app/logs \
 # Set up permissions
 RUN chown -R appuser:appuser /app
 
-# Create supervisor configuration for production with Celery (and no-Redis variant)
+# Supervisor config (web app only — no Celery/Redis)
 COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-COPY docker/supervisord-no-redis.conf /etc/supervisor/conf.d/supervisord-no-redis.conf
 
 # Create startup script for production
 COPY docker/start.sh /start.sh
