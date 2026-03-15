@@ -41,8 +41,9 @@ RUN mkdir -p /app/logs \
 # Set up permissions
 RUN chown -R appuser:appuser /app
 
-# Create supervisor configuration for production with Celery
+# Create supervisor configuration for production with Celery (and no-Redis variant)
 COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY docker/supervisord-no-redis.conf /etc/supervisor/conf.d/supervisord-no-redis.conf
 
 # Create startup script for production
 COPY docker/start.sh /start.sh

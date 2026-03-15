@@ -1,5 +1,13 @@
 # Redis connection troubleshooting
 
+## Running without Redis
+
+To **disable Redis completely** (web app only, no Celery background tasks):
+
+- In your deployment environment, set **`DISABLE_REDIS=1`** (or `true` / `yes`).
+- Do **not** set `REDIS_URL` or `REDIS_HOST` (or remove them if present).
+- The app will start only the web server; Celery worker and beat will not run. Login, portfolios, and View Details work normally.
+
 ## Error: `getaddrinfo for host "y0o8gkwcow8gks80ooc8g8c4" port 6379: Temporary failure in name resolution`
 
 This means the **Redis hostname is wrong or not set**. The app is trying to reach a host that doesn’t exist or isn’t resolvable in your environment.

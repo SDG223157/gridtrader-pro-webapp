@@ -13,23 +13,26 @@ from datetime import datetime, timedelta
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Redis configuration
-REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+# Redis configuration (optional: set DISABLE_REDIS=1 to run without Redis)
+DISABLE_REDIS = os.getenv('DISABLE_REDIS', '').lower() in ('1', 'true', 'yes')
+REDIS_URL = (os.getenv('REDIS_URL') or '').strip()
 
-# Initialize Celery with error handling
-try:
-    celery_app = Celery(
-        'gridtrader_tasks',
-        broker=REDIS_URL,
-        backend=REDIS_URL,
-        include=['tasks']
-    )
-    logger.info(f"✅ Celery initialized with Redis: {REDIS_URL}")
-except Exception as e:
-    logger.warning(f"⚠️ Celery initialization failed: {e}")
-    # Create a dummy celery app for development
+if DISABLE_REDIS or not REDIS_URL:
     celery_app = Celery('gridtrader_tasks')
-    logger.info("📝 Using dummy Celery app (Redis not available)")
+    logger.info("📝 Redis disabled or not configured - using dummy Celery app (no background tasks)")
+else:
+    try:
+        celery_app = Celery(
+            'gridtrader_tasks',
+            broker=REDIS_URL,
+            backend=REDIS_URL,
+            include=['tasks']
+        )
+        logger.info(f"✅ Celery initialized with Redis: {REDIS_URL[:50]}...")
+    except Exception as e:
+        logger.warning(f"⚠️ Celery initialization failed: {e}")
+        celery_app = Celery('gridtrader_tasks')
+        logger.info("📝 Using dummy Celery app (Redis not available)")
 
 # Celery configuration
 celery_app.conf.update(
