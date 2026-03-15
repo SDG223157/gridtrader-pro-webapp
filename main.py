@@ -2110,6 +2110,16 @@ async def portfolio_detail(portfolio_id: str, request: Request, db: Session = De
     # Get paginated holdings with sorting
     holdings = holdings_query.offset(holdings_offset).limit(holdings_per_page).all()
     
+    # Fetch latest buy transaction notes for each holding (buy reason)
+    holding_notes = {}
+    for h in holdings:
+        latest_buy = db.query(Transaction).filter(
+            Transaction.portfolio_id == portfolio_id,
+            Transaction.symbol == h.symbol,
+            Transaction.transaction_type == TransactionType.buy
+        ).order_by(Transaction.executed_at.desc()).first()
+        if latest_buy and latest_buy.notes:
+            holding_notes[h.symbol] = latest_buy.notes
     # Total holdings value (all holdings) for weight %
     total_holdings_value = db.query(func.coalesce(func.sum(Holding.quantity * Holding.current_price), 0)).filter(
         Holding.portfolio_id == portfolio_id
