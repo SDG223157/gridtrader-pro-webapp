@@ -1784,26 +1784,20 @@ async def portfolios_page(request: Request, db: Session = Depends(get_db)):
     if not context["is_authenticated"]:
         return RedirectResponse(url="/login", status_code=302)
     
-    # Auto-update prices when landing on portfolios page
-    auto_update = request.query_params.get("auto_update", "true").lower() == "true"
-    
     portfolios = db.query(Portfolio).filter(Portfolio.user_id == context["user"].id).all()
     
+    # Prices are refreshed daily by the background scheduler after market close.
+    # Only do a live refresh if explicitly requested via ?auto_update=true
+    auto_update = request.query_params.get("auto_update", "false").lower() == "true"
     if auto_update:
-        logger.info("🔄 Auto-updating portfolio prices on page load")
-        # Update prices for all portfolios
+        logger.info("🔄 Manual price refresh requested")
         for portfolio in portfolios:
             try:
-                # Update holdings prices for this portfolio
                 update_holdings_current_prices(db, portfolio.id)
-                # Recalculate portfolio value
                 portfolio.current_value = calculate_portfolio_value(portfolio, db)
             except Exception as e:
-                logger.error(f"❌ Error updating portfolio {portfolio.name}: {e}")
-                continue
-        
+                logger.error(f"Error updating portfolio {portfolio.name}: {e}")
         db.commit()
-        logger.info(f"✅ Auto-updated prices for {len(portfolios)} portfolios")
     
     context["portfolios"] = portfolios
     context["auto_update_enabled"] = auto_update
