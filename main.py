@@ -2040,168 +2040,179 @@ async def update_portfolio_market(
 # Portfolio Detail and Transaction Routes
 @app.get("/portfolios/{portfolio_id}", response_class=HTMLResponse)
 async def portfolio_detail(portfolio_id: str, request: Request, db: Session = Depends(get_db)):
-    context = get_user_context(request, db)
-    if not context["is_authenticated"]:
-        return RedirectResponse(url="/login", status_code=302)
-    
-    # Get portfolio with ownership check
-    portfolio = db.query(Portfolio).filter(
-        Portfolio.id == portfolio_id,
-        Portfolio.user_id == context["user"].id
-    ).first()
-    
-    if not portfolio:
-        raise HTTPException(status_code=404, detail="Portfolio not found")
-    
-    # Ensure optional fields have defaults so template never sees None
-    if getattr(portfolio, "market", None) is None:
-        portfolio.market = MarketType.US
-    if getattr(portfolio, "currency", None) is None:
-        portfolio.currency = "USD"
-    
+    show_error_detail = os.getenv("SHOW_ERROR_DETAIL", "").lower() in ("1", "true", "yes")
     try:
-        # Check if price update is requested (optional parameter for performance)
-        update_prices = request.query_params.get("update_prices", "false").lower() == "true"
+        context = get_user_context(request, db)
+        if not context["is_authenticated"]:
+            return RedirectResponse(url="/login", status_code=302)
         
-        if update_prices:
-            # Update current prices from existing data provider before displaying
-            update_holdings_current_prices(db, portfolio_id)
+        # Get portfolio with ownership check
+        portfolio = db.query(Portfolio).filter(
+            Portfolio.id == portfolio_id,
+            Portfolio.user_id == context["user"].id
+        ).first()
         
-        # Recalculate portfolio value with updated prices INCLUDING grid allocations
-        portfolio.current_value = calculate_portfolio_value(portfolio, db)
+        if not portfolio:
+            raise HTTPException(status_code=404, detail="Portfolio not found")
         
-        db.commit()
-    except Exception as e:
-        logger.exception(f"Portfolio detail error (portfolio_id={portfolio_id}): %s", e)
+        # Ensure optional fields have defaults so template never sees None
+        if getattr(portfolio, "market", None) is None:
+            portfolio.market = MarketType.US
+        if getattr(portfolio, "currency", None) is None:
+            portfolio.currency = "USD"
+        
+        try:
+            # Check if price update is requested (optional parameter for performance)
+            update_prices = request.query_params.get("update_prices", "false").lower() == "true"
+            
+            if update_prices:
+                # Update current prices from existing data provider before displaying
+                update_holdings_current_prices(db, portfolio_id)
+            
+            # Recalculate portfolio value with updated prices INCLUDING grid allocations
+            portfolio.current_value = calculate_portfolio_value(portfolio, db)
+            
+            db.commit()
+        except Exception as e:
+            logger.exception(f"Portfolio detail error (portfolio_id={portfolio_id}): %s", e)
+            raise
+        
+        # Pagination and sorting for holdings
+        holdings_page = int(request.query_params.get("holdings_page", 1))
+        holdings_per_page = int(request.query_params.get("holdings_per_page", 20))  # Default 20 holdings per page
+        holdings_offset = (holdings_page - 1) * holdings_per_page
+        
+        # Sorting parameters
+        sort_by = request.query_params.get("sort_by", "symbol")  # Default sort by symbol
+        sort_order = request.query_params.get("sort_order", "asc")  # Default ascending
+        
+        # Get total holdings count for pagination
+        total_holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio_id).count()
+        holdings_total_pages = (total_holdings + holdings_per_page - 1) // holdings_per_page
+        
+        # Build query with sorting
+        holdings_query = db.query(Holding).filter(Holding.portfolio_id == portfolio_id)
+        
+        # Apply sorting
+        if sort_by == "symbol":
+            holdings_query = holdings_query.order_by(Holding.symbol.desc() if sort_order == "desc" else Holding.symbol.asc())
+        elif sort_by == "quantity":
+            holdings_query = holdings_query.order_by(Holding.quantity.desc() if sort_order == "desc" else Holding.quantity.asc())
+        elif sort_by == "average_cost":
+            holdings_query = holdings_query.order_by(Holding.average_cost.desc() if sort_order == "desc" else Holding.average_cost.asc())
+        elif sort_by == "current_price":
+            holdings_query = holdings_query.order_by(Holding.current_price.desc() if sort_order == "desc" else Holding.current_price.asc())
+        elif sort_by == "market_value" or sort_by == "weight":
+            # Sort by calculated market value / weight (quantity * current_price)
+            holdings_query = holdings_query.order_by(
+                (Holding.quantity * Holding.current_price).desc() if sort_order == "desc" 
+                else (Holding.quantity * Holding.current_price).asc()
+            )
+        elif sort_by == "pnl":
+            # Sort by calculated P&L ((quantity * current_price) - (quantity * average_cost))
+            holdings_query = holdings_query.order_by(
+                ((Holding.quantity * Holding.current_price) - (Holding.quantity * Holding.average_cost)).desc() 
+                if sort_order == "desc" 
+                else ((Holding.quantity * Holding.current_price) - (Holding.quantity * Holding.average_cost)).asc()
+            )
+        else:
+            # Default to symbol sorting
+            holdings_query = holdings_query.order_by(Holding.symbol.asc())
+        
+        # Get paginated holdings with sorting
+        holdings = holdings_query.offset(holdings_offset).limit(holdings_per_page).all()
+        
+        # Fetch latest buy transaction notes for each holding (buy reason)
+        holding_notes = {}
+        for h in holdings:
+            latest_buy = db.query(Transaction).filter(
+                Transaction.portfolio_id == portfolio_id,
+                Transaction.symbol == h.symbol,
+                Transaction.transaction_type == TransactionType.buy
+            ).order_by(Transaction.executed_at.desc()).first()
+            if latest_buy and latest_buy.notes:
+                holding_notes[h.symbol] = latest_buy.notes
+        # Total holdings value (all holdings) for weight %
+        total_holdings_value = db.query(func.coalesce(func.sum(Holding.quantity * Holding.current_price), 0)).filter(
+            Holding.portfolio_id == portfolio_id
+        ).scalar()
+        total_holdings_value = float(total_holdings_value) if total_holdings_value else 0.0
+        
+        # Holdings pagination info
+        holdings_pagination_info = {
+            "current_page": holdings_page,
+            "per_page": holdings_per_page,
+            "total_holdings": total_holdings,
+            "total_pages": holdings_total_pages,
+            "has_prev": holdings_page > 1,
+            "has_next": holdings_page < holdings_total_pages,
+            "prev_page": holdings_page - 1 if holdings_page > 1 else None,
+            "next_page": holdings_page + 1 if holdings_page < holdings_total_pages else None,
+            "sort_by": sort_by,
+            "sort_order": sort_order
+        }
+        
+        # Pagination for transactions
+        page = int(request.query_params.get("page", 1))
+        per_page = int(request.query_params.get("per_page", 20))  # Default 20 transactions per page
+        offset = (page - 1) * per_page
+        
+        # Get total transaction count for pagination
+        total_transactions = db.query(Transaction).filter(Transaction.portfolio_id == portfolio_id).count()
+        total_pages = (total_transactions + per_page - 1) // per_page
+        
+        # Get paginated transactions
+        transactions = db.query(Transaction).filter(
+            Transaction.portfolio_id == portfolio_id
+        ).order_by(Transaction.executed_at.desc()).offset(offset).limit(per_page).all()
+        
+        # Pagination info
+        pagination_info = {
+            "current_page": page,
+            "per_page": per_page,
+            "total_transactions": total_transactions,
+            "total_pages": total_pages,
+            "has_prev": page > 1,
+            "has_next": page < total_pages,
+            "prev_page": page - 1 if page > 1 else None,
+            "next_page": page + 1 if page < total_pages else None
+        }
+        
+        # Calculate grid allocations total
+        active_grids = db.query(Grid).filter(
+            Grid.portfolio_id == portfolio_id,
+            Grid.status == GridStatus.active
+        ).all()
+        
+        grid_allocations = sum([float(grid.investment_amount or 0) for grid in active_grids])
+        
+        context.update({
+            "portfolio": portfolio,
+            "holdings": holdings,
+            "holdings_pagination": holdings_pagination_info,
+            "total_holdings_value": total_holdings_value,
+            "holding_notes": holding_notes,
+            "transactions": transactions,
+            "pagination": pagination_info,
+            "grid_allocations": grid_allocations,
+            "active_grids": active_grids,
+            "grid_count": len(active_grids),
+            "currency_symbols": CURRENCY_SYMBOLS
+        })
+        
+        try:
+            return templates.TemplateResponse("portfolio_detail.html", {"request": request, **context})
+        except Exception as e:
+            logger.exception("Portfolio detail template render error (portfolio_id=%s): %s", portfolio_id, e)
+            raise
+    except HTTPException:
         raise
-    
-    # Pagination and sorting for holdings
-    holdings_page = int(request.query_params.get("holdings_page", 1))
-    holdings_per_page = int(request.query_params.get("holdings_per_page", 20))  # Default 20 holdings per page
-    holdings_offset = (holdings_page - 1) * holdings_per_page
-    
-    # Sorting parameters
-    sort_by = request.query_params.get("sort_by", "symbol")  # Default sort by symbol
-    sort_order = request.query_params.get("sort_order", "asc")  # Default ascending
-    
-    # Get total holdings count for pagination
-    total_holdings = db.query(Holding).filter(Holding.portfolio_id == portfolio_id).count()
-    holdings_total_pages = (total_holdings + holdings_per_page - 1) // holdings_per_page
-    
-    # Build query with sorting
-    holdings_query = db.query(Holding).filter(Holding.portfolio_id == portfolio_id)
-    
-    # Apply sorting
-    if sort_by == "symbol":
-        holdings_query = holdings_query.order_by(Holding.symbol.desc() if sort_order == "desc" else Holding.symbol.asc())
-    elif sort_by == "quantity":
-        holdings_query = holdings_query.order_by(Holding.quantity.desc() if sort_order == "desc" else Holding.quantity.asc())
-    elif sort_by == "average_cost":
-        holdings_query = holdings_query.order_by(Holding.average_cost.desc() if sort_order == "desc" else Holding.average_cost.asc())
-    elif sort_by == "current_price":
-        holdings_query = holdings_query.order_by(Holding.current_price.desc() if sort_order == "desc" else Holding.current_price.asc())
-    elif sort_by == "market_value" or sort_by == "weight":
-        # Sort by calculated market value / weight (quantity * current_price)
-        holdings_query = holdings_query.order_by(
-            (Holding.quantity * Holding.current_price).desc() if sort_order == "desc" 
-            else (Holding.quantity * Holding.current_price).asc()
-        )
-    elif sort_by == "pnl":
-        # Sort by calculated P&L ((quantity * current_price) - (quantity * average_cost))
-        holdings_query = holdings_query.order_by(
-            ((Holding.quantity * Holding.current_price) - (Holding.quantity * Holding.average_cost)).desc() 
-            if sort_order == "desc" 
-            else ((Holding.quantity * Holding.current_price) - (Holding.quantity * Holding.average_cost)).asc()
-        )
-    else:
-        # Default to symbol sorting
-        holdings_query = holdings_query.order_by(Holding.symbol.asc())
-    
-    # Get paginated holdings with sorting
-    holdings = holdings_query.offset(holdings_offset).limit(holdings_per_page).all()
-    
-    # Fetch latest buy transaction notes for each holding (buy reason)
-    holding_notes = {}
-    for h in holdings:
-        latest_buy = db.query(Transaction).filter(
-            Transaction.portfolio_id == portfolio_id,
-            Transaction.symbol == h.symbol,
-            Transaction.transaction_type == TransactionType.buy
-        ).order_by(Transaction.executed_at.desc()).first()
-        if latest_buy and latest_buy.notes:
-            holding_notes[h.symbol] = latest_buy.notes
-    # Total holdings value (all holdings) for weight %
-    total_holdings_value = db.query(func.coalesce(func.sum(Holding.quantity * Holding.current_price), 0)).filter(
-        Holding.portfolio_id == portfolio_id
-    ).scalar()
-    total_holdings_value = float(total_holdings_value) if total_holdings_value else 0.0
-    
-    # Holdings pagination info
-    holdings_pagination_info = {
-        "current_page": holdings_page,
-        "per_page": holdings_per_page,
-        "total_holdings": total_holdings,
-        "total_pages": holdings_total_pages,
-        "has_prev": holdings_page > 1,
-        "has_next": holdings_page < holdings_total_pages,
-        "prev_page": holdings_page - 1 if holdings_page > 1 else None,
-        "next_page": holdings_page + 1 if holdings_page < holdings_total_pages else None,
-        "sort_by": sort_by,
-        "sort_order": sort_order
-    }
-    
-    # Pagination for transactions
-    page = int(request.query_params.get("page", 1))
-    per_page = int(request.query_params.get("per_page", 20))  # Default 20 transactions per page
-    offset = (page - 1) * per_page
-    
-    # Get total transaction count for pagination
-    total_transactions = db.query(Transaction).filter(Transaction.portfolio_id == portfolio_id).count()
-    total_pages = (total_transactions + per_page - 1) // per_page
-    
-    # Get paginated transactions
-    transactions = db.query(Transaction).filter(
-        Transaction.portfolio_id == portfolio_id
-    ).order_by(Transaction.executed_at.desc()).offset(offset).limit(per_page).all()
-    
-    # Pagination info
-    pagination_info = {
-        "current_page": page,
-        "per_page": per_page,
-        "total_transactions": total_transactions,
-        "total_pages": total_pages,
-        "has_prev": page > 1,
-        "has_next": page < total_pages,
-        "prev_page": page - 1 if page > 1 else None,
-        "next_page": page + 1 if page < total_pages else None
-    }
-    
-    # Calculate grid allocations total
-    active_grids = db.query(Grid).filter(
-        Grid.portfolio_id == portfolio_id,
-        Grid.status == GridStatus.active
-    ).all()
-    
-    grid_allocations = sum([float(grid.investment_amount or 0) for grid in active_grids])
-    
-    context.update({
-        "portfolio": portfolio,
-        "holdings": holdings,
-        "holdings_pagination": holdings_pagination_info,
-        "total_holdings_value": total_holdings_value,
-        "holding_notes": holding_notes,
-        "transactions": transactions,
-        "pagination": pagination_info,
-        "grid_allocations": grid_allocations,
-        "active_grids": active_grids,
-        "grid_count": len(active_grids),
-        "currency_symbols": CURRENCY_SYMBOLS
-    })
-    
-    try:
-        return templates.TemplateResponse("portfolio_detail.html", {"request": request, **context})
     except Exception as e:
-        logger.exception("Portfolio detail template render error (portfolio_id=%s): %s", portfolio_id, e)
+        logger.exception("Portfolio detail failed (portfolio_id=%s): %s", portfolio_id, e)
+        if show_error_detail:
+            import traceback
+            body = f"<pre style='white-space:pre-wrap;font-size:12px;'>Internal Server Error (SHOW_ERROR_DETAIL=1)\n\n{type(e).__name__}: {e}\n\n{traceback.format_exc()}</pre>"
+            return HTMLResponse(status_code=500, content=body)
         raise
 
 @app.get("/portfolios/{portfolio_id}/fast", response_class=HTMLResponse)
