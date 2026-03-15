@@ -2209,11 +2209,17 @@ async def portfolio_detail(portfolio_id: str, request: Request, db: Session = De
         raise
     except Exception as e:
         logger.exception("Portfolio detail failed (portfolio_id=%s): %s", portfolio_id, e)
+        import traceback
         if show_error_detail:
-            import traceback
-            body = f"<pre style='white-space:pre-wrap;font-size:12px;'>Internal Server Error (SHOW_ERROR_DETAIL=1)\n\n{type(e).__name__}: {e}\n\n{traceback.format_exc()}</pre>"
-            return HTMLResponse(status_code=500, content=body)
-        raise
+            body = f"<pre style='white-space:pre-wrap;font-size:12px;'>View Details 出错 (SHOW_ERROR_DETAIL=1)\n\n{type(e).__name__}: {e}\n\n{traceback.format_exc()}</pre><p><a href='/portfolios'>返回组合列表</a></p>"
+        else:
+            body = (
+                "<!DOCTYPE html><html><head><meta charset='utf-8'><title>出错了</title></head><body style='font-family:sans-serif;max-width:600px;margin:2rem auto;'>"
+                "<h1>加载组合详情时出错</h1><p>请稍后重试，或返回组合列表。</p>"
+                "<p><a href='/portfolios'>返回组合列表</a></p></body></html>"
+            )
+        # Return 200 so proxy does not show 'no available server'; user still sees the error message
+        return HTMLResponse(status_code=200, content=body)
 
 @app.get("/portfolios/{portfolio_id}/fast", response_class=HTMLResponse)
 async def portfolio_detail_fast(portfolio_id: str, request: Request, db: Session = Depends(get_db)):
