@@ -2040,7 +2040,7 @@ async def update_portfolio_market(
 # Portfolio Detail and Transaction Routes
 @app.get("/portfolios/{portfolio_id}", response_class=HTMLResponse)
 async def portfolio_detail(portfolio_id: str, request: Request, db: Session = Depends(get_db)):
-    show_error_detail = os.getenv("SHOW_ERROR_DETAIL", "").lower() in ("1", "true", "yes")
+    show_error_detail = os.getenv("SHOW_ERROR_DETAIL", "1").lower() in ("1", "true", "yes")
     try:
         context = get_user_context(request, db)
         if not context["is_authenticated"]:
