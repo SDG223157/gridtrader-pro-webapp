@@ -11,7 +11,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy.orm import Session
-from sqlalchemy import text, desc
+from sqlalchemy import text, desc, func
 from database import get_db, create_tables, User, UserProfile, Portfolio, Grid, GridMigration, Holding, Alert, Transaction, TransactionType, GridStatus, GridOrder, OrderStatus, ApiToken, SessionLocal, engine, MarketType, MARKET_CURRENCY_MAP, CURRENCY_SYMBOLS
 from auth_simple import (
     setup_oauth, create_access_token, get_current_user, require_auth, 
@@ -2182,8 +2182,8 @@ async def portfolio_detail(portfolio_id: str, request: Request, db: Session = De
         holdings_query = holdings_query.order_by(Holding.average_cost.desc() if sort_order == "desc" else Holding.average_cost.asc())
     elif sort_by == "current_price":
         holdings_query = holdings_query.order_by(Holding.current_price.desc() if sort_order == "desc" else Holding.current_price.asc())
-    elif sort_by == "market_value":
-        # Sort by calculated market value (quantity * current_price)
+    elif sort_by == "market_value" or sort_by == "weight":
+        # Sort by calculated market value / weight (quantity * current_price)
         holdings_query = holdings_query.order_by(
             (Holding.quantity * Holding.current_price).desc() if sort_order == "desc" 
             else (Holding.quantity * Holding.current_price).asc()
@@ -2212,6 +2212,11 @@ async def portfolio_detail(portfolio_id: str, request: Request, db: Session = De
         ).order_by(Transaction.executed_at.desc()).first()
         if latest_buy and latest_buy.notes:
             holding_notes[h.symbol] = latest_buy.notes
+    # Total holdings value (all holdings) for weight %
+    total_holdings_value = db.query(func.coalesce(func.sum(Holding.quantity * Holding.current_price), 0)).filter(
+        Holding.portfolio_id == portfolio_id
+    ).scalar()
+    total_holdings_value = float(total_holdings_value) if total_holdings_value else 0.0
     
     # Holdings pagination info
     holdings_pagination_info = {
@@ -2266,6 +2271,7 @@ async def portfolio_detail(portfolio_id: str, request: Request, db: Session = De
         "holdings": holdings,
         "holding_notes": holding_notes,
         "holdings_pagination": holdings_pagination_info,
+        "total_holdings_value": total_holdings_value,
         "transactions": transactions,
         "pagination": pagination_info,
         "grid_allocations": grid_allocations,
@@ -2322,8 +2328,8 @@ async def portfolio_detail_fast(portfolio_id: str, request: Request, db: Session
         holdings_query = holdings_query.order_by(Holding.average_cost.desc() if sort_order == "desc" else Holding.average_cost.asc())
     elif sort_by == "current_price":
         holdings_query = holdings_query.order_by(Holding.current_price.desc() if sort_order == "desc" else Holding.current_price.asc())
-    elif sort_by == "market_value":
-        # Sort by calculated market value (quantity * current_price)
+    elif sort_by == "market_value" or sort_by == "weight":
+        # Sort by calculated market value / weight (quantity * current_price)
         holdings_query = holdings_query.order_by(
             (Holding.quantity * Holding.current_price).desc() if sort_order == "desc" 
             else (Holding.quantity * Holding.current_price).asc()
@@ -2341,6 +2347,12 @@ async def portfolio_detail_fast(portfolio_id: str, request: Request, db: Session
     
     # Get paginated holdings with sorting
     holdings = holdings_query.offset(holdings_offset).limit(holdings_per_page).all()
+    
+    # Total holdings value (all holdings) for weight %
+    total_holdings_value = db.query(func.coalesce(func.sum(Holding.quantity * Holding.current_price), 0)).filter(
+        Holding.portfolio_id == portfolio_id
+    ).scalar()
+    total_holdings_value = float(total_holdings_value) if total_holdings_value else 0.0
     
     # Holdings pagination info
     holdings_pagination_info = {
@@ -2394,6 +2406,7 @@ async def portfolio_detail_fast(portfolio_id: str, request: Request, db: Session
         "portfolio": portfolio,
         "holdings": holdings,
         "holdings_pagination": holdings_pagination_info,
+        "total_holdings_value": total_holdings_value,
         "transactions": transactions,
         "pagination": pagination_info,
         "grid_allocations": grid_allocations,
