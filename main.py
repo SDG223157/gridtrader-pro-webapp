@@ -4784,20 +4784,30 @@ async def test_yfinance_price(symbol: str):
 # Simple startup
 @app.on_event("startup")
 async def startup_event():
-    """Simple startup with table creation"""
+    """Startup: create tables, run migrations, start daily price scheduler"""
     logger.info("🚀 Starting GridTrader Pro...")
     try:
-        # Ensure all tables exist, including new ApiToken table
         create_tables()
         logger.info("✅ Database tables verified/created")
-        
-        # Run database migrations
         run_database_migrations()
-        
     except Exception as e:
         logger.warning(f"⚠️ Database initialization skipped: {e}")
-        # Don't crash on database issues, but log the warning
+
+    try:
+        from price_scheduler import start_scheduler
+        app.state.scheduler = start_scheduler()
+        logger.info("✅ Daily price refresh scheduler started")
+    except Exception as e:
+        logger.warning(f"⚠️ Price scheduler failed to start: {e}")
+
     logger.info("✅ GridTrader Pro startup completed")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    scheduler = getattr(app.state, 'scheduler', None)
+    if scheduler:
+        scheduler.shutdown(wait=False)
+        logger.info("🛑 Price scheduler stopped")
 
 if __name__ == "__main__":
     import uvicorn
