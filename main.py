@@ -2053,6 +2053,12 @@ async def portfolio_detail(portfolio_id: str, request: Request, db: Session = De
     if not portfolio:
         raise HTTPException(status_code=404, detail="Portfolio not found")
     
+    # Ensure optional fields have defaults so template never sees None
+    if getattr(portfolio, "market", None) is None:
+        portfolio.market = MarketType.US
+    if getattr(portfolio, "currency", None) is None:
+        portfolio.currency = "USD"
+    
     try:
         # Check if price update is requested (optional parameter for performance)
         update_prices = request.query_params.get("update_prices", "false").lower() == "true"
