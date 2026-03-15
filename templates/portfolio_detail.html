@@ -177,15 +177,15 @@
                                 {% endif %}
                             </a>
                         </th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Buy Reason
-                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Buy Reason</th>
                     </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200">
                     {% for holding in holdings %}
-                    {% set market_value = holding.quantity * holding.current_price %}
-                    {% set cost_basis = holding.quantity * holding.average_cost %}
+                    {% set _price = holding.current_price if holding.current_price is not none else 0 %}
+                    {% set _cost = holding.average_cost if holding.average_cost is not none else 0 %}
+                    {% set market_value = (holding.quantity or 0) * _price %}
+                    {% set cost_basis = (holding.quantity or 0) * _cost %}
                     {% set pnl = market_value - cost_basis %}
                     {% set pnl_pct = (pnl / cost_basis * 100) if cost_basis > 0 else 0 %}
                     <tr>
@@ -194,9 +194,9 @@
                                 {{ holding.symbol }}
                             </a>
                         </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ "%.2f"|format(holding.quantity) }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ currency_symbol }}{{ "%.2f"|format(holding.average_cost) }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ currency_symbol }}{{ "%.2f"|format(holding.current_price) }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ "%.2f"|format(holding.quantity or 0) }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ currency_symbol }}{{ "%.2f"|format(_cost) }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ currency_symbol }}{{ "%.2f"|format(_price) }}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ currency_symbol }}{{ "%.2f"|format(market_value) }}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                             {% set total_val = total_holdings_value|default(0) %}

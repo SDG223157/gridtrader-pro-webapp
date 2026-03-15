@@ -2053,17 +2053,21 @@ async def portfolio_detail(portfolio_id: str, request: Request, db: Session = De
     if not portfolio:
         raise HTTPException(status_code=404, detail="Portfolio not found")
     
-    # Check if price update is requested (optional parameter for performance)
-    update_prices = request.query_params.get("update_prices", "false").lower() == "true"
-    
-    if update_prices:
-        # Update current prices from existing data provider before displaying
-        update_holdings_current_prices(db, portfolio_id)
-    
-    # Recalculate portfolio value with updated prices INCLUDING grid allocations
-    portfolio.current_value = calculate_portfolio_value(portfolio, db)
-    
-    db.commit()
+    try:
+        # Check if price update is requested (optional parameter for performance)
+        update_prices = request.query_params.get("update_prices", "false").lower() == "true"
+        
+        if update_prices:
+            # Update current prices from existing data provider before displaying
+            update_holdings_current_prices(db, portfolio_id)
+        
+        # Recalculate portfolio value with updated prices INCLUDING grid allocations
+        portfolio.current_value = calculate_portfolio_value(portfolio, db)
+        
+        db.commit()
+    except Exception as e:
+        logger.exception(f"Portfolio detail error (portfolio_id={portfolio_id}): %s", e)
+        raise
     
     # Pagination and sorting for holdings
     holdings_page = int(request.query_params.get("holdings_page", 1))
@@ -2188,7 +2192,11 @@ async def portfolio_detail(portfolio_id: str, request: Request, db: Session = De
         "currency_symbols": CURRENCY_SYMBOLS
     })
     
-    return templates.TemplateResponse("portfolio_detail.html", {"request": request, **context})
+    try:
+        return templates.TemplateResponse("portfolio_detail.html", {"request": request, **context})
+    except Exception as e:
+        logger.exception("Portfolio detail template render error (portfolio_id=%s): %s", portfolio_id, e)
+        raise
 
 @app.get("/portfolios/{portfolio_id}/fast", response_class=HTMLResponse)
 async def portfolio_detail_fast(portfolio_id: str, request: Request, db: Session = Depends(get_db)):
