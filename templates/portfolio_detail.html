@@ -201,7 +201,7 @@
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ currency_symbol }}{{ "%.2f"|format(market_value) }}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                             {% set total_val = total_holdings_value|default(0) %}
-                            {% set weight_pct = (market_value / total_val * 100) if total_val > 0 else 0 %}
+                            {% set weight_pct = (market_value|float / total_val * 100) if total_val > 0 else 0 %}
                             {{ "%.2f"|format(weight_pct) }}%
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm {% if pnl >= 0 %}text-green-600{% else %}text-red-600{% endif %}">
